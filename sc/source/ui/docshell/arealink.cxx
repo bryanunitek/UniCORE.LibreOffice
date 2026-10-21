@@ -46,6 +46,7 @@
 
 #include <scabstdlg.hxx>
 #include <clipparam.hxx>
+#include <tools/hostfilter.hxx>
 
 
 ScAreaLink::ScAreaLink( ScDocShell& rShell, OUString aFile,
@@ -184,13 +185,13 @@ bool ScAreaLink::FindExtRange( ScRange& rRange, const ScDocument& rSrcDoc, const
 {
     bool bFound = false;
     OUString aUpperName = ScGlobal::getCharClass().uppercase(rAreaName);
-    ScRangeName* pNames = rSrcDoc.GetRangeName();
-    if (pNames)         // named ranges
-    {
-        const ScRangeData* p = pNames->findByUpperName(aUpperName);
-        if (p && p->IsValidReference(rRange))
-            bFound = true;
-    }
+    ScRangeName& rNames = rSrcDoc.GetRangeName();
+
+    // named ranges
+    const ScRangeData* p = rNames.findByUpperName(aUpperName);
+    if (p && p->IsValidReference(rRange))
+        bFound = true;
+
     if (!bFound)        // database ranges
     {
         ScDBCollection* pDBColl = rSrcDoc.GetDBCollection();
@@ -233,6 +234,12 @@ bool ScAreaLink::Refresh( const OUString& rNewFile, const OUString& rNewFilter,
     OUString aNewUrl( ScGlobal::GetAbsDocName( rNewFile, &m_rDocSh ) );
     bool bNewUrlName = (aNewUrl != aFileName);
 
+    if (HostFilter::isFileUrlForbidden(aNewUrl))
+    {
+        SAL_WARN("sc.ui", "ScAreaLink::Refresh: blocked file path: \"" << aNewUrl << "\"");
+        return false;
+    }
+
     std::shared_ptr<const SfxFilter> pFilter = m_rDocSh.GetFactory().GetFilterContainer()->GetFilter4FilterName(rNewFilter);
     if (!pFilter)
         return false;
@@ -248,7 +255,7 @@ bool ScAreaLink::Refresh( const OUString& rNewFile, const OUString& rNewFilter,
 
     SfxMedium* pMed = ScDocumentLoader::CreateMedium( aNewUrl, pFilter, aOptions);
 
-    // aRef->DoClose() will be closed explicitly, but it is still more safe to use SfxObjectShellLock here
+    // aRef->DoClose() will be closed explicitly, but it is still safer to use SfxObjectShellLock here
     rtl::Reference<ScDocShell> pSrcShell = new ScDocShell(SfxModelFlags::EMBEDDED_OBJECT | SfxModelFlags::DISABLE_EMBEDDED_SCRIPTS);
     pSrcShell->DoLoad(pMed);
 

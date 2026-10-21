@@ -74,6 +74,7 @@ namespace sdr::properties
                     SDRATTR_GLOW_FIRST, SDRATTR_GLOW_TEXT_LAST,
                     SDRATTR_TEXTCOLUMNS_FIRST, SDRATTR_TEXTCOLUMNS_LAST,
                     SDRATTR_WRITINGMODE2, SDRATTR_WRITINGMODE2,
+                    SDRATTR_REFLECTION_FIRST, SDRATTR_REFLECTION_LAST,
                     // Range from SdrTextObj:
                     EE_ITEMS_START, EE_ITEMS_END>);
         }
@@ -195,7 +196,7 @@ namespace sdr::properties
         {
         }
 
-        std::unique_ptr<BaseProperties> CustomShapeProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> CustomShapeProperties::implCloneProperties(SdrObject& rObj) const
         {
             return std::unique_ptr<BaseProperties>(new CustomShapeProperties(*this, rObj));
         }

@@ -72,8 +72,8 @@ class FastParser;
 struct XmlFilterBaseImpl;
 
 using ShapePairs
-    = std::map<std::shared_ptr<drawingml::Shape>, css::uno::Reference<css::drawing::XShape>>;
-using NamedShapePairs = std::map<OUString, ShapePairs>;
+    = std::unordered_map<std::shared_ptr<drawingml::Shape>, css::uno::Reference<css::drawing::XShape>>;
+using NamedShapePairs = std::unordered_map<OUString, ShapePairs>;
 
 class OOX_DLLPUBLIC XmlFilterBase : public FilterBase
 {
@@ -225,7 +225,7 @@ public:
 
     void SetMaxDocId(sal_Int32 maxDocId) { mnMaxDocId = maxDocId; }
 
-    /** Write the document properties into into the current OPC package.
+    /** Write the document properties into the current OPC package.
 
         @param xProperties  The document properties to export.
      */

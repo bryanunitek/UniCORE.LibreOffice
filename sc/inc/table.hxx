@@ -398,6 +398,7 @@ public:
 
     void        SetAnonymousDBData(std::unique_ptr<ScDBData> pDBData);
     ScDBData*   GetAnonymousDBData() { return pDBDataNoName.get();}
+    const ScDBData* GetAnonymousDBData() const { return pDBDataNoName.get(); }
 
     const OUString& GetCodeName() const { return aCodeName; }
     void        SetCodeName( const OUString& rNewName ) { aCodeName = rNewName; }
@@ -1326,7 +1327,6 @@ private:
     void FillFormula(
         const ScFormulaCell* pSrcCell, SCCOL nDestCol, SCROW nDestRow, bool bLast );
     void        UpdateInsertTabAbs(SCTAB nNewPos);
-    void        AdjustRelativeTabRefs(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode);
     bool        GetNextSpellingCell(SCCOL& rCol, SCROW& rRow, bool bInSel,
                                     const ScMarkData& rMark) const;
     bool        GetNextMarkedCell( SCCOL& rCol, SCROW& rRow, const ScMarkData& rMark ) const;
@@ -1381,7 +1381,7 @@ private:
      * Transpose clipboard patterns
      * @param nCombinedStartRow start row of the combined range;
      * used for transposed multi range selection with row direction;
-     * for other cases than multi range row selection this it equal to nRow1
+     * for other cases than multi range row selection this is equal to nRow1
      * @param nRowDestOffset adjustment of destination row position;
      * used for transposed multi range row selections, otherwise 0
      */
@@ -1393,7 +1393,7 @@ private:
      * Transpose clipboard notes
      * @param nCombinedStartRow start row of the combined range;
      * used for transposed multi range selection with row direction;
-     * for other cases than multi range row selection this it equal to nRow1
+     * for other cases than multi range row selection this is equal to nRow1
      * @param nRowDestOffset adjustment of destination row position;
      * used for transposed multi range row selections, otherwise 0
      */
@@ -1436,7 +1436,7 @@ private:
         explicit VisibleDataCellIterator(const ScDocument& rDoc, ScFlatBoolRowSegments& rRowSegs, ScColumn& rColumn);
 
         /**
-         * Set the start row position.  In case there is not visible data cell
+         * Set the start row position.  In case there is no visible data cell
          * at the specified row position, it will move to the position of the
          * first visible data cell below that point.
          *

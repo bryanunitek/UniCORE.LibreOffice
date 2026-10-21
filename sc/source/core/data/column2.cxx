@@ -96,6 +96,10 @@ tools::Long ScColumn::GetNeededSize(
     if (bInPrintTwips)
         assert(pDev->GetMapMode().GetMapUnit() == MapUnit::MapTwip);
 
+    const bool bOld = pDev->isSubpixelPositioning();
+    comphelper::ScopeGuard aSubpixelGuard([bOld, pDev] { pDev->setSubpixelPositioning(bOld); });
+    pDev->setSubpixelPositioning(true); // force same subPixel calculations as LayoutStrings
+
     std::pair<sc::CellStoreType::const_iterator,size_t> aPos = maCells.position(nRow);
     sc::CellStoreType::const_iterator it = aPos.first;
     if (it == maCells.end() || it->type == sc::element_type_empty)
@@ -1245,7 +1249,7 @@ public:
 
             // Overwrite the existing object.
             delete pObj;
-            pObj = mpEngine->CreateTextObject().release();
+            pObj = new EditTextObject(mpEngine->CreateTextObject());
         }
         else                                            // create String
         {
@@ -3676,18 +3680,12 @@ void ScColumn::UpdateSelectionFunction(
         return;     // nothing to do, bail out
 
     // Exclude all hidden rows.
+    ScFlatBoolRowSegments::RangeIterator aItr(rHiddenRows);
     ScFlatBoolRowSegments::RangeData aRange;
-    SCROW nRow = 0;
-    while (nRow <= GetDoc().MaxRow())
+    for (bool bFound = aItr.getFirst(aRange); bFound; bFound = aItr.getNext(aRange))
     {
-        if (!rHiddenRows.getRangeData(nRow, aRange))
-            break;
-
         if (aRange.mbValue)
-            // Hidden range detected.
-            aSpanSet.set(nRow, aRange.mnRow2, false);
-
-        nRow = aRange.mnRow2 + 1;
+            aSpanSet.set(aRange.mnRow1, aRange.mnRow2, false);
     }
 
     sc::SingleColumnSpanSet::SpansType aSpans;

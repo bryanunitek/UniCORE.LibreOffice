@@ -737,7 +737,7 @@ bool View::InsertData( const TransferableDataHelper& rDataHelper,
         if (std::unique_ptr<SvStream> xStm = rDataHelper.GetSotStorageStream( SotClipboardFormatId::DRAWING ))
         {
             DrawDocShellRef xShell = new DrawDocShell(SfxObjectCreateMode::INTERNAL, false, DocumentType::Impress);
-            xShell->DoInitNew();
+            xShell->DoInitNew(SfxNewDocumentMacros::Disallow);
 
             SdDrawDocument* pModel = xShell->GetDoc();
             pModel->InsertPage(pModel->AllocPage(false).get());
@@ -1636,7 +1636,12 @@ bool View::InsertData( const TransferableDataHelper& rDataHelper,
                 {
                     // tdf#139269 - prevent text pasting into readonly areas of master views
                     if (!pPage)
-                        pPage = static_cast<SdPage*>(GetSdrPageView()->GetPage());
+                    {
+                        // tdf#173370 - avoid unchecked GetSdrPageView()
+                        SdrObject* pObj = GetTextEditObject();
+                        pPage = static_cast<SdPage*>(pObj ? pObj->getSdrPageFromSdrObject()
+                                                          : nullptr);
+                    }
 
                     if (pPage && pPage->IsMasterPage() && pOLV->IsReadOnly())
                         return false;
@@ -1657,7 +1662,7 @@ bool View::InsertData( const TransferableDataHelper& rDataHelper,
 bool View::PasteRTFTable( SvStream& rStm, SdrPage* pPage, SdrInsertFlags nPasteOptions )
 {
     DrawDocShellRef xShell = new DrawDocShell(SfxObjectCreateMode::INTERNAL, false, DocumentType::Impress);
-    xShell->DoInitNew();
+    xShell->DoInitNew(SfxNewDocumentMacros::Disallow);
 
     SdDrawDocument* pModel = xShell->GetDoc();
     pModel->GetItemPool().SetDefaultMetric(MapUnit::Map100thMM);
@@ -1674,7 +1679,7 @@ bool View::PasteRTFTable( SvStream& rStm, SdrPage* pPage, SdrInsertFlags nPasteO
 bool View::PasteHTMLTable( SvStream& rStm, SdrPage* pPage, SdrInsertFlags nPasteOptions )
 {
     DrawDocShellRef xShell = new DrawDocShell(SfxObjectCreateMode::INTERNAL, false, DocumentType::Impress);
-    xShell->DoInitNew();
+    xShell->DoInitNew(SfxNewDocumentMacros::Disallow);
 
     SdDrawDocument* pModel = xShell->GetDoc();
     pModel->GetItemPool().SetDefaultMetric(MapUnit::Map100thMM);

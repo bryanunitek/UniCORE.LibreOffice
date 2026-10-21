@@ -214,6 +214,7 @@ SfxObjectShell_Impl::SfxObjectShell_Impl( SfxObjectShell& _rDocShell )
     ,bPreserveVersions( true )
     ,m_bMacroSignBroken( false )
     ,m_bNoBasicCapabilities( false )
+    ,m_bMacroCallsAllowed( false )
     ,m_bDocRecoverySupport( true )
     ,bQueryLoadTemplate( true )
     ,bLoadReadonly( false )
@@ -372,7 +373,7 @@ SfxCloseVetoLock::~SfxCloseVetoLock()
         if (mpDocShell->Get_Impl()->m_bCloseModelScheduled)
         {
             mpDocShell->Get_Impl()->m_bCloseModelScheduled = false; // pass ownership
-            if (rtl::Reference model = static_cast<SfxBaseModel*>(mpDocShell->GetBaseModel().get()))
+            if (rtl::Reference<SfxBaseModel> model = mpDocShell->GetBaseModel())
             {
                 try
                 {
@@ -417,13 +418,13 @@ bool SfxObjectShell::CloseInternal()
             return false;
 
         pImpl->bClosing = true;
-        Reference< util::XCloseable > xCloseable( GetBaseModel(), UNO_QUERY );
+        rtl::Reference<SfxBaseModel> pModel = GetBaseModel();
 
-        if ( xCloseable.is() )
+        if (pModel.is())
         {
             try
             {
-                xCloseable->close( true );
+                pModel->close(true);
             }
             catch (const Exception&)
             {
@@ -776,21 +777,18 @@ Reference< XStorageBasedLibraryContainer > SfxObjectShell::GetDialogContainer()
 Reference< XStorageBasedLibraryContainer > SfxObjectShell::GetBasicContainer()
 {
 #if HAVE_FEATURE_SCRIPTING
-    if (!comphelper::IsFuzzing())
+    try
     {
-        try
-        {
-            if ( !pImpl->m_bNoBasicCapabilities )
-                return lcl_getOrCreateLibraryContainer( true, pImpl->xBasicLibraries, GetModel() );
+        if ( !pImpl->m_bNoBasicCapabilities )
+            return lcl_getOrCreateLibraryContainer( true, pImpl->xBasicLibraries, GetModel() );
 
-            BasicManager* pBasMgr = lcl_getBasicManagerForDocument( *this );
-            if ( pBasMgr )
-                return pBasMgr->GetScriptLibraryContainer();
-        }
-        catch (const css::ucb::ContentCreationException&)
-        {
-            TOOLS_WARN_EXCEPTION("sfx.doc", "");
-        }
+        BasicManager* pBasMgr = lcl_getBasicManagerForDocument( *this );
+        if ( pBasMgr )
+            return pBasMgr->GetScriptLibraryContainer();
+    }
+    catch (const css::ucb::ContentCreationException&)
+    {
+        TOOLS_WARN_EXCEPTION("sfx.doc", "");
     }
     SAL_WARN("sfx.doc", "SfxObjectShell::GetBasicContainer: falling back to the application - is this really expected here?");
 #endif
@@ -895,11 +893,7 @@ void SfxObjectShell::SetBaseModel( SfxBaseModel* pModel )
     }
 }
 
-
-css::uno::Reference< css::frame::XModel3 > SfxObjectShell::GetBaseModel() const
-{
-    return pImpl->pBaseModel;
-}
+rtl::Reference<SfxBaseModel> SfxObjectShell::GetBaseModel() const { return pImpl->pBaseModel; }
 
 void SfxObjectShell::SetAutoStyleFilterIndex(sal_uInt16 nSet)
 {

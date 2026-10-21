@@ -20,6 +20,7 @@
 #include "EnhancedCustomShapeFontWork.hxx"
 #include <svl/itemset.hxx>
 #include <svx/compatflags.hxx>
+#include <svx/EnhancedCustomShape2d.hxx>
 #include <svx/svddef.hxx>
 #include <svx/svdopath.hxx>
 #include <vcl/kernarray.hxx>
@@ -37,7 +38,6 @@
 #include <editeng/fhgtitem.hxx>
 #include <editeng/charscaleitem.hxx>
 #include <svx/svdoashp.hxx>
-#include <svx/sdshitm.hxx>
 #include <svx/svdmodel.hxx>
 #include <editeng/outlobj.hxx>
 #include <editeng/editobj.hxx>
@@ -408,7 +408,7 @@ static void GetTextAreaOutline(
                 {   // applying character spacing
                     pVirDev->GetTextArray( rText, &aDXArray);
                     FontMetric aFontMetric( pVirDev->GetFontMetric() );
-                    aFont.SetAverageFontWidth( static_cast<sal_Int32>( static_cast<double>(aFontMetric.GetAverageFontWidth()) * ( double(100) / static_cast<double>(nCharScaleWidth) ) ) );
+                    aFont.SetFontWidth( static_cast<sal_Int32>( static_cast<double>(aFontMetric.GetFontWidth()) * ( double(100) / static_cast<double>(nCharScaleWidth) ) ) );
                     pVirDev->SetFont( aFont );
                 }
                 FWCharacterData aCharacterData;
@@ -1122,7 +1122,7 @@ static rtl::Reference<SdrObject> CreateSdrObjectFromParagraphOutlines(
 
         SfxItemSet aSet(rSdrObjCustomShape.GetMergedItemSet());
         aSet.ClearItem( SDRATTR_TEXTDIRECTION );    //SJ: vertical writing is not required, by removing this item no outliner is created
-        aSet.Put(makeSdrShadowItem(false)); // #i37011# NO shadow for FontWork geometry
+        EnhancedCustomShape2d::ClearEffects(aSet); // #i37011# NO shadow for FontWork geometry
         pRet->SetMergedItemSet( aSet );             // * otherwise we would crash, because the outliner tries to create a Paraobject, but there is no model
     }
 

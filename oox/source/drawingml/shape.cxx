@@ -19,6 +19,9 @@
 
 #include <config_wasm_strip.h>
 
+#include <algorithm>
+#include <cmath>
+
 #include <oox/drawingml/shape.hxx>
 #include <drawingml/customshapeproperties.hxx>
 #include <oox/drawingml/theme.hxx>
@@ -84,6 +87,10 @@
 #include <com/sun/star/drawing/GraphicExportFilter.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeAdjustmentValue.hpp>
+#include <com/sun/star/drawing/EnhancedCustomShapeParameterType.hpp>
+#include <com/sun/star/drawing/EnhancedCustomShapeSegmentCommand.hpp>
+#include <com/sun/star/drawing/PolygonFlags.hpp>
+#include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
 #include <com/sun/star/drawing/XEnhancedCustomShapeDefaulter.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeTextPathMode.hpp>
 #include <com/sun/star/drawing/ConnectorType.hpp>
@@ -102,7 +109,12 @@
 
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <basegfx/polygon/b2dpolypolygoncutter.hxx>
+#include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <basegfx/range/b2drange.hxx>
 #include <com/sun/star/document/XActionLockable.hpp>
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
 #include <officecfg/Office/Common.hxx>
@@ -305,7 +317,7 @@ void Shape::migrateDiagramHelperToNewShape(const ShapePtr& pTarget)
 
     if(pTarget->mpDiagramHelper)
     {
-        // this should no happen, but if there is already a helper, clean it up
+        // this should not happen, but if there is already a helper, clean it up
         delete pTarget->mpDiagramHelper;
         pTarget->mpDiagramHelper = nullptr;
     }
@@ -437,7 +449,7 @@ void Shape::addShape(
 
             if (isWPGChild() && xShape)
             {
-                // This is a wps shape and it is the child of the WPG, now copy the
+                // This is a wps shape and it is the child of the WPG, now copy
                 // the text body properties to the xshape.
                 Reference<XPropertySet> xChildWPSProperties(xShape, uno::UNO_QUERY);
 
@@ -509,6 +521,10 @@ void Shape::addShape(
                     if (!officecfg::Office::Common::Filter::Microsoft::Import::SmartArtToShapes::get() && !bPowerPoint)
                         convertSmartArtToMetafile( rFilterBase );
                 }
+                // propagateDiagramHelper() already synced and cleared the font
+                // heights map via syncDiagramFontHeights().  Reset the filter's
+                // raw pointer so it cannot dangle if the Diagram is freed later.
+                rFilterBase.setDiagramFontHeights(nullptr);
             }
 
             NamedShapePairs* pNamedShapePairs = rFilterBase.getDiagramFontHeights();
@@ -559,14 +575,19 @@ void Shape::setTextBox(bool bTextBox)
     mbTextBox = bTextBox;
 }
 
-void Shape::applyShapeReference( const Shape& rReferencedShape, bool bUseText )
+void Shape::applyShapeReference(const Shape& rReferencedShape, ReferencedShapeText eText)
 {
     SAL_INFO("oox.drawingml", "Shape::applyShapeReference: apply '" << rReferencedShape.msId << "' to '" << msId << "'");
 
-    if ( rReferencedShape.mpTextBody && bUseText )
+    if ( !rReferencedShape.mpTextBody || eText == ReferencedShapeText::Nothing )
+        mpTextBody.reset();
+    else if ( eText == ReferencedShapeText::All )
         mpTextBody = std::make_shared<TextBody>( *rReferencedShape.mpTextBody );
     else
-        mpTextBody.reset();
+        // This constructor takes the text properties and the list style, and leaves the paragraphs
+        // behind. Sharing the pointer instead would hand those over as well, and dropping the body
+        // altogether costs the inherited properties, which a placeholder needs to be laid out.
+        mpTextBody = std::make_shared<TextBody>( rReferencedShape.mpTextBody );
     maShapeProperties = rReferencedShape.maShapeProperties;
     mpShapeRefLinePropPtr = std::make_shared<LineProperties>( rReferencedShape.getActualLineProperties(nullptr) );
     mpShapeRefFillPropPtr = std::make_shared<FillProperties>( rReferencedShape.getActualFillProperties(nullptr, nullptr) );
@@ -604,6 +625,34 @@ private:
     Reference<document::XActionLockable> m_xLockable;
 };
 
+/// The outer shadow among the effects, or null when they have none.
+EffectPropertiesPtr lcl_getOuterShadow(const EffectProperties& rEffects)
+{
+    for (auto const& pEffect : rEffects.m_Effects)
+    {
+        if (pEffect->msName == "outerShdw")
+        {
+            auto pShadow = std::make_shared<EffectProperties>();
+            pShadow->maShadow.assignUsed(rEffects.maShadow);
+            pShadow->m_Effects.push_back(std::make_unique<Effect>(*pEffect));
+            return pShadow;
+        }
+    }
+    return nullptr;
+}
+
+/// Whether the shadow is scaled or skewed, so its size differs from the shape that casts it.
+bool lcl_isScaledOrSkewed(const Effect& rShadow)
+{
+    auto differs = [&rShadow](const OUString& rName, sal_Int32 nDefault) {
+        auto it = rShadow.maAttribs.find(rName);
+        sal_Int32 nValue = nDefault;
+        return it != rShadow.maAttribs.end() && (it->second >>= nValue) && nValue != nDefault;
+    };
+    return differs(u"sx"_ustr, 100000) || differs(u"sy"_ustr, 100000) || differs(u"kx"_ustr, 0)
+           || differs(u"ky"_ustr, 0);
+}
+
 }
 
 // for group shapes, the following method is also adding each child
@@ -615,8 +664,53 @@ void Shape::addChildren(
         ShapeIdMap* pShapeMap,
         const basegfx::B2DHomMatrix& aTransformation )
 {
+    // A group shape takes no properties, so the shadow set on a group goes to each shape in it.
+    // A group inside the group passes the shadow on to its own shapes, unless it has a shadow of
+    // its own, which then replaces the outer one. A scaled or skewed shadow takes its size and
+    // position from the bounds of the whole group, so a copy on each shape would be wrong.
+    EffectPropertiesPtr pGroupShadow
+        = lcl_getOuterShadow(rMaster.getActualEffectProperties(pTheme));
+    if (pGroupShadow && lcl_isScaledOrSkewed(*pGroupShadow->m_Effects.front()))
+        pGroupShadow = nullptr;
+    // The shadow of a group follows the outline of the whole group. A shape that lies within an
+    // opaque rectangle drawn before it in the group adds nothing to that outline, so it casts no
+    // shadow, and neither do the shapes of a group that lies within one.
+    std::vector<basegfx::B2DRange> aOpaqueRectangles;
     for (auto const& child : rMaster.maChildren)
     {
+        if (!pGroupShadow)
+        {
+            child->mpGroupShadowPtr = nullptr;
+        }
+        else
+        {
+            basegfx::B2DRange aBounds(child->maPosition.X, child->maPosition.Y,
+                                      child->maPosition.X + child->maSize.Width,
+                                      child->maPosition.Y + child->maSize.Height);
+            if (child->mnRotation != 0)
+                aBounds.transform(basegfx::utils::createRotateAroundPoint(
+                    aBounds.getCenter(), basegfx::deg2rad<60000>(child->mnRotation)));
+
+            const bool bCovered = std::any_of(
+                aOpaqueRectangles.begin(), aOpaqueRectangles.end(),
+                [&aBounds](const basegfx::B2DRange& rOpaque) { return rOpaque.isInside(aBounds); });
+            child->mpGroupShadowPtr = bCovered ? nullptr : pGroupShadow;
+
+            // A rectangle turned by a multiple of 90 degrees covers exactly its bounds. A fill
+            // color from the theme takes its transparency from the color of the fill reference.
+            const FillProperties aFill
+                = child->getActualFillProperties(pTheme, &getFillProperties());
+            const ShapeStyleRef* pFillRef = child->getShapeStyleRef(XML_fillRef);
+            const bool bOpaqueColor
+                = aFill.maFillColor.isUsed() && !aFill.maFillColor.hasTransparency()
+                  && (!aFill.maFillColor.isPlaceHolder() || !pFillRef
+                      || !pFillRef->maPhClr.hasTransparency());
+            if (!child->mbHidden && child->mnRotation % (90 * 60000) == 0
+                && child->mpCustomShapePropertiesPtr
+                && child->mpCustomShapePropertiesPtr->getShapePresetType() == XML_rect
+                && aFill.moFillType.value_or(XML_noFill) == XML_solidFill && bOpaqueColor)
+                aOpaqueRectangles.push_back(aBounds);
+        }
         child->setMasterTextListStyle( mpMasterTextListStyle );
         child->addShape( rFilterBase, pTheme, rxShapes, aTransformation, getFillProperties(), pShapeMap, rMaster.shared_from_this());
     }
@@ -916,6 +1010,185 @@ void lcl_RotateAtCenter(basegfx::B2DHomMatrix& aTransformation, sal_Int32 nMSORo
     return;
 }
 
+/** Reads a <a:custGeom> as a clip polygon, in the shape's own coordinates and 1/100 mm.
+
+    A placeholder that is clipped to an outline carries that outline as custom geometry, which an
+    image shape has nowhere to keep - GraphicClipPolyPolygon is where it goes. Only literal
+    coordinates are read: a path driven by guides or formulas needs the whole custom-shape
+    machinery, and returning nothing then leaves the shape rectangular, as it was before.
+ */
+std::optional<drawing::PolyPolygonBezierCoords>
+lcl_getClipPolygon(CustomShapeProperties& rProperties, const awt::Rectangle& rShapeRect)
+{
+    const std::vector<Path2D>& rPaths = rProperties.getPath2DList();
+    if (rPaths.empty())
+        return {};
+
+    auto readValue = [](const drawing::EnhancedCustomShapeParameter& rParameter, double& rfValue)
+    {
+        if (rParameter.Type != drawing::EnhancedCustomShapeParameterType::NORMAL)
+            return false;
+        if (double fValue; rParameter.Value >>= fValue)
+            rfValue = fValue;
+        else if (sal_Int32 nValue; rParameter.Value >>= nValue)
+            rfValue = nValue;
+        else
+            return false;
+        return true;
+    };
+
+    // The segments of every path arrive in one list, each path's ended by an ENDSUBPATH, while the
+    // points belong to the path they were read with - so the two are walked in step.
+    std::vector<basegfx::B2DPolyPolygon> aPaths;
+    basegfx::B2DPolyPolygon aPath;
+    basegfx::B2DPolygon aContour;
+    size_t nPath = 0;
+    size_t nPoint = 0;
+
+    auto takePoint = [&](basegfx::B2DPoint& rPoint)
+    {
+        if (nPath >= rPaths.size() || nPoint >= rPaths[nPath].parameter.size())
+            return false;
+        const Path2D& rCurrent = rPaths[nPath];
+        double fX = 0.0;
+        double fY = 0.0;
+        if (rCurrent.w <= 0 || rCurrent.h <= 0
+            || !readValue(rCurrent.parameter[nPoint].First, fX)
+            || !readValue(rCurrent.parameter[nPoint].Second, fY))
+            return false;
+        ++nPoint;
+        rPoint = basegfx::B2DPoint(fX * rShapeRect.Width / rCurrent.w,
+                                   fY * rShapeRect.Height / rCurrent.h);
+        return true;
+    };
+
+    auto endContour = [&]()
+    {
+        if (aContour.count())
+        {
+            aContour.setClosed(true);
+            aPath.append(aContour);
+        }
+        aContour.clear();
+    };
+
+    bool bPathIsFilled = true;
+
+    auto endPath = [&]()
+    {
+        endContour();
+        // A path that paints nothing covers nothing: PowerPoint leaves it out of the clip, which
+        // three renders differing only in this attribute confirm. How the outline is stroked says
+        // nothing about the area, so nostroke is not this.
+        if (aPath.count() && bPathIsFilled)
+            aPaths.push_back(aPath);
+        aPath.clear();
+        bPathIsFilled = true;
+        ++nPath;
+        nPoint = 0;
+    };
+
+    for (const drawing::EnhancedCustomShapeSegment& rSegment : rProperties.getSegments())
+    {
+        basegfx::B2DPoint aPoint;
+        switch (rSegment.Command)
+        {
+            case drawing::EnhancedCustomShapeSegmentCommand::MOVETO:
+                endContour();
+                if (!takePoint(aPoint))
+                    return {};
+                aContour.append(aPoint);
+                break;
+            case drawing::EnhancedCustomShapeSegmentCommand::LINETO:
+                for (sal_Int32 i = 0; i < rSegment.Count; ++i)
+                {
+                    if (!aContour.count() || !takePoint(aPoint))
+                        return {};
+                    aContour.append(aPoint);
+                }
+                break;
+            case drawing::EnhancedCustomShapeSegmentCommand::CURVETO:
+                for (sal_Int32 i = 0; i < rSegment.Count; ++i)
+                {
+                    basegfx::B2DPoint aFirst;
+                    basegfx::B2DPoint aSecond;
+                    if (!aContour.count() || !takePoint(aFirst) || !takePoint(aSecond)
+                        || !takePoint(aPoint))
+                        return {};
+                    aContour.appendBezierSegment(aFirst, aSecond, aPoint);
+                }
+                break;
+            case drawing::EnhancedCustomShapeSegmentCommand::QUADRATICCURVETO:
+                // A quadratic curve is exactly the cubic one whose two controls sit two thirds of
+                // the way from each end towards the single control the file gives.
+                for (sal_Int32 i = 0; i < rSegment.Count; ++i)
+                {
+                    basegfx::B2DPoint aControl;
+                    if (!aContour.count() || !takePoint(aControl) || !takePoint(aPoint))
+                        return {};
+                    const basegfx::B2DPoint aFrom(aContour.getB2DPoint(aContour.count() - 1));
+                    aContour.appendBezierSegment(aFrom + (aControl - aFrom) * (2.0 / 3.0),
+                                                 aPoint + (aControl - aPoint) * (2.0 / 3.0),
+                                                 aPoint);
+                }
+                break;
+            case drawing::EnhancedCustomShapeSegmentCommand::ENDSUBPATH:
+                endPath();
+                break;
+            case drawing::EnhancedCustomShapeSegmentCommand::NOFILL:
+                bPathIsFilled = false;
+                break;
+            case drawing::EnhancedCustomShapeSegmentCommand::CLOSESUBPATH:
+            // Shading and stroking say nothing about the area a path covers.
+            case drawing::EnhancedCustomShapeSegmentCommand::NOSTROKE:
+            case drawing::EnhancedCustomShapeSegmentCommand::DARKEN:
+            case drawing::EnhancedCustomShapeSegmentCommand::DARKENLESS:
+            case drawing::EnhancedCustomShapeSegmentCommand::LIGHTEN:
+            case drawing::EnhancedCustomShapeSegmentCommand::LIGHTENLESS:
+                break;
+            default:
+                return {};
+        }
+    }
+    endPath();
+
+    if (aPaths.empty())
+        return {};
+
+    // The contours of one path are filled by the even-odd rule - two that overlap leave a hole,
+    // which is what PowerPoint draws - and that is the rule a clip is applied with, so one path is
+    // kept exactly as it was read.
+    basegfx::B2DPolyPolygon aClip(aPaths.front());
+    if (aPaths.size() > 1)
+    {
+        // Paths, in contrast, are filled one by one, so the shape covers what they cover together.
+        // Combining them needs each path's own area first, which is that even-odd rule spelled out
+        // as a boolean expression over its contours.
+        auto contour = [](const basegfx::B2DPolyPolygon& rPath, sal_uInt32 nIndex)
+        {
+            // The operations below expect their operands oriented, which is what preparing does.
+            return basegfx::utils::prepareForPolygonOperation(
+                basegfx::B2DPolyPolygon(rPath.getB2DPolygon(nIndex)));
+        };
+
+        auto areaOf = [&contour](const basegfx::B2DPolyPolygon& rPath)
+        {
+            basegfx::B2DPolyPolygon aArea(contour(rPath, 0));
+            for (sal_uInt32 i = 1; i < rPath.count(); ++i)
+                aArea = basegfx::utils::solvePolygonOperationXor(aArea, contour(rPath, i));
+            return aArea;
+        };
+
+        aClip = areaOf(aPaths.front());
+        for (size_t i = 1; i < aPaths.size(); ++i)
+            aClip = basegfx::utils::solvePolygonOperationOr(aClip, areaOf(aPaths[i]));
+    }
+
+    drawing::PolyPolygonBezierCoords aCoords;
+    basegfx::utils::B2DPolyPolygonToUnoPolyPolygonBezierCoords(aClip, aCoords);
+    return aCoords;
+}
+
 Degree100 lcl_MSORotateAngleToAPIAngle(const sal_Int32 nMSORotationAngle)
 {
     // Converts a shape rotation angle from MSO to angle for API property RotateAngle
@@ -962,6 +1235,13 @@ void PushMasterTextListStyleToMasterShapeParagraphs(TextListStyle& rMasterTextLi
         rMasterTextListStyle.pushToNumberingRules(xNumberingRules, std::nullopt);
         xParagraph->setPropertyValue("NumberingRules", uno::Any(xNumberingRules));
     }
+}
+
+// DrawingML has 1/1000 of a percent, the shape property has whole percent from 0 to 100.
+sal_Int16 toWholePercent(sal_Int32 nThousandthsOfPercent)
+{
+    return static_cast<sal_Int16>(
+        std::clamp<double>(std::round(nThousandthsOfPercent / 1000.0), 0, 100));
 }
 }
 
@@ -2219,12 +2499,20 @@ Reference< XShape > const & Shape::createAndInsert(
             aPropertySet.setAnyProperty( PROP_VertOrientPosition, Any( maPosition.Y ) );
         }
 
-        // Make sure to not set text to placeholders. Doing it here would eventually call
-        // SvxTextEditSourceImpl::UpdateData, SdrObject::SetEmptyPresObj(false), and that
-        // would make the object behave like a standard outline object.
-        // TODO/FIXME: support custom prompt text in placeholders.
         if (rServiceName == "com.sun.star.presentation.GraphicObjectShape")
-            mpTextBody.reset();
+        {
+            // A prompt reaches the object through the CustomPromptText property, not as text; what
+            // a slide's placeholder holds is content.
+            if (holdsPromptText())
+                mpTextBody.reset();
+
+            // The custom geometry of a picture placeholder is the outline it is clipped to. An
+            // image shape has no geometry of its own to put it in, so it becomes a clip polygon;
+            // making the shape a custom shape instead, as a cropped image does, would cost the
+            // placeholder its identity.
+            if (auto oClip = lcl_getClipPolygon(*mpCustomShapePropertiesPtr, aShapeRectHmm))
+                aPropertySet.setAnyProperty(PROP_GraphicClipPolyPolygon, Any(*oClip));
+        }
 
         // in some cases, we don't have any text body.
         if( mpTextBody && ( !pPlaceholder || !mpTextBody->isEmpty() ) )
@@ -2314,6 +2602,30 @@ Reference< XShape > const & Shape::createAndInsert(
             propertySet->setPropertyValue(u"GlowEffectRadius"_ustr, Any(convertEmuToHmm(aEffectProperties.maGlow.moGlowRad.value())));
             propertySet->setPropertyValue(u"GlowEffectColor"_ustr, Any(aEffectProperties.maGlow.moGlowColor.getColor(rGraphicHelper)));
             propertySet->setPropertyValue(u"GlowEffectTransparency"_ustr, Any(aEffectProperties.maGlow.moGlowColor.getTransparency()));
+        }
+
+        // Set reflection effect properties
+        if (aEffectProperties.maReflection.isUsed()
+            && aServiceName != "com.sun.star.drawing.GroupShape")
+        {
+            const EffectReflectionProperties& rReflection = aEffectProperties.maReflection;
+
+            uno::Reference<beans::XPropertySet> propertySet(mxShape, uno::UNO_QUERY);
+            propertySet->setPropertyValue(u"ReflectionEffect"_ustr, Any(true));
+            propertySet->setPropertyValue(u"ReflectionEffectDistance"_ustr,
+                                          Any(rReflection.moDistance->as_hmm<sal_Int32>()));
+            propertySet->setPropertyValue(u"ReflectionEffectBlurRadius"_ustr,
+                                          Any(rReflection.moBlurRadius->as_hmm<sal_Int32>()));
+            propertySet->setPropertyValue(
+                u"ReflectionEffectStartTransparency"_ustr,
+                Any(sal_Int16(100 - toWholePercent(*rReflection.moStartAlpha))));
+            propertySet->setPropertyValue(u"ReflectionEffectStartPosition"_ustr,
+                                          Any(toWholePercent(*rReflection.moStartPosition)));
+            propertySet->setPropertyValue(
+                u"ReflectionEffectEndTransparency"_ustr,
+                Any(sal_Int16(100 - toWholePercent(*rReflection.moEndAlpha))));
+            propertySet->setPropertyValue(u"ReflectionEffectEndPosition"_ustr,
+                                          Any(toWholePercent(*rReflection.moEndPosition)));
         }
 
         // Set soft edge effect properties
@@ -2881,6 +3193,21 @@ EffectProperties Shape::getActualEffectProperties(const Theme* pTheme) const
 
     // Properties specified directly for this shape
     aEffectProperties.assignUsed ( getEffectProperties() );
+
+    // The shadow of the group the shape is in, when the shape casts none of its own. CT_EffectList
+    // orders its effects, and an outer shadow comes before a preset shadow, a reflection and a soft
+    // edge, so the stored effects keep that order.
+    if (mpGroupShadowPtr && !lcl_getOuterShadow(aEffectProperties))
+    {
+        aEffectProperties.maShadow.assignUsed(mpGroupShadowPtr->maShadow);
+        auto& rEffects = aEffectProperties.m_Effects;
+        auto itLater = std::find_if(rEffects.begin(), rEffects.end(), [](auto const& pEffect) {
+            return pEffect->msName == "prstShdw" || pEffect->msName == "reflection"
+                   || pEffect->msName == "softEdge";
+        });
+        for (auto const& pEffect : mpGroupShadowPtr->m_Effects)
+            itLater = std::next(rEffects.insert(itLater, std::make_unique<Effect>(*pEffect)));
+    }
 
     return aEffectProperties;
 }

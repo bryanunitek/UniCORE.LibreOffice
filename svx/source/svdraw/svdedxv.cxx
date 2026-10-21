@@ -158,7 +158,7 @@ IMPL_LINK_NOARG(SdrObjEditView, TextEditUpdate, Timer*, void)
         rVC.ActionChanged();
     else
         // invalidate only visualizations in different views:
-        // this is important to not cause evtl. high repaint costs
+        // this is important to not cause eventual high repaint costs
         // in the EditView -> we avoid this by running the TextEdit
         // on the overlay. NOTE: This is only for better performance,
         // any repaint will just work fine and do the right thing
@@ -437,6 +437,8 @@ void SdrObjEditView::ModelHasChanged()
             {
                 OutlinerView* pOLV = mpTextEditOutliner->GetView(nOV);
                 vcl::Window* pWin = pOLV->GetWindow();
+                if (!pWin || pWin->isDisposed())
+                    continue;
                 { // invalidate old OutlinerView area
                     tools::Rectangle aTmpRect(aOldArea);
                     sal_uInt16 nPixSiz = pOLV->GetInvalidateMore() + 1;
@@ -842,7 +844,7 @@ void TextEditOverlayObject::checkSelectionChange()
 
 // TextEdit
 
-// callback from the active EditView, forward to evtl. existing instances of the
+// callback from the active EditView, forward to eventual existing instances of the
 // TextEditOverlayObject(s). This will additionally update the selection which
 // is an integral part of the text visualization
 void SdrObjEditView::EditViewInvalidate(const tools::Rectangle&)
@@ -866,8 +868,8 @@ void SdrObjEditView::EditViewInvalidate(const tools::Rectangle&)
     }
 }
 
-// callback from the active EditView, forward to evtl. existing instances of the
-// TextEditOverlayObject(s). This cvall *only* updates the selection visualization
+// callback from the active EditView, forward to eventual existing instances of the
+// TextEditOverlayObject(s). This call *only* updates the selection visualization
 // which is e.g. used when only the selection is changed, but not the text
 void SdrObjEditView::EditViewSelectionChange()
 {
@@ -1012,7 +1014,7 @@ void SdrObjEditView::ImpInvalidateOutlinerView(OutlinerView const& rOutlView) co
 {
     vcl::Window* pWin = rOutlView.GetWindow();
 
-    if (!pWin)
+    if (!pWin || pWin->isDisposed())
         return;
 
     const SdrTextObj* pText = GetTextEditObject();
@@ -1639,7 +1641,7 @@ bool SdrObjEditView::SdrBeginTextEdit(SdrObject* pObj_, SdrPageView* pPV, vcl::W
 
 SdrEndTextEditKind SdrObjEditView::SdrEndTextEdit(bool bDontDeleteReally)
 {
-    // IASS: stop evtl. running timer immediately
+    // IASS: stop eventual running timer immediately
     maTextEditUpdateTimer.Stop();
 
     SdrEndTextEditKind eRet = SdrEndTextEditKind::Unchanged;
@@ -2260,21 +2262,20 @@ bool SdrObjEditView::ImpIsTextEditAllSelected() const
         if (SdrTextObj::HasTextImpl(mpTextEditOutliner.get()))
         {
             const sal_Int32 nParaCnt = mpTextEditOutliner->GetParagraphCount();
-            Paragraph* pLastPara
-                = mpTextEditOutliner->GetParagraph(nParaCnt > 1 ? nParaCnt - 1 : 0);
+            sal_Int32 nLastPara = nParaCnt > 1 ? nParaCnt - 1 : 0;
 
             ESelection aESel(mpTextEditOutlinerView->GetSelection());
             if (aESel.start.nPara == 0 && aESel.start.nIndex == 0
                 && aESel.end.nPara == (nParaCnt - 1))
             {
-                if (mpTextEditOutliner->GetText(pLastPara).getLength() == aESel.end.nIndex)
+                if (mpTextEditOutliner->GetText(nLastPara).getLength() == aESel.end.nIndex)
                     bRet = true;
             }
             // in case the selection was done backwards
             if (!bRet && aESel.end.nPara == 0 && aESel.end.nIndex == 0
                 && aESel.start.nPara == (nParaCnt - 1))
             {
-                if (mpTextEditOutliner->GetText(pLastPara).getLength() == aESel.start.nIndex)
+                if (mpTextEditOutliner->GetText(nLastPara).getLength() == aESel.start.nIndex)
                     bRet = true;
             }
         }
@@ -2876,13 +2877,14 @@ bool SdrObjEditView::SupportsFormatPaintbrush(SdrInventor nObjectInventor,
 static const WhichRangesContainer& GetFormatRangeImpl(bool bTextOnly, bool withParagraphAttr = true)
 {
     static const WhichRangesContainer gFull(
-        svl::Items<XATTR_LINE_FIRST, XATTR_LINE_LAST, XATTR_FILL_FIRST, XATTRSET_FILL,
+        svl::Items<XATTR_LINE_FIRST, XATTR_LINE_LAST, XATTR_FILL_FIRST, XATTR_FILL_LAST,
                    SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST, SDRATTR_MISC_FIRST,
                    SDRATTR_MISC_LAST, // table cell formats
                    SDRATTR_GRAF_FIRST, SDRATTR_GRAF_LAST, SDRATTR_TABLE_FIRST, SDRATTR_TABLE_LAST,
                    SDRATTR_GLOW_FIRST, SDRATTR_GLOW_LAST, SDRATTR_SOFTEDGE_FIRST,
                    SDRATTR_SOFTEDGE_LAST, SDRATTR_GLOW_TEXT_FIRST, SDRATTR_GLOW_TEXT_LAST,
-                   EE_PARA_START, EE_PARA_END, EE_CHAR_START, EE_CHAR_END>);
+                   SDRATTR_REFLECTION_FIRST, SDRATTR_REFLECTION_LAST, EE_PARA_START, EE_PARA_END,
+                   EE_CHAR_START, EE_CHAR_END>);
 
     static const WhichRangesContainer gTextOnly(
         svl::Items<SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST, EE_CHAR_START, EE_CHAR_END>);
@@ -2990,9 +2992,8 @@ void SdrObjEditView::ApplyFormatPaintBrushToText(SfxItemSet const& rFormatSet, S
         aSet.Put(CreatePaintSet(GetFormatRangeImpl(true), *aSet.GetPool(), rFormatSet, aSet,
                                 bNoCharacterFormats, bNoParagraphFormats));
         rOutliner.SetParaAttribs(nPara, aSet);
-        Paragraph* pParagraph = rOutliner.GetParagraph(nPara);
         if (nDepth > -2)
-            rOutliner.SetDepth(pParagraph, nDepth);
+            rOutliner.SetDepth(nPara, nDepth);
     }
 
     std::optional<OutlinerParaObject> pTemp = rOutliner.CreateParaObject(0, nParaCount);

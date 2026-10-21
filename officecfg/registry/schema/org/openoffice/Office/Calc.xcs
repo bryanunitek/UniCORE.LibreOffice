@@ -449,6 +449,13 @@
           </info>
           <value>false</value>
         </prop>
+        <prop oor:name="TabbarSheetsListButton" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Specifies if the tabbar should contain a button to show the list of sheets. If false, the list is shown by right-click on Add sheet button.</desc>
+            <label>Tabbar with List of sheets button</label>
+          </info>
+          <value>true</value>
+        </prop>
         <group oor:name="TabStop">
           <!-- UIHints: Tools - Options -Spreadsheets - Layout - [Section] Tab stops -->
           <info>
@@ -933,10 +940,10 @@
         <info>
           <desc>Contains settings for DBF Import dialog</desc>
         </info>
-        <prop oor:name="CharSet" oor:type="xs:int" oor:nillable="false">
+        <prop oor:name="Encoding" oor:type="xs:int" oor:nillable="false">
           <info>
-            <desc>Charset/Language</desc>
-            <label>CharSet</label>
+            <desc>Encoding/Language</desc>
+            <label>Encoding</label>
           </info>
           <value>-1</value>
         </prop>
@@ -945,10 +952,10 @@
         <info>
           <desc>Contains settings for DBF Export dialog</desc>
         </info>
-        <prop oor:name="CharSet" oor:type="xs:int" oor:nillable="false">
+        <prop oor:name="Encoding" oor:type="xs:int" oor:nillable="false">
           <info>
-            <desc>Charset/Language</desc>
-            <label>CharSet</label>
+            <desc>Encoding/Language</desc>
+            <label>Encoding</label>
           </info>
           <value>-1</value>
         </prop>
@@ -957,10 +964,10 @@
         <info>
           <desc>Contains setting for Text CSV Export</desc>
         </info>
-        <prop oor:name="CharSet" oor:type="xs:int" oor:nillable="false">
+        <prop oor:name="Encoding" oor:type="xs:int" oor:nillable="false">
           <info>
-            <desc>Char Set</desc>
-            <label>CharSet</label>
+            <desc>Encoding/Language</desc>
+            <label>Encoding</label>
           </info>
           <value>-1</value>
         </prop>
@@ -1172,7 +1179,7 @@
         </prop>
         <prop oor:name="SkipEmptyCells" oor:type="xs:boolean" oor:nillable="false">
           <info>
-            <desc>If true, Calc preserves previous content of cells when pasting empty ones. If false, Calc delete content of previous cells.</desc>
+            <desc>If true, Calc preserves previous content of cells when pasting empty ones. If false, Calc deletes content of previous cells.</desc>
             <label>SkipEmptyCells</label>
           </info>
           <value>true</value>
@@ -1286,7 +1293,7 @@
         </prop>
         <prop oor:name="SkipEmptyCells" oor:type="xs:boolean" oor:nillable="false">
           <info>
-            <desc>If true, Calc preserves previous content of cells when pasting empty ones. If false, Calc delete content of previous cells.</desc>
+            <desc>If true, Calc preserves previous content of cells when pasting empty ones. If false, Calc deletes content of previous cells.</desc>
             <label>SkipEmptyCells</label>
           </info>
           <value>false</value>
@@ -1959,7 +1966,7 @@
       </group>
       <prop oor:name="Links" oor:type="xs:boolean" oor:nillable="false">
         <info>
-          <desc>Insert link for the cell, instead of text fields in a cell.(Excel interopability options)</desc>
+          <desc>Insert link for the cell, instead of text fields in a cell.(Excel interoperability options)</desc>
           <label>Links like Excel</label>
         </info>
         <value>false</value>

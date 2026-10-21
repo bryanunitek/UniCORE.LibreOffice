@@ -165,7 +165,8 @@ ScVbaApplication::RemoveSink( sal_uInt32 nNumber )
 ScVbaApplication::ScVbaApplication( const uno::Reference<uno::XComponentContext >& xContext ) :
     ScVbaApplication_BASE( xContext ),
     mrAppSettings( ScVbaStaticAppSettings() ),
-    m_nDialogType(0)
+    m_nDialogType(0),
+    m_aInvocationHelper( xContext )
 {
 }
 
@@ -201,7 +202,15 @@ ScVbaApplication::invoke( const OUString& FunctionName, const uno::Sequence< uno
     try
     {
         uno::Reference< script::XInvocation > xWSF( new ScVbaWSFunction( this, mxContext ) );
-        aAny = xWSF->invoke( FunctionName, Params, OutParamIndex, OutParam );
+        if (xWSF->hasMethod(FunctionName))
+        {
+            aAny = xWSF->invoke( FunctionName, Params, OutParamIndex, OutParam );
+        }
+        else
+        {
+            aAny = m_aInvocationHelper.invoke( this, FunctionName, Params,
+                                               OutParamIndex, OutParam );
+        }
     }
     catch (const uno::Exception&)
     {
@@ -214,34 +223,40 @@ void SAL_CALL
 ScVbaApplication::setValue( const OUString& PropertyName, const uno::Any& Value )
 {
     uno::Reference< script::XInvocation > xWSF( new ScVbaWSFunction( this, mxContext ) );
-    xWSF->setValue( PropertyName, Value );
+    if (xWSF->hasProperty(PropertyName))
+        xWSF->setValue( PropertyName, Value );
+    else
+        m_aInvocationHelper.setValue( this, PropertyName, Value );
 }
 
 uno::Any SAL_CALL
 ScVbaApplication::getValue( const OUString& PropertyName )
 {
     uno::Reference< script::XInvocation > xWSF( new ScVbaWSFunction( this, mxContext ) );
-    return xWSF->getValue( PropertyName );
+    if (xWSF->hasProperty(PropertyName))
+        return xWSF->getValue( PropertyName );
+    else
+        return m_aInvocationHelper.getValue( this, PropertyName );
 }
 
 sal_Bool SAL_CALL
 ScVbaApplication::hasMethod( const OUString& Name )
 {
     uno::Reference< script::XInvocation > xWSF( new ScVbaWSFunction( this, mxContext ) );
-    return xWSF->hasMethod( Name );
+    return xWSF->hasMethod( Name ) || m_aInvocationHelper.hasMethod( this, Name );
 }
 
 sal_Bool SAL_CALL
 ScVbaApplication::hasProperty( const OUString& Name )
 {
     uno::Reference< script::XInvocation > xWSF( new ScVbaWSFunction( this, mxContext ) );
-    return xWSF->hasProperty( Name );
+    return xWSF->hasProperty( Name ) || m_aInvocationHelper.hasProperty( this, Name );
 }
 
 uno::Reference< excel::XWorkbook >
 ScVbaApplication::getActiveWorkbook()
 {
-    uno::Reference< frame::XModel > xModel( getCurrentExcelDoc( mxContext ), uno::UNO_SET_THROW );
+    rtl::Reference< ScModelObj > xModel( dynamic_cast<ScModelObj*>(getCurrentExcelDoc( mxContext ).get()) );
     uno::Reference< excel::XWorkbook > xWorkbook( getVBADocument( xModel ), uno::UNO_QUERY );
     if( xWorkbook.is() ) return xWorkbook;
     // #i116936# getVBADocument() may return null in documents without global VBA mode enabled
@@ -251,7 +266,7 @@ ScVbaApplication::getActiveWorkbook()
 uno::Reference< excel::XWorkbook > SAL_CALL
 ScVbaApplication::getThisWorkbook()
 {
-    uno::Reference< frame::XModel > xModel( getThisExcelDoc( mxContext ), uno::UNO_SET_THROW );
+    rtl::Reference< ScModelObj > xModel( dynamic_cast<ScModelObj*>(getThisExcelDoc( mxContext ).get()) );
     uno::Reference< excel::XWorkbook > xWorkbook( getVBADocument( xModel ), uno::UNO_QUERY );
     if( xWorkbook.is() ) return xWorkbook;
     // #i116936# getVBADocument() may return null in documents without global VBA mode enabled
@@ -466,7 +481,7 @@ ScVbaApplication::Dialogs( const uno::Any &aIndex )
 uno::Reference< excel::XWindow > SAL_CALL
 ScVbaApplication::getActiveWindow()
 {
-    uno::Reference< frame::XModel > xModel = getCurrentDocument();
+    rtl::Reference< ScModelObj > xModel = getCurrentDocument();
     uno::Reference< frame::XController > xController( xModel->getCurrentController(), uno::UNO_SET_THROW );
     uno::Reference< XHelperInterface > xParent( getActiveWorkbook(), uno::UNO_QUERY_THROW );
     uno::Reference< excel::XWindow > xWin( new ScVbaWindow( xParent, mxContext, xModel, xController ) );
@@ -536,7 +551,7 @@ ScVbaApplication::setStatusBar( const uno::Any& _statusbar )
 ScVbaApplication::getCalculation()
 {
     // TODO: in Excel, this is an application-wide setting
-    uno::Reference<sheet::XCalculatable> xCalc(getCurrentDocument(), uno::UNO_QUERY_THROW);
+    rtl::Reference<ScModelObj> xCalc(getCurrentDocument());
     if(xCalc->isAutomaticCalculationEnabled())
         return excel::XlCalculation::xlCalculationAutomatic;
     else
@@ -547,7 +562,7 @@ void SAL_CALL
 ScVbaApplication::setCalculation( ::sal_Int32 _calculation )
 {
     // TODO: in Excel, this is an application-wide setting
-    uno::Reference< sheet::XCalculatable > xCalc(getCurrentDocument(), uno::UNO_QUERY_THROW);
+    rtl::Reference< ScModelObj > xCalc(getCurrentDocument());
     switch(_calculation)
     {
         case excel::XlCalculation::xlCalculationManual:
@@ -782,7 +797,7 @@ ScVbaApplication::setCursor( sal_Int32 _cursor )
             case excel::XlMousePointer::xlIBeam:
             {
                 PointerStyle nPointer( static_cast< PointerStyle >( _cursor ) );
-                //It will set the edit window, toobar and statusbar's mouse pointer.
+                //It will set the edit window, toolbar and statusbar's mouse pointer.
                 setCursorHelper( xModel, nPointer, true );
                 break;
             }
@@ -886,7 +901,7 @@ ScVbaApplication::getDisplayScrollBars()
 void SAL_CALL
 ScVbaApplication::setDisplayScrollBars( sal_Bool bSet )
 {
-    // use uno here as it does all he repainting etc. magic
+    // use uno here as it does all the repainting etc. magic
     uno::Reference< sheet::XSpreadsheetView > xView( getCurrentDocument()->getCurrentController(), uno::UNO_QUERY_THROW );
     uno::Reference< beans::XPropertySet > xProps( xView, uno::UNO_QUERY );
     xProps->setPropertyValue(u"HasVerticalScrollBar"_ustr, uno::Any( bSet ) );
@@ -963,9 +978,8 @@ ScVbaApplication::setIteration( sal_Bool bSet )
 void SAL_CALL
 ScVbaApplication::Calculate()
 {
-    uno::Reference< frame::XModel > xModel( getCurrentDocument(), uno::UNO_SET_THROW );
-    uno::Reference< sheet::XCalculatable > xCalculatable( getCurrentDocument(), uno::UNO_QUERY_THROW );
-    xCalculatable->calculateAll();
+    rtl::Reference< ScModelObj > xModel( getCurrentDocument() );
+    xModel->calculateAll();
 }
 
 /// @throws uno::RuntimeException
@@ -1414,10 +1428,10 @@ ScVbaApplication::Caller( const uno::Any& /*aIndex*/ )
     return aRet;
 }
 
-uno::Reference< frame::XModel >
+ScModelObj*
 ScVbaApplication::getCurrentDocument()
 {
-    return getCurrentExcelDoc(mxContext);
+    return dynamic_cast<ScModelObj*>(getCurrentExcelDoc(mxContext).get());
 }
 
 uno::Any SAL_CALL

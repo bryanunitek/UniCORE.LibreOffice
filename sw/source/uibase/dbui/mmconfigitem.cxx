@@ -62,12 +62,12 @@ const char cDataSourceName[]         = "DataSource/DataSourceName";
 const char cDataTableName[]          = "DataSource/DataTableName" ;
 const char cDataCommandType[]        = "DataSource/DataCommandType";
 
-#define SECURE_PORT     587
-#define DEFAULT_PORT    25
-#define POP_PORT        110
-#define POP_SECURE_PORT     995
-#define IMAP_PORT           143
-#define IMAP_SECURE_PORT    993
+constexpr sal_Int16 SECURE_PORT = 587;
+constexpr sal_Int16 DEFAULT_PORT = 25;
+constexpr sal_Int16 POP_PORT = 110;
+constexpr sal_Int16 POP_SECURE_PORT = 995;
+constexpr sal_Int16 IMAP_PORT = 143;
+constexpr sal_Int16 IMAP_SECURE_PORT = 993;
 
 namespace {
 
@@ -93,7 +93,7 @@ class SwMailMergeConfigItem_Impl : public utl::ConfigItem
     Reference< XDataSource>                 m_xSource;
     SharedConnection                        m_xConnection;
     Reference< XColumnsSupplier>            m_xColumnsSupplier;
-    Reference< XResultSet>                  m_xResultSet;
+    Reference<XRowSet> m_xResultSet;
     SwDBData                                m_aDBData;
     OUString                                m_sFilter;
     sal_Int32                               m_nResultSetCursorPos;
@@ -838,7 +838,7 @@ void SwMailMergeConfigItem::SetCurrentDBData( const SwDBData& rDBData)
     }
 }
 
-Reference< XResultSet> const & SwMailMergeConfigItem::GetResultSet() const
+Reference<XRowSet> const& SwMailMergeConfigItem::GetResultSet() const
 {
     if(!m_pImpl->m_xConnection.is() && !m_pImpl->m_aDBData.sDataSource.isEmpty())
     {
@@ -911,8 +911,8 @@ void  SwMailMergeConfigItem::SetFilter(OUString const & rFilter)
     {
         xRowProperties->setPropertyValue(u"ApplyFilter"_ustr, Any(!m_pImpl->m_sFilter.isEmpty()));
         xRowProperties->setPropertyValue(u"Filter"_ustr, Any(m_pImpl->m_sFilter));
-        uno::Reference<XRowSet> xRowSet( m_pImpl->m_xResultSet, UNO_QUERY_THROW );
-        xRowSet->execute();
+        assert(m_pImpl->m_xResultSet.is());
+        m_pImpl->m_xResultSet->execute();
     }
     catch (const Exception&)
     {
@@ -983,7 +983,7 @@ bool SwMailMergeConfigItem::IsRecordIncluded(sal_uInt32 nRecord) const
     { return nRecord > m_nBegin && nRecord <= m_nEnd; }
 
 bool SwMailMergeConfigItem::IsRecordExcluded(sal_uInt32 nRecord) const
-    { return m_aExcludedRecords.find(nRecord) != m_aExcludedRecords.end(); }
+    { return m_aExcludedRecords.contains(nRecord); }
 
 void SwMailMergeConfigItem::ExcludeRecord(sal_Int32 nRecord, bool bExclude)
 {

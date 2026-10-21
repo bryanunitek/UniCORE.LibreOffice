@@ -949,9 +949,7 @@ void XclExpFormulaCell::SaveXml( XclExpXmlStream& rStrm )
     // Mark dynamic array masters with cm="1" so it is recognised as a
     // dynamic array and reads the matching dynamicArrayProperties out of
     // xl/metadata.xml.
-    const bool bDynamicArrayMaster
-        = mrScFmlaCell.GetMatrixFlag() == ScMatrixMode::Formula
-          && mrScFmlaCell.GetCode() && mrScFmlaCell.GetCode()->HasDynamicArrayFunction();
+    const bool bDynamicArrayMaster = mrScFmlaCell.IsDynamicArrayMaster();
     if (bDynamicArrayMaster)
         rStrm.NoteDynamicArrayFormula();
 
@@ -1032,6 +1030,18 @@ void XclExpFormulaCell::SaveXml( XclExpXmlStream& rStrm )
     if (bWriteFormula)
     {
         ScTokenArray aTokenArray(*mrScFmlaCell.GetCode());
+        // OOXML expresses the @ of a plain =@ref# cell by leaving it out and keeping the
+        // cell a non-array formula. Write it the same way, so a reader that does not know
+        // the _xlfn.SINGLE call still gets the formula.
+        if (!bDynamicArrayMaster && mrScFmlaCell.GetMatrixFlag() == ScMatrixMode::NONE
+            && aTokenArray.GetLen() == 3
+            && aTokenArray.TokenAt(0)->GetOpCode() == ocSingleValue
+            && aTokenArray.TokenAt(1)->GetType() == formula::svSingleRef
+            && aTokenArray.TokenAt(2)->GetOpCode() == ocSpill)
+        {
+            aTokenArray.RemoveToken(0, 1);
+        }
+
         bool bValid = true;
         // Discard formulas containing macros in XLSX export.
         if (!rStrm.IsExportVBA())
@@ -2363,7 +2373,7 @@ void XclExpRowBuffer::Finalize( XclExpDefaultRowData& rDefRowData,
     XclExpDefaultRowData aMaxDefData;
     size_t nMaxDefCount = 0;
     // only look for default format in existing rows, if there are more than unused
-    // if the row is hidden, then row xml must be created even if it not contain cells
+    // if the row is hidden, then row xml must be created even if it does not contain cells
     XclExpRow* pPrev = nullptr;
     std::vector< XclExpRow* > aRepeated;
     for (const auto& rEntry : maRowMap)
@@ -2607,7 +2617,7 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
     if(nLastUsedScCol > nMaxScCol)
         nLastUsedScCol = nMaxScCol;
 
-    // check extra blank rows to avoid of losing their not default settings (workaround for tdf#41425)
+    // check extra blank rows to avoid losing their non-default settings (workaround for tdf#41425)
     nLastUsedScRow += 1000;
 
     if(nLastUsedScRow > nMaxScRow)

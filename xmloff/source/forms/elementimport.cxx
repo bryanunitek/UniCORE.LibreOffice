@@ -28,7 +28,7 @@
 #include <xmloff/txtstyli.hxx>
 #include "formenums.hxx"
 #include <xmloff/xmltoken.hxx>
-#include "gridcolumnproptranslator.hxx"
+#include <forms/gridcolumnproptranslator.hxx>
 #include "property_description.hxx"
 #include "property_meta_data.hxx"
 
@@ -37,6 +37,7 @@
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/Duration.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
+#include <com/sun/star/form/XFormComponent.hpp>
 #include <com/sun/star/awt/ImagePosition.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyContainer.hpp>
@@ -50,6 +51,7 @@
 #include <comphelper/extract.hxx>
 #include <comphelper/types.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/documentinfo.hxx>
 #include <o3tl/string_view.hxx>
 
 #include <algorithm>
@@ -426,6 +428,26 @@ namespace xmloff
                     }
                 }
 
+                // Skip setting ImageURL with remote URLs during import.
+                // The URL is fetched eagerly by the toolkit layer and
+                // must be deferred until the user allows link updates.
+                // Store the URL as DeferredImageURL so it can be applied
+                // post-load when the user allows link updates.
+                if (rPropValues.Name == "ImageURL")
+                {
+                    OUString sURL;
+                    if ((rPropValues.Value >>= sURL) && !sURL.isEmpty()
+                        && !m_rFormImport.getGlobalContext().IsPackageURL(sURL))
+                    {
+                        // Pass the control and URL to the document so they
+                        // can be registered as links post-load.
+                        comphelper::DocumentInfo::notifyRemoteContentFound(
+                            m_rFormImport.getGlobalContext().GetModel(),
+                            m_xElement, sURL);
+                        continue;
+                    }
+                }
+
                 m_xElement->setPropertyValue( rPropValues.Name, rPropValues.Value );
             }
             catch(const Exception&)
@@ -560,12 +582,28 @@ namespace xmloff
         Reference< XPropertySet > xReturn;
         if (!m_sServiceName.isEmpty())
         {
+            // a form component is named by a service in the form namespace, or in the StarOffice
+            // one older documents use
+            if (!m_sServiceName.startsWith(u"com.sun.star.form.")
+                && !m_sServiceName.startsWith(u"stardiv.one.form."))
+            {
+                SAL_WARN("xmloff.forms", "OElementImport::createElement: " << m_sServiceName
+                            << " is not a form component service");
+                return xReturn;
+            }
             Reference< XComponentContext > xContext = m_rFormImport.getGlobalContext().GetComponentContext();
             Reference< XInterface > xPure = xContext->getServiceManager()->createInstanceWithContext(m_sServiceName, xContext);
             OSL_ENSURE(xPure.is(),
                         OStringBuffer("OElementImport::createElement: service factory gave me no object (service name: " +
                             OUStringToOString(m_sServiceName, RTL_TEXTENCODING_ASCII_US) +
                             ")!").getStr());
+            // only use the created object when it is a form component
+            if (!Reference< XFormComponent >(xPure, UNO_QUERY).is())
+            {
+                SAL_WARN("xmloff.forms", "OElementImport::createElement: " << m_sServiceName
+                            << " is not a form component");
+                return xReturn;
+            }
             xReturn.set(xPure, UNO_QUERY);
             if (auto const props = Reference<css::beans::XPropertySet>(xPure, css::uno::UNO_QUERY))
             {

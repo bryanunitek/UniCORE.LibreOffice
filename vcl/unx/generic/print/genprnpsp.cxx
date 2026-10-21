@@ -306,7 +306,7 @@ void SalGenericInstance::GetPrinterQueueInfo(ImplPrnQueueList& rList)
     static const char* pNoSyncDetection = getenv( "SAL_DISABLE_SYNCHRONOUS_PRINTER_DETECTION" );
     if( ! pNoSyncDetection || ! *pNoSyncDetection )
     {
-        // #i62663# synchronize possible asynchronouse printer detection now
+        // #i62663# synchronize possible asynchronous printer detection now
         rManager.checkPrintersChanged( true );
     }
 
@@ -834,7 +834,7 @@ bool PspSalPrinter::StartJob( const OUString* i_pFileName, const OUString& i_rJo
             // either on first page
             // or on paper format change - cups does not support multiple paper formats per job (yet?)
             // so we need to start a new job to get a new paper format from the printer
-            // orientation switches (that is switch of height and width) is handled transparently by CUPS
+            // orientation switches (that is switch of height and width) are handled transparently by CUPS
             if( ! xWriter ||
                 (aNewParm != aLastParm && ! i_pFileName ) )
             {

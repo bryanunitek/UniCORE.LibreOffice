@@ -29,9 +29,8 @@
 #include <QtPainter.hxx>
 #include <font/PhysicalFontCollection.hxx>
 #if USE_HEADLESS_CODE
-#include <unx/fontmanager.hxx>
+#include <unx/font/fontmanager.hxx>
 #include <unx/geninst.h>
-#include <unx/glyphcache.hxx>
 #endif
 #include <sallayout.hxx>
 
@@ -45,20 +44,20 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QWidget>
 
-QtGraphics::QtGraphics( QtFrame *pFrame, QImage *pQImage )
-    : m_pFrame( pFrame )
+QtGraphics::QtGraphics(QtFrame* pFrame, QImage* pQImage)
+    : QtGraphicsBase(pFrame)
     , m_pTextStyle{ nullptr, }
     , m_aTextColor( 0x00, 0x00, 0x00 )
 {
-    m_pBackend = std::make_unique<QtGraphicsBackend>(m_pFrame, pQImage);
+    m_pBackend = std::make_unique<QtGraphicsBackend>(pFrame, pQImage);
 
     if (!initWidgetDrawBackends(false))
     {
         if (!QtInstance::noNativeControls())
             m_pWidgetDraw.reset(new QtGraphics_Controls(*this));
     }
-    if (m_pFrame)
-        setDevicePixelRatioF(m_pFrame->devicePixelRatioF());
+    if (pFrame)
+        setDevicePixelRatioF(pFrame->devicePixelRatioF());
 }
 
 QtGraphics::~QtGraphics() { ReleaseFonts(); }
@@ -89,7 +88,7 @@ void QtGraphics::handleDamage(const tools::Rectangle& rDamagedRegion)
 
 void QtGraphics::GetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
 {
-    QtGraphicsBase::ImplGetResolution(m_pFrame, rDPIX, rDPIY);
+    ImplGetResolution(rDPIX, rDPIY);
 }
 
 void QtGraphics::SetTextColor(Color nColor) { m_aTextColor = nColor; }
@@ -112,16 +111,7 @@ void QtGraphics::SetFont(LogicalFontInstance* pReqFont, int nFallbackLevel)
 
 void QtGraphics::GetFontMetric(FontMetricDataRef& rFMD, int nFallbackLevel)
 {
-    QRawFont aRawFont(QRawFont::fromFont(*m_pTextStyle[nFallbackLevel]));
-    QtFontFace::fillAttributesFromQFont(*m_pTextStyle[nFallbackLevel], *rFMD);
-
-    rFMD->ImplCalcLineSpacing(m_pTextStyle[nFallbackLevel].get());
-    rFMD->ImplInitBaselines(m_pTextStyle[nFallbackLevel].get());
-
-    rFMD->SetSlant(0);
-    rFMD->SetWidth(aRawFont.averageCharWidth());
-
-    rFMD->SetMinKashida(m_pTextStyle[nFallbackLevel]->GetKashidaWidth());
+    m_pTextStyle[nFallbackLevel]->GetFontMetric(rFMD);
 }
 
 FontCharMapRef QtGraphics::GetFontCharMap() const
@@ -144,25 +134,7 @@ void QtGraphics::GetDevFontList(vcl::font::PhysicalFontCollection* pPFC)
         return;
 
 #if USE_HEADLESS_CODE
-    FreetypeManager& rFontManager = FreetypeManager::get();
-    psp::PrintFontManager& rMgr = psp::PrintFontManager::get();
-    std::vector<psp::fontID> aList = rMgr.getFontList();
-    for (auto const& nFontId : aList)
-    {
-        auto const* pFont = rMgr.getFont(nFontId);
-        if (!pFont)
-            continue;
-
-        // normalize face number to the FreetypeManager
-        int nFaceNum = rMgr.getFontFaceNumber(nFontId);
-        int nVariantNum = rMgr.getFontFaceVariation(nFontId);
-
-        // inform FreetypeManager about this font provided by the PsPrint subsystem
-        FontAttributes aFA = pFont->m_aFontAttributes;
-        aFA.IncreaseQualityBy(4096);
-        const OString aFileName = rMgr.getFontFileSysPath(nFontId);
-        rFontManager.AddFontFile(aFileName, nFaceNum, nVariantNum, nFontId, aFA);
-    }
+    FontConfigManager::get();
 
     static const bool bUseFontconfig = (nullptr == getenv("SAL_VCL_QT_NO_FONTCONFIG"));
     if (bUseFontconfig)

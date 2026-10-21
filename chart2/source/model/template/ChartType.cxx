@@ -344,6 +344,11 @@ bool ChartType::isSupportingStatisticProperties(sal_Int32 nDimensionCount)
     if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BUBBLE)) //todo: BubbleChart support error bars and trend lines
         return false;
 
+    // The points of a correlation circle plot are worked out from the data
+    // rather than taken from it, so there is nothing to put a spread on.
+    if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_CORRELATIONCIRCLE))
+        return false;
+
     return true;
 }
 
@@ -386,6 +391,9 @@ bool ChartType::isSupportingAreaProperties(sal_Int32 nDimensionCount)
 
         if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK))
             return false;
+
+        if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_CORRELATIONCIRCLE))
+            return false;
     }
     return true;
 }
@@ -405,6 +413,9 @@ bool ChartType::isSupportingSymbolProperties(sal_Int32 nDimensionCount)
         return true;
 
     if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_NET))
+        return true;
+
+    if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_CORRELATIONCIRCLE))
         return true;
 
     return false;
@@ -439,19 +450,17 @@ bool ChartType::isSupportingRightAngledAxes()
 
 bool ChartType::isSupportingOverlapAndGapWidthProperties(sal_Int32 nDimensionCount)
 {
-    //2D bar charts do support a this special properties
+    //2D bar charts do support these special properties
     if (nDimensionCount == 3)
         return false;
 
     OUString aChartTypeName = getChartType();
-    if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_COLUMN))
+    if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_COLUMN) ||
+            aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BAR) ||
+            aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_FUNNEL) ||
+            aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_HISTOGRAM)) {
         return true;
-
-    if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BAR))
-        return true;
-
-    if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_HISTOGRAM))
-        return true;
+    }
 
     return false;
 }
@@ -629,7 +638,8 @@ sal_Int32 ChartType::getAxisType(sal_Int32 nDimensionIndex)
     if (nDimensionIndex == 0) //x-axis
     {
         if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_SCATTER)
-         || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BUBBLE))
+         || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BUBBLE)
+         || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_CORRELATIONCIRCLE))
             return chart2::AxisType::REALNUMBER;
         return chart2::AxisType::CATEGORY;
     }

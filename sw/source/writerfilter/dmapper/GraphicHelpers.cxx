@@ -44,7 +44,6 @@ PositionHandler::PositionHandler( std::pair<OUString, OUString>& rPositionOffset
 LoggedProperties("PositionHandler"),
 m_nOrient(text::VertOrientation::NONE),
 m_nRelation(text::RelOrientation::FRAME),
-m_nPosition(0),
 m_rPositionOffsets(rPositionOffsets),
 m_rAligns(rAligns)
 {
@@ -148,11 +147,11 @@ void PositionHandler::lcl_sprm(Sprm& rSprm)
     switch (nSprmId)
     {
         case NS_ooxml::LN_CT_PosH_posOffset:
-            m_nPosition = oox::drawingml::convertEmuToHmm(m_rPositionOffsets.first.toInt32());
+            m_nPosition = gfx::Length::emu(m_rPositionOffsets.first.toInt64());
             m_rPositionOffsets.first.clear();
             break;
         case NS_ooxml::LN_CT_PosV_posOffset:
-            m_nPosition = oox::drawingml::convertEmuToHmm(m_rPositionOffsets.second.toInt32());
+            m_nPosition = gfx::Length::emu(m_rPositionOffsets.second.toInt64());
             m_rPositionOffsets.second.clear();
             break;
         case NS_ooxml::LN_CT_PosH_align:
@@ -196,9 +195,11 @@ sal_Int16 PositionHandler::orientation() const
     { // It appears that to 'line of text' alignment is backwards to other alignments,
       // 'top' meaning putting on top of the line instead of having top at the line.
         if( m_nOrient == text::VertOrientation::TOP )
-            return text::VertOrientation::BOTTOM;
+            return text::VertOrientation::LINE_BOTTOM;
         else if( m_nOrient == text::VertOrientation::BOTTOM )
-            return text::VertOrientation::TOP;
+            return text::VertOrientation::LINE_TOP;
+        else if (m_nOrient == text::VertOrientation::CENTER)
+            return text::VertOrientation::LINE_CENTER;
     }
     return m_nOrient;
 }
@@ -354,19 +355,10 @@ sal_Int32 GraphicZOrderHelper::findZOrder(sal_Int64 relativeHeight, bool bOldSty
         --it;
         itemZOrderOffset = 1; // after the topmost
 
-        // Check if this shape has a textbox. If so, the textbox will have its own ZOrder, so
-        // suggest a larger offset.
-        bool bTextBox = false;
-        uno::Reference<beans::XPropertySet> xShape = it->second;
-        uno::Reference<beans::XPropertySetInfo> xInfo = xShape->getPropertySetInfo();
-        if (xInfo->hasPropertyByName(u"TextBox"_ustr))
-        {
-            xShape->getPropertyValue(u"TextBox"_ustr) >>= bTextBox;
-        }
-        if (bTextBox)
-        {
-            ++itemZOrderOffset;
-        }
+        // The z-order read below is the one SwXShape reports, which counts the shapes only:
+        // SwTextBoxHelper::getOrdNum() leaves the text frame of a shape with a text box out of it.
+        // So a shape and its text box take one place here, not two, and the offset above
+        // already puts this shape after both of them.
     }
     // SwXFrame::getPropertyValue throws uno::RuntimeException
     // when its GetFrameFormat() returns nullptr

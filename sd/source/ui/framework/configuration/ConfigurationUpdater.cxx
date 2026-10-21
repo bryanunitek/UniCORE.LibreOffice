@@ -37,7 +37,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 using ::sd::framework::FrameworkHelper;
 using ::std::vector;
 
@@ -280,7 +279,7 @@ void ConfigurationUpdater::CheckPureAnchors (
     // Get a list of all resources in the configuration.
     std::vector<rtl::Reference<ResourceId> > aResources(
         rxConfiguration->getResources(
-            nullptr, u"", AnchorBindingMode_INDIRECT));
+            nullptr, u"", AnchorBindingMode::INDIRECT));
     sal_Int32 nCount (aResources.size());
 
     // Prepare the list of pure anchors that have to be deactivated.
@@ -295,7 +294,7 @@ void ConfigurationUpdater::CheckPureAnchors (
         const rtl::Reference<ResourceId>& xResourceId (aResources[nIndex]);
         const rtl::Reference<AbstractResource> xResource (
             mpResourceManager->GetResource(xResourceId).mxResource);
-        bool bDeactiveCurrentResource (false);
+        bool bDeactivateCurrentResource (false);
 
         // Skip all resources that are no pure anchors.
         if (xResource.is() && xResource->isAnchorOnly())
@@ -306,26 +305,26 @@ void ConfigurationUpdater::CheckPureAnchors (
             {
                 // No following anchors, deactivate this one, then remove it
                 // from the list.
-                bDeactiveCurrentResource = true;
+                bDeactivateCurrentResource = true;
             }
             else
             {
                 const rtl::Reference<ResourceId>& xPrevResourceId (aResources[nIndex+1]);
                 if ( ! xPrevResourceId.is()
-                    || ! xPrevResourceId->isBoundTo(xResourceId, AnchorBindingMode_DIRECT))
+                    || ! xPrevResourceId->isBoundTo(xResourceId, AnchorBindingMode::DIRECT))
                 {
                     // The previous resource (id) does not exist or is not bound to
                     // the current anchor.
-                    bDeactiveCurrentResource = true;
+                    bDeactivateCurrentResource = true;
                 }
             }
         }
 
-        if (bDeactiveCurrentResource)
+        if (bDeactivateCurrentResource)
         {
             SAL_INFO("sd.fwk", __func__ << ": deactivating pure anchor " <<
                     FrameworkHelper::ResourceIdToString(xResourceId) <<
-                    "because it has no children");
+                    " because it has no children");
             rResourcesToDeactivate.push_back(xResourceId);
             // Erase element from current configuration.
             for (sal_Int32 nI=nIndex; nI<nCount-2; ++nI)

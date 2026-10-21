@@ -765,8 +765,8 @@ void ScDocument::LoadDdeLinks(SvStream& rStream)
     sal_uInt16 nCount(0);
     rStream.ReadUInt16( nCount );
 
-    const rtl_TextEncoding eCharSet = rStream.GetStreamEncoding();
-    const size_t nMinStringSize = eCharSet == RTL_TEXTENCODING_UNICODE ? sizeof(sal_uInt32) : sizeof(sal_uInt16);
+    const rtl_TextEncoding eEncoding = rStream.GetStreamEncoding();
+    const size_t nMinStringSize = eEncoding == RTL_TEXTENCODING_UNICODE ? sizeof(sal_uInt32) : sizeof(sal_uInt16);
     const size_t nMinRecordSize = 1 + nMinStringSize*3;
     const size_t nMaxRecords = rStream.remainingSize() / nMinRecordSize;
     if (nCount > nMaxRecords)
@@ -1033,21 +1033,6 @@ bool ScDocument::SetDdeLinkResultMatrix( size_t nDdePos, const ScMatrixRef& pRes
         pDdeLink->SetResult( pResults );
         return true;
     }
-    return false;
-}
-
-bool ScDocument::HasAreaLinks() const
-{
-    const sfx2::LinkManager* pMgr = GetDocLinkManager().getExistingLinkManager();
-    if (!pMgr)
-        return false;
-
-    const ::sfx2::SvBaseLinks& rLinks = pMgr->GetLinks();
-    sal_uInt16 nCount = rLinks.size();
-    for (sal_uInt16 i=0; i<nCount; i++)
-        if (nullptr != dynamic_cast<const ScAreaLink* >(rLinks[i].get()))
-            return true;
-
     return false;
 }
 

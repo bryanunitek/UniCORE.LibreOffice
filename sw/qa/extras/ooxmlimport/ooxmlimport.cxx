@@ -538,6 +538,8 @@ CPPUNIT_TEST_FIXTURE(Test, testN777345)
 CPPUNIT_TEST_FIXTURE(Test, testN778140)
 {
     createSwDoc("n778140.docx");
+
+    saveAndReload(TestFilter::DOCX);
     /*
      * The problem was that the paragraph top/bottom margins were incorrect due
      * to unhandled w:doNotUseHTMLParagraphAutoSpacing.
@@ -1921,7 +1923,66 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf134902)
         catch (beans::UnknownPropertyException &)
         { /* ignore */ }
     }
+}
 
+CPPUNIT_TEST_FIXTURE(Test, testInlineFormulaTextMode)
+{
+    // An equation that shares its paragraph with other content is inline, and Word typesets
+    // it in non-display (text) style: fraction numerators and denominators are drawn at a
+    // reduced size. StarMath models this with text mode. Without it the imported formula is
+    // taller than the original and pushes following content onto a new page. (An equation
+    // that is a paragraph's only content is a display equation and keeps its full size.)
+    auto testFitsOnOnePage = [this]()
+    {
+        // The document is dummy-filled so that in Word it just fits on a single page. With the
+        // reduced (text-style) equation height this holds in Writer too; the taller display-style
+        // formula would push the end marker onto a second page.
+        CPPUNIT_ASSERT_EQUAL(1, getPages());
+
+        // The inline equation is in text mode, which is what keeps the fraction (and hence the
+        // line and the page) at the original height.
+        uno::Reference<document::XEmbeddedObjectSupplier2> xSupplier(getShape(1), uno::UNO_QUERY);
+        uno::Reference<beans::XPropertySet> xFormula(xSupplier->getEmbeddedObject(), uno::UNO_QUERY);
+        CPPUNIT_ASSERT(xFormula.is());
+        CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xFormula, u"IsTextMode"_ustr));
+    };
+
+    createSwDoc("inline-formula-text-mode.docx");
+    testFitsOnOnePage();
+
+    // Text mode must survive an OOXML round-trip: the formula is re-exported in its
+    // text paragraph, so on reload it again shares the paragraph and is inline.
+    saveAndReload(TestFilter::DOCX);
+    testFitsOnOnePage();
+
+    // ... and an ODF round-trip: text mode is persisted in the formula's settings.
+    saveAndReload(TestFilter::ODT);
+    testFitsOnOnePage();
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf170236CommentInFormula)
+{
+    // tdf#170236: a w:commentReference inside an m:oMath formula was dropped on import
+    createSwDoc("tdf170236.docx");
+    uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XEnumerationAccess> xFieldsAccess(xTextFieldsSupplier->getTextFields());
+    uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
+
+    bool bFoundAnnotation = false;
+    while (xFields->hasMoreElements())
+    {
+        uno::Reference<lang::XServiceInfo> xServiceInfo(xFields->nextElement(), uno::UNO_QUERY);
+        if (xServiceInfo->supportsService(u"com.sun.star.text.textfield.Annotation"_ustr))
+        {
+            bFoundAnnotation = true;
+            uno::Reference<beans::XPropertySet> xPropertySet(xServiceInfo, uno::UNO_QUERY);
+            OUString aContent;
+            xPropertySet->getPropertyValue(u"Content"_ustr) >>= aContent;
+            CPPUNIT_ASSERT_EQUAL(u"Hello World!"_ustr, aContent);
+            break;
+        }
+    }
+    CPPUNIT_ASSERT_MESSAGE("No annotation found in document", bFoundAnnotation);
 }
 
 // tests should only be added to ooxmlIMPORT *if* they fail round-tripping in ooxmlEXPORT

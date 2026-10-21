@@ -91,7 +91,7 @@ enum class XmlShapeType
     DrawFrameShape,                     // "com.sun.star.drawing.FrameShape"
     DrawCaptionShape,                   // "com.sun.star.drawing.CaptionShape"
     DrawAppletShape,                    // "com.sun.star.drawing.AppletShape"
-    DrawPluginShape,                    // "com.sun.star.drawing.PlugginShape"
+    DrawPluginShape,                    // "com.sun.star.drawing.PluginShape"
 
     Draw3DSceneObject,                  // "com.sun.star.drawing.Shape3DSceneObject"
     Draw3DCubeObject,                   // "com.sun.star.drawing.Shape3DCubeObject"
@@ -194,6 +194,9 @@ private:
     SAL_DLLPRIVATE void ImpExportGluePoints( const css::uno::Reference< css::drawing::XShape >& xShape );
     SAL_DLLPRIVATE void ImpExportSignatureLine(const css::uno::Reference<css::drawing::XShape>& xShape);
     SAL_DLLPRIVATE void ImpExportQRCode(const css::uno::Reference<css::drawing::XShape>& xShape);
+    SAL_DLLPRIVATE void
+    ImpExportGraphicClipPoly(const css::uno::Reference<css::drawing::XShape>& xShape);
+    SAL_DLLPRIVATE void ImpExportDiagramData( const css::uno::Reference< css::drawing::XShape >& xShape, const XMLShapeExportFlags nFeatures );
 
     // single shape exporters
     SAL_DLLPRIVATE void ImpExportGroupShape( const css::uno::Reference< css::drawing::XShape >& xShape, XMLShapeExportFlags nFeatures = SEF_DEFAULT, css::awt::Point* pRefPoint = nullptr );

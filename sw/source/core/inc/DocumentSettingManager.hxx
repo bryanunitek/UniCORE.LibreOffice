@@ -143,6 +143,7 @@ class DocumentSettingManager final :
     bool mbTabRelativeToIndent                      : 1;   // #i24363# tab stops relative to indent
     bool mbProtectForm                              : 1;
     bool mbMsWordCompTrailingBlanks                 : 1;   // tdf#104349 tdf#104668
+    bool mbMsWordCompMinTextWrapGap                 : 1;
     bool mbMsWordCompMinLineHeightByFly             : 1;
     bool mbInvertBorderSpacing                      : 1;
     bool mbCollapseEmptyCellPara                    : 1;
@@ -192,6 +193,7 @@ class DocumentSettingManager final :
     bool mbMsWordCompGridMetrics : 1; // tdf#129808
     bool mbNoClippingWithWrapPolygon : 1; // tdf#161233
     bool mbMsWordUlTrailSpace : 1 = false;
+    bool mbLineSpacingAsGapBelow : 1 = true; // tdf#172113
     bool mbBalanceSpacesAndIdeographicSpaces : 1 = false; // tdf#88908
     bool mbForceTopAlignmentInCellWithFloatingAnchor : 1 = false; // tdf#37153
     bool mbAdjustTableLineHeightsToGridHeight : 1 = true; // tdf#167583

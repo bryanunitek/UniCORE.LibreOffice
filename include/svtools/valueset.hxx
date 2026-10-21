@@ -74,14 +74,6 @@ WB_DOUBLEBORDER     Items will be bordered twice. Additionally WB_ITEMBORDER
                     effect. It is needed if there are items with a white
                     background, since otherwise the 3D effect wouldn't be
                     recognizable.
-WB_NAMEFIELD        There is a namefield, where the name of an item will be
-                    shown.
-WB_NONEFIELD        There is a NoSelection field which can be selected if
-                    0 is passed along with SelectItem. Respectively
-                    GetSelectedItemId() returns 0 if this field or nothing
-                    is selected. This field shows the text which is specified
-                    by SetText() respectively no one, if no text was set. With
-                    SetNoSelection() the selection can be disabled.
 WB_VSCROLL          A scrollbar will be always shown. The visible number of
                     lines have to be specified with SetLineCount() if this
                     flag is set.
@@ -170,8 +162,6 @@ to be set (before Show) with SetStyle().
 
 #define WB_ITEMBORDER           (WinBits(0x00010000))
 #define WB_DOUBLEBORDER         (WinBits(0x00020000))
-#define WB_NAMEFIELD            (WinBits(0x00040000))
-#define WB_NONEFIELD            (WinBits(0x00080000))
 #define WB_FLATVALUESET         (WinBits(0x02000000))
 #define WB_NO_DIRECTSELECT      (WinBits(0x04000000))
 #define WB_MENUSTYLEVALUESET    (WinBits(0x08000000))
@@ -185,13 +175,10 @@ private:
     ScopedVclPtr<VirtualDevice> maVirDev;
     rtl::Reference<ValueSetAcc> mxAccessible;
     std::vector<std::unique_ptr<ValueSetItem>> mItemList;
-    std::unique_ptr<ValueSetItem> mpNoneItem;
     std::unique_ptr<weld::ScrolledWindow> mxScrolledWindow;
-    tools::Rectangle  maNoneItemRect;
     tools::Rectangle  maItemListRect;
     tools::Long            mnItemWidth;
     tools::Long            mnItemHeight;
-    tools::Long            mnTextOffset;
     tools::Long            mnVisLines;
     tools::Long            mnLines;
     tools::Long            mnUserItemWidth;
@@ -225,15 +212,14 @@ private:
     friend class ValueSetAcc;
 
     SVT_DLLPRIVATE void         ImplDeleteItems();
-    SVT_DLLPRIVATE void         ImplFormatItem(vcl::RenderContext const & rRenderContext, ValueSetItem* pItem, tools::Rectangle aRect);
-    SVT_DLLPRIVATE void         ImplDrawItemText(vcl::RenderContext& rRenderContext, const OUString& rStr);
+    SVT_DLLPRIVATE void ImplFormatItem(ValueSetItem& rItem, tools::Rectangle aRect);
     // nItemId is the item to draw selected, but if nothing is selected something else may be drawn as selected instead, the item to draw
     // selected is returned
     SVT_DLLPRIVATE ValueSetItem* ImplGetDrawSelectItem(sal_uInt16 nItemId, const bool bFocus, tools::Rectangle& rRect);
-    SVT_DLLPRIVATE void         ImplDrawSelect(vcl::RenderContext& rRenderContext,
-                                               const tools::Rectangle& rRect, const ValueSetItem* pItem,
-                                               const bool bFocus, const bool bDrawSel,
-                                               const bool bSelected, const bool bHover);
+    SVT_DLLPRIVATE void ImplDrawSelect(vcl::RenderContext& rRenderContext,
+                                       const tools::Rectangle& rRect, const bool bFocus,
+                                       const bool bDrawSel, const bool bSelected,
+                                       const bool bHover);
     SVT_DLLPRIVATE void         ImplDrawSelect(vcl::RenderContext& rRenderContext);
     SVT_DLLPRIVATE void         ImplHighlightItem(sal_uInt16 nItemId);
     SVT_DLLPRIVATE void         ImplDraw(vcl::RenderContext& rRenderContext);
@@ -283,7 +269,6 @@ public:
     virtual void    Select();
     virtual void    UserDraw( const UserDrawEvent& rUDEvt );
 
-    OUString const & GetText() const { return maText; }
     void            SetText(const OUString& rText) { maText = rText; }
     void            SetStyle(WinBits nStyle);
     WinBits         GetStyle() const { return mnStyle; }
@@ -292,9 +277,9 @@ public:
 
     /// Insert @rImage item.
     void            InsertItem(sal_uInt16 nItemId, const Image& rImage);
-    /// Insert @rImage item with @rStr as either a legend or tooltip depending on @bShowLegend.
+    /// Insert @rImage item with @rStr as tooltip.
     void            InsertItem(sal_uInt16 nItemId, const Image& rImage,
-                               const OUString& rStr, size_t nPos = VALUESET_APPEND, bool bShowLegend = false);
+                               const OUString& rStr, size_t nPos = VALUESET_APPEND);
     /// Insert an @rColor item with @rStr tooltip.
     void            InsertItem(sal_uInt16 nItemId, const Color& rColor,
                                const OUString& rStr);
@@ -345,12 +330,8 @@ public:
         return mbNoSelection;
     }
 
-    void            SetItemImage( sal_uInt16 nItemId, const Image& rImage );
-    Image           GetItemImage( sal_uInt16 nItemId ) const;
     void            SetItemColor( sal_uInt16 nItemId, const Color& rColor );
     Color           GetItemColor( sal_uInt16 nItemId ) const;
-    void            SetItemData( sal_uInt16 nItemId, void* pData );
-    void*           GetItemData( sal_uInt16 nItemId ) const;
     void            SetItemText( sal_uInt16 nItemId, const OUString& rStr );
     const OUString & GetItemText( sal_uInt16 nItemId ) const;
     void            SetColor( const Color& rColor );
@@ -366,7 +347,7 @@ public:
     void            SetExtraSpacing( sal_uInt16 nNewSpacing );
     void            SetMargin( sal_uInt16 nNewMargin );
 
-    void            Format(vcl::RenderContext const & rRenderContext);
+    void Format();
     void            SetFormat();
 
     Size            CalcWindowSizePixel(const Size& rItemSize,

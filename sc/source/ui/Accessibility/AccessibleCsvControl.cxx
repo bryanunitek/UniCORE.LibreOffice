@@ -297,10 +297,10 @@ Reference< XAccessibleRelationSet > SAL_CALL ScAccessibleCsvRuler::getAccessible
     ScCsvTableBox* pTableBox = rRuler.GetTableBox();
     ScCsvGrid& rGrid = pTableBox->GetGrid();
 
-    css::uno::Reference<css::accessibility::XAccessible> xAccObj = rGrid.GetAccessible();
-    if( xAccObj.is() )
+    rtl::Reference<ScAccessibleCsvControl> pAccObj = rGrid.GetAccessible();
+    if (pAccObj.is())
     {
-        Sequence<Reference<css::accessibility::XAccessible>> aSeq{ xAccObj };
+        Sequence<Reference<css::accessibility::XAccessible>> aSeq{ pAccObj };
         pRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType_CONTROLLER_FOR, aSeq ) );
     }
 
@@ -727,13 +727,13 @@ css::uno::Reference<css::accessibility::XAccessible> SAL_CALL ScAccessibleCsvRul
 
 // Grid =======================================================================
 
-/** Converts a grid columnm index to an API column index. */
+/** Converts a grid column index to an API column index. */
 static sal_Int32 lcl_GetApiColumn( sal_uInt32 nGridColumn )
 {
     return (nGridColumn != CSV_COLUMN_HEADER) ? static_cast< sal_Int32 >( nGridColumn + 1 ) : 0;
 }
 
-/** Converts an API columnm index to a ScCsvGrid column index. */
+/** Converts an API column index to a ScCsvGrid column index. */
 static sal_uInt32 lcl_GetGridColumn( sal_Int32 nApiColumn )
 {
     return (nApiColumn > 0) ? static_cast< sal_uInt32 >( nApiColumn - 1 ) : CSV_COLUMN_HEADER;
@@ -839,10 +839,10 @@ Reference< XAccessibleRelationSet > SAL_CALL ScAccessibleCsvGrid::getAccessibleR
 
     if (rRuler.IsVisible())
     {
-        css::uno::Reference<css::accessibility::XAccessible> xAccObj = rRuler.GetAccessible();
-        if( xAccObj.is() )
+        rtl::Reference<ScAccessibleCsvControl> pAccObj = rRuler.GetAccessible();
+        if (pAccObj.is())
         {
-            Sequence<Reference<css::accessibility::XAccessible>> aSeq{ xAccObj };
+            Sequence<Reference<css::accessibility::XAccessible>> aSeq{ pAccObj };
             pRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType_CONTROLLED_BY, aSeq ) );
         }
     }
@@ -1379,7 +1379,7 @@ css::awt::Rectangle ScAccessibleCsvCell::implGetBounds()
         aClipRect.SetRight( rGrid.GetLastX() );
     }
     if( mnLine != CSV_LINE_HEADER )
-         aClipRect.SetTop( rGrid.GetHdrHeight() );
+        aClipRect.SetTop( rGrid.GetHdrHeight() );
 
     tools::Rectangle aRect( implGetRealPos(), implGetRealSize() );
     aRect.Intersection( aClipRect );

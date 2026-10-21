@@ -14,6 +14,7 @@
 #include <comphelper/scopeguard.hxx>
 #include <svl/srchitem.hxx>
 #include <view.hxx>
+#include <doc.hxx>
 #include <swmodule.hxx>
 #include <pam.hxx>
 #include <node.hxx>
@@ -91,20 +92,20 @@ IMPL_LINK_NOARG(QuickFindPanel, SimilaritySettingsDialogButtonClickedHandler, we
     }
 }
 
-QuickFindPanelWindow::QuickFindPanelWindow(SfxBindings* _pBindings, SfxChildWindow* pChildWin,
-                                           vcl::Window* pParent, SfxChildWinInfo* pInfo)
-    : SfxQuickFind(_pBindings, pChildWin, pParent, pInfo)
+QuickFindPanelWindow::QuickFindPanelWindow(SfxBindings& rBindings, SfxChildWindow* pChildWin,
+                                           vcl::Window* pParent, SfxChildWinInfo& rInfo)
+    : SfxQuickFind(rBindings, pChildWin, pParent, rInfo)
     , m_xQuickFindPanel(std::make_unique<QuickFindPanel>(m_xContainer.get(),
-                                                         _pBindings->GetActiveFrame(), _pBindings))
+                                                         rBindings.GetActiveFrame(), &rBindings))
 {
-    _pBindings->Invalidate(SID_QUICKFIND);
+    rBindings.Invalidate(SID_QUICKFIND);
 }
 
 QuickFindPanelWrapper::QuickFindPanelWrapper(vcl::Window* pParent, sal_uInt16 nId,
-                                             SfxBindings* pBindings, SfxChildWinInfo* pInfo)
+                                             SfxBindings& rBindings, SfxChildWinInfo& rInfo)
     : SfxQuickFindWrapper(pParent, nId)
 {
-    SetWindow(VclPtr<QuickFindPanelWindow>::Create(pBindings, this, pParent, pInfo));
+    SetWindow(VclPtr<QuickFindPanelWindow>::Create(rBindings, this, pParent, rInfo));
     Initialize();
 }
 
@@ -709,8 +710,16 @@ void QuickFindPanel::FillSearchFindsList()
     m_xSearchFindsList->set_sensitive(bool(nSearchFindFoundTimes));
 
     // set the search term found label number of times found
-    OUString sText(SwResId(STR_SEARCH_KEY_FOUND_TIMES, nSearchFindFoundTimes));
-    sText = sText.replaceFirst("%1", OUString::number(nSearchFindFoundTimes));
+    OUString sText;
+    if (nSearchFindFoundTimes == 0)
+    {
+        sText = SwResId(STR_SEARCH_KEY_NOT_FOUND);
+    }
+    else
+    {
+        sText = SwResId(STR_SEARCH_KEY_FOUND_TIMES, nSearchFindFoundTimes);
+        sText = sText.replaceFirst("%1", OUString::number(nSearchFindFoundTimes));
+    }
     m_xSearchFindFoundTimesLabel->set_label(sText);
 }
 }

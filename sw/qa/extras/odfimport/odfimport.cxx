@@ -49,8 +49,11 @@
 #include <editeng/boxitem.hxx>
 #include <test/commontesttools.hxx>
 #include <sfx2/docfile.hxx>
+#include <vcl/bitmap.hxx>
+#include <vcl/graph.hxx>
 #include <vcl/scheduler.hxx>
 
+#include <IDocumentMarkAccess.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <wrtsh.hxx>
 #include <ndtxt.hxx>
@@ -60,6 +63,7 @@
 #include <olmenu.hxx>
 #include <hintids.hxx>
 #include <docsh.hxx>
+#include <frameformats.hxx>
 #include <fmtcntnt.hxx>
 #include <ndgrf.hxx>
 #include <ndole.hxx>
@@ -218,7 +222,7 @@ CPPUNIT_TEST_FIXTURE(Test, testDrawImageEmbeddedNotBlocked)
 CPPUNIT_TEST_FIXTURE(Test, testEmptySvgFamilyName)
 {
     createSwDoc("empty-svg-family-name.odt");
-    // .odt import did crash on the empty font list (which I think is valid according SVG spec)
+    // .odt import did crash on the empty font list (which I think is valid according to SVG spec)
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testHideAllSections)
@@ -432,6 +436,21 @@ CPPUNIT_TEST_FIXTURE(Test, testPageStyleLayoutDefault)
     uno::Reference<beans::XPropertySet> xPropertySet(getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
     // This was style::PageStyleLayout_MIRRORED.
     CPPUNIT_ASSERT_EQUAL(style::PageStyleLayout_ALL, getProperty<style::PageStyleLayout>(xPropertySet, u"PageStyleLayout"_ustr));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testFormControlImplementationOutsideForms)
+{
+    // a form with two controls: one names a form component service, the other names a form
+    // component by an implementation name outside the form namespaces
+    createSwDoc("form-control-implementation.fodt");
+    uno::Reference<drawing::XDrawPageSupplier> const xDPS(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<form::XFormsSupplier> const xFS(xDPS->getDrawPage(), uno::UNO_QUERY_THROW);
+    uno::Reference<container::XIndexContainer> const xForms(xFS->getForms(), uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xForms->getCount());
+    uno::Reference<container::XNameAccess> const xForm(xForms->getByIndex(0), uno::UNO_QUERY_THROW);
+    // only the control named by a form component service is imported
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), uno::Reference<container::XIndexAccess>(xForm, uno::UNO_QUERY_THROW)->getCount());
+    CPPUNIT_ASSERT(xForm->hasByName(u"TextBox"_ustr));
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTimeFormFormats)
@@ -1777,6 +1796,99 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf165156)
     // This used to hang after loading
     createSwDoc("tdf165156.odt");
     // This must succeed
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testFillImageNameMissingDefinition)
+{
+    // Load a document where draw:fill-image-name references "TestBitmap" but
+    // no <draw:fill-image> element defines it. The page layout does have a
+    // style:background-image with actual image data. The import should recover
+    // the missing bitmap table entry from the old background image so that the
+    // fill-image-name resolves and the bitmap is accessible via UNO (which is
+    // the code path Collabora Online uses for the page setup dialog).
+    createSwDoc("fill-image-name-missing-definition.odt");
+
+    // The BitmapTable must contain the recovered entry
+    uno::Reference<lang::XMultiServiceFactory> xFact(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XNameAccess> xBitmapTable(
+        xFact->createInstance(u"com.sun.star.drawing.BitmapTable"_ustr), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xBitmapTable.is());
+    CPPUNIT_ASSERT(xBitmapTable->hasByName(u"TestBitmap"_ustr));
+
+    // The page style must report FillStyle_BITMAP with a resolvable name
+    uno::Reference<beans::XPropertySet> xPageStyle(
+        getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_BITMAP,
+        getProperty<drawing::FillStyle>(xPageStyle, u"FillStyle"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"TestBitmap"_ustr,
+        getProperty<OUString>(xPageStyle, u"FillBitmapName"_ustr));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testHorizontalRule)
+{
+    // tdf#167714 the marker has to survive ODF. It is what tells a horizontal rule apart from any
+    // other rectangle, so losing it on save would lose the layout that goes with it.
+    createSwDoc();
+    {
+        auto xFactory = mxComponent.queryThrow<lang::XMultiServiceFactory>();
+        auto xPage = mxComponent.queryThrow<drawing::XDrawPageSupplier>()->getDrawPage();
+        auto xShape = xFactory->createInstance(u"com.sun.star.drawing.RectangleShape"_ustr)
+                          .queryThrow<drawing::XShape>();
+        xPage->add(xShape);
+        xShape.queryThrow<beans::XPropertySet>()->setPropertyValue(u"HorizontalRule"_ustr,
+                                                                   uno::Any(true));
+
+        // a picture rule is a picture, not a rectangle, and is laid out the same way, so the
+        // marker has to be honoured there too
+        auto xGraphic = xFactory->createInstance(u"com.sun.star.drawing.GraphicObjectShape"_ustr)
+                            .queryThrow<drawing::XShape>();
+        xPage->add(xGraphic);
+        auto xGraphicProps = xGraphic.queryThrow<beans::XPropertySet>();
+        xGraphicProps->setPropertyValue(u"HorizontalRule"_ustr, uno::Any(true));
+        // The picture needs data: ODF has no representation for an empty one, and export writes a
+        // <text:p/> inside <draw:image> that the schema does not allow there.
+        const Graphic aGraphic(Bitmap(Size(8, 8), vcl::PixelFormat::N24_BPP));
+        xGraphicProps->setPropertyValue(u"Graphic"_ustr, uno::Any(aGraphic.GetXGraphic()));
+
+        // but the marker lives in a graphic style, which can be shared or applied to any shape,
+        // so on anything that cannot be a rule it has to stay inert
+        auto xEllipse = xFactory->createInstance(u"com.sun.star.drawing.EllipseShape"_ustr)
+                            .queryThrow<drawing::XShape>();
+        xPage->add(xEllipse);
+        xEllipse.queryThrow<beans::XPropertySet>()->setPropertyValue(u"HorizontalRule"_ustr,
+                                                                     uno::Any(true));
+    }
+    CPPUNIT_ASSERT(getProperty<bool>(getShape(1), u"HorizontalRule"_ustr));
+    CPPUNIT_ASSERT(getProperty<bool>(getShape(2), u"HorizontalRule"_ustr));
+    CPPUNIT_ASSERT(!getProperty<bool>(getShape(3), u"HorizontalRule"_ustr));
+
+    saveAndReload(TestFilter::ODT);
+    CPPUNIT_ASSERT(getProperty<bool>(getShape(1), u"HorizontalRule"_ustr));
+    CPPUNIT_ASSERT(getProperty<bool>(getShape(2), u"HorizontalRule"_ustr));
+    CPPUNIT_ASSERT(!getProperty<bool>(getShape(3), u"HorizontalRule"_ustr));
+
+    // and the picture went out as a picture - the export validator rejects the <text:p/> that an
+    // empty one produces
+    CPPUNIT_ASSERT_EQUAL(u"image/png"_ustr,
+                         getXPath(parseExport(u"content.xml"_ustr), "//draw:image", "mime-type"));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testHorizontalRuleOldOdf)
+{
+    // tdf#167714 an ordinary rectangle must not be taken for a horizontal rule, which is what
+    // keeps a document saved before the marker existed rendering the way it was written
+    createSwDoc("fdo75872_aoo40.odt");
+    CPPUNIT_ASSERT(!getProperty<bool>(getShape(1), u"HorizontalRule"_ustr));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testFieldmarkBelowNestedTable)
+{
+    // a fieldmark in a table cell whose first content is a nested table is imported, and the
+    // document it is in loads
+    createSwDoc("fieldmark-below-nested-table.fodt");
+
+    IDocumentMarkAccess& rMarkAccess(*getSwDoc()->getIDocumentMarkAccess());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), rMarkAccess.getFieldmarksCount());
 }
 
 } // end of anonymous namespace

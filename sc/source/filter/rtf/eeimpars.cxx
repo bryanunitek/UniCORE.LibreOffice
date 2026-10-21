@@ -143,7 +143,7 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
         // Automatic language option selected.  Check for the global 'use US English' option.
         bNumbersEnglishUS = officecfg::Office::Common::Filter::HTML::Import::NumbersEnglishUS::get();
     }
-    ScRangeName* pRangeNames = mrDoc.GetRangeName();
+    ScRangeName& rRangeNames = mrDoc.GetRangeName();
     for ( size_t i = 0, n = mpParser->ListSize(); i < n; ++i )
     {
         pE = mpParser->ListEntry( i );
@@ -413,20 +413,20 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                     mrDoc.SetTextCell(ScAddress(nCol, nRow, nTab), aStr, &aParam);
                 }
             }
-            else if (std::unique_ptr<EditTextObject> pTextObject = IsValidSel(*mpEngine, pE->aSel) ? mpEngine->CreateTextObject(pE->aSel) : nullptr)
+            else if (IsValidSel(*mpEngine, pE->aSel))
             {
+                EditTextObject aTextObject = mpEngine->CreateTextObject(pE->aSel);
                 // The cell will own the text object instance.
-                mrDoc.SetEditText(ScAddress(nCol,nRow,nTab), std::move(pTextObject));
+                mrDoc.SetEditText(ScAddress(nCol,nRow,nTab), std::move(aTextObject));
             }
             if ( !pE->maImageList.empty() )
                 bHasGraphics |= GraphicSize( nCol, nRow, pE );
             if ( pE->pName )
             {   // Anchor Name => RangeName
-                if (!pRangeNames->findByUpperName(ScGlobal::getCharClass().uppercase(*pE->pName)))
+                if (!rRangeNames.findByUpperName(ScGlobal::getCharClass().uppercase(*pE->pName)))
                 {
-                    ScRangeData* pData = new ScRangeData( mrDoc, *pE->pName,
-                        ScAddress( nCol, nRow, nTab ) );
-                    pRangeNames->insert( pData );
+                    rRangeNames.insert( std::make_unique<ScRangeData>( mrDoc, *pE->pName,
+                        ScAddress( nCol, nRow, nTab ) ) );
                 }
             }
         }
@@ -619,10 +619,13 @@ void ScEEImport::InsertGraphic( SCCOL nCol, SCROW nRow, SCTAB nTab,
 
             pPage->InsertObject( pObj.get() );
 
-            // SetGraphicLink has to be used after inserting the object,
-            // otherwise an empty graphic is swapped in and the contact stuff crashes.
-            // See #i37444#.
-            pObj->SetGraphicLink( pI->aURL );
+            if (!pI->aURL.isEmpty())
+            {
+                // SetGraphicLink has to be used after inserting the object,
+                // otherwise an empty graphic is swapped in and the contact stuff crashes.
+                // See #i37444#.
+                pObj->SetGraphicLink( pI->aURL );
+            }
 
             pObj->SetLogicRect( aRect ); // Only after InsertObject!
         }

@@ -3010,8 +3010,7 @@ void SwXTextTable::setName(const OUString& rName)
     SwFrameFormat* pFormat = GetFrameFormat();
     if ((!pFormat && !m_pImpl->IsDescriptor()) ||
        rName.isEmpty() ||
-       rName.indexOf('.')>=0 ||
-       rName.indexOf(' ')>=0 )
+       rName.indexOf('.')>=0 )
         throw uno::RuntimeException();
 
     if(pFormat)
@@ -3778,7 +3777,7 @@ sal_Int32 SwXCellRange::Impl::GetRowCount() const
 const SwUnoCursor* SwXCellRange::GetTableCursor() const
 {
     SwFrameFormat *const pFormat = m_pImpl->GetFrameFormat();
-    return pFormat ? &(*m_pImpl->m_pTableCursor) : nullptr;
+    return pFormat ? m_pImpl->m_pTableCursor.get() : nullptr;
 }
 
 void SwXCellRange::Impl::Notify( const SfxHint& rHint )

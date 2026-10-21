@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 # foo_component_getFactory functions are split into groups, so that you could
 # choose e.g. 'core' and 'writer' functionality and through factory_map,
 # relevant function sections will be referenced in lo_get_factory_map().
-# That prevents garbage collector to ignore them as unused.
+# That prevents the garbage collector from ignoring them as unused.
 
 # The same groups are used for constructor based implementations
 # referenced in lo_get_constructor_map().
@@ -47,6 +47,7 @@ core_constructor_list = [
     "com_sun_star_comp_chart_AreaChartType_get_implementation",
     "com_sun_star_comp_chart_BarChartType_get_implementation",
     "com_sun_star_comp_chart_BubbleChartType_get_implementation",
+    "com_sun_star_comp_chart_CorrelationCircleChartType_get_implementation",
     "com_sun_star_comp_chart_CachedDataSequence_get_implementation",
     "com_sun_star_comp_chart_CandleStickChartType_get_implementation",
     "com_sun_star_comp_chart_ChartTypeManager_get_implementation",
@@ -444,7 +445,7 @@ core_constructor_list = [
 # ucb/source/ucp/ucphier1.component
     "ucb_HierarchyContentProvider_get_implementation",
     "ucb_HierarchyDataSource_get_implementation",
-# ucb/source/ucp/package/ucppkg1
+# ucb/source/ucp/package/ucppkg1.component
     "ucb_package_ContentProvider_get_implementation",
 # unotools/util/utl.component
     "unotools_ServiceDocument_get_implementation",

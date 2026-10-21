@@ -1464,6 +1464,33 @@ void XMLShapeExport::ImpExportQRCode(const uno::Reference<drawing::XShape>& xSha
                                             true);
 }
 
+void XMLShapeExport::ImpExportGraphicClipPoly(const uno::Reference<drawing::XShape>& xShape)
+{
+    auto xPropSet = xShape.query<beans::XPropertySet>();
+    if (!xPropSet)
+        return;
+    auto xInfo = xPropSet->getPropertySetInfo();
+    if (!xInfo || !xInfo->hasPropertyByName(u"GraphicClipPolyPolygon"_ustr))
+        return;
+
+    drawing::PolyPolygonBezierCoords aCoords;
+    xPropSet->getPropertyValue(u"GraphicClipPolyPolygon"_ustr) >>= aCoords;
+    if (aCoords.Coordinates.getLength() == 0)
+        return;
+
+    const basegfx::B2DPolyPolygon aPolyPolygon(
+        basegfx::utils::UnoPolyPolygonBezierCoordsToB2DPolyPolygon(aCoords));
+    if (!aPolyPolygon.count())
+        return;
+
+    // Shape-local coordinates in 1/100 mm: svg:d here carries neither a unit nor a viewBox.
+    const OUString aPath(basegfx::utils::exportToSvgD(aPolyPolygon, true /*relative*/,
+                                                      false /*quadratic*/,
+                                                      true /*relativeNextPointCompatible*/));
+    mrExport.AddAttribute(XML_NAMESPACE_SVG, XML_D, aPath);
+    SvXMLElementExport aElement(mrExport, XML_NAMESPACE_LO_EXT, XML_GRAPHIC_CLIP_POLY, true, true);
+}
+
 void XMLShapeExport::ExportGraphicDefaults()
 {
     rtl::Reference<XMLStyleExport> aStEx(new XMLStyleExport(mrExport, mrExport.GetAutoStylePool().get()));
@@ -1707,6 +1734,29 @@ bool XMLShapeExport::ImpExportPresentationAttributes( const uno::Reference< bean
             xPropSet->getPropertyValue(u"IsPlaceholderDependent"_ustr) >>= bTemp;
             if(!bTemp)
                 mrExport.AddAttribute(XML_NAMESPACE_PRESENTATION, XML_USER_TRANSFORMED, XML_TRUE);
+        }
+
+        // The class above is the outline one, since an outliner object represents a placeholder
+        // holding text. ODF cannot say it waits for a picture, so that travels as an extension.
+        if (xPropSetInfo.is() && xPropSetInfo->hasPropertyByName(u"PlaceholderShapeType"_ustr)
+            && (mrExport.getSaneDefaultVersion() & SvtSaveOptions::ODFSVER_EXTENDED))
+        {
+            OUString aPlaceholderType;
+            xPropSet->getPropertyValue(u"PlaceholderShapeType"_ustr) >>= aPlaceholderType;
+            if (aPlaceholderType == u"com.sun.star.presentation.GraphicObjectShape"
+                && rClass != GetXMLToken(XML_GRAPHIC))
+                mrExport.AddAttribute(XML_NAMESPACE_LO_EXT, XML_PLACEHOLDER_CLASS, XML_GRAPHIC);
+        }
+
+        // ODF has no representation for the prompt an empty placeholder shows, so an authored one
+        // travels as an extension; otherwise a reload replaces it with our own localized default.
+        if (xPropSetInfo.is() && xPropSetInfo->hasPropertyByName(u"CustomPromptText"_ustr)
+            && (mrExport.getSaneDefaultVersion() & SvtSaveOptions::ODFSVER_EXTENDED))
+        {
+            OUString aPrompt;
+            xPropSet->getPropertyValue(u"CustomPromptText"_ustr) >>= aPrompt;
+            if (!aPrompt.isEmpty())
+                mrExport.AddAttribute(XML_NAMESPACE_LO_EXT, XML_PLACEHOLDER_PROMPT, aPrompt);
         }
     }
 
@@ -2031,6 +2081,78 @@ void XMLShapeExport::ImpExportDescription( const uno::Reference< drawing::XShape
     }
 }
 
+void XMLShapeExport::ImpExportDiagramData( const uno::Reference< drawing::XShape >& xShape, const XMLShapeExportFlags nFeatures)
+{
+    try
+    {
+        // check if this is a Diagram
+        bool bIsDiagram(false);
+        uno::Reference< beans::XPropertySet > xProps( xShape, uno::UNO_QUERY_THROW );
+        xProps->getPropertyValue(u"IsDiagram"_ustr) >>= bIsDiagram;
+
+        if (!bIsDiagram)
+            // not a diagram at all, done
+            return;
+
+        uno::Sequence< OUString > aAllDiagramData;
+        xProps->getPropertyValue(u"DiagramData"_ustr) >>= aAllDiagramData;
+
+        if (4 != aAllDiagramData.getLength())
+            // we expect four Strings, otherwise we are done
+            return;
+
+        // extract Data
+        const OUString aDiagramLayout(aAllDiagramData.getArray()[0]);
+        const OUString aDiagramData(aAllDiagramData.getArray()[1]);
+        const OUString aDiagramColors(aAllDiagramData.getArray()[2]);
+        const OUString aDiagramQuickstyle(aAllDiagramData.getArray()[3]);
+        const bool bDiagramLayoutEmpty(aDiagramLayout.isEmpty());
+        const bool bDiagramDataEmpty(aDiagramData.isEmpty());
+        const bool bDiagramColorsEmpty(aDiagramColors.isEmpty());
+        const bool bDiagramQuickstyleEmpty(aDiagramQuickstyle.isEmpty());
+
+        if (bDiagramLayoutEmpty && bDiagramDataEmpty && bDiagramColorsEmpty && bDiagramQuickstyleEmpty)
+            // all empty, error, we are done
+            return;
+
+        // write  <loext:diagram> // XML_DIAGRAM
+        bool bCreateNewline( (nFeatures & XMLShapeExportFlags::NO_WS) == XMLShapeExportFlags::NONE ); // #86116#/#92210#
+        SvXMLElementExport aPGR(mrExport, XML_NAMESPACE_LO_EXT, XML_DIAGRAM, bCreateNewline, true);
+
+        if (!bDiagramLayoutEmpty)
+        {
+            // write <loext:layout> // XML_DIAGRAM_LAYOUT
+            SvXMLElementExport aEventElemt(mrExport, XML_NAMESPACE_LO_EXT, XML_DIAGRAM_LAYOUT, true, false);
+            mrExport.Characters( aDiagramLayout );
+        }
+
+        if (!bDiagramDataEmpty)
+        {
+            // write <loext:data> // XML_DIAGRAM_DATA
+            SvXMLElementExport aEventElemt(mrExport, XML_NAMESPACE_LO_EXT, XML_DATA, true, false);
+            mrExport.Characters( aDiagramData );
+        }
+
+        if (!bDiagramColorsEmpty)
+        {
+            // write <loext:colors> // XML_DIAGRAM_COLORS
+            SvXMLElementExport aEventElemt(mrExport, XML_NAMESPACE_LO_EXT, XML_DIAGRAM_COLORS, true, false);
+            mrExport.Characters( aDiagramColors );
+        }
+
+        if (!bDiagramQuickstyleEmpty)
+        {
+            // write <loext:quickstyle> // XML_DIAGRAM_QUICKSTYLE
+            SvXMLElementExport aEventElemt(mrExport, XML_NAMESPACE_LO_EXT, XML_DIAGRAM_QUICKSTYLE, true, false);
+            mrExport.Characters( aDiagramQuickstyle );
+        }
+    }
+    catch( uno::Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION( "xmloff", "exporting Title and/or Description for shape" );
+    }
+}
+
 void XMLShapeExport::ImpExportGroupShape( const uno::Reference< drawing::XShape >& xShape, XMLShapeExportFlags nFeatures, awt::Point* pRefPoint)
 {
     uno::Reference< drawing::XShapes > xShapes(xShape, uno::UNO_QUERY);
@@ -2040,6 +2162,13 @@ void XMLShapeExport::ImpExportGroupShape( const uno::Reference< drawing::XShape 
     // write group shape
     bool bCreateNewline( (nFeatures & XMLShapeExportFlags::NO_WS) == XMLShapeExportFlags::NONE ); // #86116#/#92210#
     SvXMLElementExport aPGR(mrExport, XML_NAMESPACE_DRAW, XML_G, bCreateNewline, true);
+
+    // do export Diagram in current ODF standard
+    if (GetExport().getSaneDefaultVersion() & SvtSaveOptions::ODFSVER_EXTENDED)
+    {
+        // export Diagram (if exists, test in called method)
+        ImpExportDiagramData(xShape, nFeatures);
+    }
 
     ImpExportDescription( xShape ); // #i68101#
     ImpExportEvents( xShape );
@@ -2583,18 +2712,32 @@ void XMLShapeExport::ImpExportGraphicObjectShape(
 
             SvXMLElementExport aElement(mrExport, XML_NAMESPACE_DRAW, XML_IMAGE, true, true);
 
-            // optional office:binary-data
+            // draw:image needs either xlink:href or office:binary-data to be complete.
             if (xGraphic.is())
             {
                 mrExport.AddEmbeddedXGraphicAsBase64(xGraphic);
+            }
+            else
+            {
+                SvXMLElementExport aBin(mrExport, XML_NAMESPACE_OFFICE, XML_BINARY_DATA, true,
+                                        true);
             }
             if (!bIsEmptyPresObj)
                 ImpExportText(xShape);
         }
 
+        // SVG has been in ODF long enough that current readers handle it,
+        // so the PNG fallback is no longer worth carrying. ODF 1.4 is the
+        // cautious cutoff: from 1.4 onwards we drop the fallback, older
+        // targets still get it.
+        const bool bSkipSvgFallback
+            = sOutMimeType == "image/svg+xml"
+              && GetExport().getSaneDefaultVersion() >= SvtSaveOptions::ODFSVER_014;
+
         //Resolves: fdo#62461 put preferred image first above, followed by
         //fallback here
         if (!bIsEmptyPresObj
+            && !bSkipSvgFallback
             && officecfg::Office::Common::Save::Graphic::AddReplacementImages::get())
         {
             uno::Reference<graphic::XGraphic> xReplacementGraphic;
@@ -2646,6 +2789,7 @@ void XMLShapeExport::ImpExportGraphicObjectShape(
     {
         ImpExportSignatureLine(xShape);
         ImpExportQRCode(xShape);
+        ImpExportGraphicClipPoly(xShape);
     }
 }
 

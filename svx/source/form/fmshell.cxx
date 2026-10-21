@@ -473,7 +473,7 @@ void FmFormShell::Execute(SfxRequest &rReq)
             if ( rReq.GetModifier() & KEY_MOD1 )
             {
                 //  #99013# if selected with control key, return focus to current view
-                // do this asynchron, so that the creation can be finished first
+                // do this asynchronously, so that the creation can be finished first
                 // reusing the SID_FM_TOGGLECONTROLFOCUS is somewhat hacky... which it wouldn't if it would have another
                 // name, so I do not really have a big problem with this...
                 SfxBoolItem aGrabFocusIndicatorItem( SID_FM_TOGGLECONTROLFOCUS, true );
@@ -730,7 +730,7 @@ void FmFormShell::Execute(SfxRequest &rReq)
             if ( !bCancelled )
             {
                 // if the filter navigator is still open, we need to close it, so it can possibly
-                // commit it's most recent changes
+                // commit its most recent changes
                 if (GetViewShell())
                     if ( GetViewShell()->GetViewFrame().HasChildWindow( SID_FM_FILTER_NAVIGATOR ) )
                     {
@@ -1344,7 +1344,7 @@ SdrUnoObj* FmFormShell::GetFormControl( const Reference< XControlModel >& _rxMod
     if ( !_rxModel.is() )
         return nullptr;
 
-    // we can only retrieve controls for SdrObjects which belong to page which is actually displayed in the given view
+    // we can only retrieve controls for SdrObjects which belong to a page which is actually displayed in the given view
     SdrPageView* pPageView = _rView.GetSdrPageView();
     SdrPage* pPage = pPageView ? pPageView->GetPage() : nullptr;
     OSL_ENSURE( pPage, "FmFormShell::GetFormControl: no page displayed in the given view!" );

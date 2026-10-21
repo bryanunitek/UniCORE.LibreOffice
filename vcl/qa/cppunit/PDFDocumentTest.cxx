@@ -24,6 +24,44 @@ public:
 
 constexpr OUString DATA_DIRECTORY = u"/vcl/qa/cppunit/data/"_ustr;
 
+CPPUNIT_TEST_FIXTURE(PDFDocumentTest, testXRefStreamWithoutPredictor)
+{
+    // /Predictor defaults to 1, so a cross-reference stream may carry no /DecodeParms at all.
+    // The content stream's /Length is indirect, which is what has to be resolved through it.
+    {
+        OUString aURL
+            = m_directories.getURLFromSrc(DATA_DIRECTORY) + "xref-stream-no-predictor.pdf";
+        vcl::filter::PDFDocument aDocument;
+        SvFileStream aStream(aURL, StreamMode::READ);
+        CPPUNIT_ASSERT(aDocument.Read(aStream));
+
+        std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+        CPPUNIT_ASSERT_EQUAL(size_t(1), aPages.size());
+
+        vcl::filter::PDFObjectElement* pContents = aPages[0]->LookupObject("Contents"_ostr);
+        CPPUNIT_ASSERT(pContents);
+        CPPUNIT_ASSERT(pContents->GetStream());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt64(28), pContents->GetStream()->GetMemory().GetSize());
+    }
+
+    // /Filter is optional too, and then the entries stand in the stream as they are
+    {
+        OUString aURL
+            = m_directories.getURLFromSrc(DATA_DIRECTORY) + "xref-stream-uncompressed.pdf";
+        vcl::filter::PDFDocument aDocument;
+        SvFileStream aStream(aURL, StreamMode::READ);
+        CPPUNIT_ASSERT(aDocument.Read(aStream));
+
+        std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+        CPPUNIT_ASSERT_EQUAL(size_t(1), aPages.size());
+
+        vcl::filter::PDFObjectElement* pContents = aPages[0]->LookupObject("Contents"_ostr);
+        CPPUNIT_ASSERT(pContents);
+        CPPUNIT_ASSERT(pContents->GetStream());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt64(28), pContents->GetStream()->GetMemory().GetSize());
+    }
+}
+
 CPPUNIT_TEST_FIXTURE(PDFDocumentTest, testParseBasicPDF)
 {
     OUString aURL = m_directories.getURLFromSrc(DATA_DIRECTORY) + "basic.pdf";
@@ -164,7 +202,7 @@ CPPUNIT_TEST_FIXTURE(PDFDocumentTest, testParseBasicPDF)
 CPPUNIT_TEST_FIXTURE(PDFDocumentTest, testParseDocumentWithNullAsWhitespace)
 {
     // tdf#140606
-    // Bug document contained a null, which cause the parser to panic,
+    // Bug document contained a null, which caused the parser to panic,
     // but other PDF readers can handle the file well.
 
     OUString aURL = m_directories.getURLFromSrc(DATA_DIRECTORY) + "DocumentWithNull.pdf";
@@ -423,7 +461,7 @@ CPPUNIT_TEST_FIXTURE(PDFDocumentTest, testParseArrayNestedWithNumbers)
         CPPUNIT_ASSERT_EQUAL(size_t(1), pArray3->GetElements().size());
 
         auto pNumber2 = dynamic_cast<vcl::filter::PDFNumberElement*>(pRootArray->GetElement(2));
-        CPPUNIT_ASSERT(pNumber1);
+        CPPUNIT_ASSERT(pNumber2);
         CPPUNIT_ASSERT_DOUBLES_EQUAL(2.0, pNumber2->GetValue(), 1e-4);
     }
 }

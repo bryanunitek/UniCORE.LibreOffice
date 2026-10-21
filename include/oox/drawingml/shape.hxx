@@ -20,6 +20,7 @@
 #pragma once
 
 #include <map>
+#include <unordered_map>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -79,7 +80,7 @@ struct ShapeStyleRef
     ShapeStyleRef() : mnThemedIdx(0) {}
 };
 
-typedef ::std::map< sal_Int32, ShapeStyleRef > ShapeStyleRefMap;
+typedef ::std::unordered_map< sal_Int32, ShapeStyleRef > ShapeStyleRefMap;
 
 /** Additional information for a chart embedded in a drawing shape. */
 struct ChartShapeInfo
@@ -88,6 +89,14 @@ struct ChartShapeInfo
     bool                mbEmbedShapes;      ///< True = load chart shapes into chart, false = load into parent drawpage.
 
     explicit     ChartShapeInfo( bool bEmbedShapes ) : mbEmbedShapes( bEmbedShapes ) {}
+};
+
+/// How much of a referenced shape's text the shape referencing it takes over.
+enum class ReferencedShapeText
+{
+    All, ///< the paragraphs and how they are formatted
+    FormattingOnly, ///< how they are formatted, but none of the paragraphs themselves
+    Nothing
 };
 
 /// Attributes for a linked textbox.
@@ -223,7 +232,8 @@ public:
     const css::uno::Reference< css::drawing::XShape > &
                         getXShape() const { return mxShape; }
 
-    SAL_DLLPRIVATE void applyShapeReference( const Shape& rReferencedShape, bool bUseText = true );
+    SAL_DLLPRIVATE void applyShapeReference( const Shape& rReferencedShape,
+                                             ReferencedShapeText eText = ReferencedShapeText::All );
     const ::std::vector<OUString>&
                         getExtDrawings() const { return maExtDrawings; }
     void                addExtDrawingRelId( const OUString &rRelId ) { maExtDrawings.push_back( rRelId ); }
@@ -250,6 +260,9 @@ public:
     bool                isLinkedTxbx() const { return mbHasLinkedTxbx; };
     void                setCustomPrompt( bool bValue ) { mbHasCustomPrompt = bValue; }
     bool                getCustomPrompt() const { return mbHasCustomPrompt; }
+    /** Whether the text this shape carries is a placeholder's prompt rather than content the
+        author typed. Only a presentation knows the difference, so it answers for itself. */
+    virtual bool        holdsPromptText() const { return false; }
 
     void setZOrder(sal_Int32 nZOrder) { mnZOrder = nZOrder; }
 
@@ -359,6 +372,9 @@ protected:
     Shape3DPropertiesPtr        mp3DPropertiesPtr;
     EffectPropertiesPtr         mpEffectPropertiesPtr;
     EffectPropertiesPtr         mpShapeRefEffectPropPtr;
+    /// The outer shadow this shape gets from its group, or null when the group has no shadow or
+    /// the shape lies within an opaque rectangle of the group.
+    EffectPropertiesPtr         mpGroupShadowPtr;
     PropertyMap                 maShapeProperties;
     PropertyMap                 maDefaultShapeProperties;
     TextListStylePtr            mpMasterTextListStyle;
@@ -450,7 +466,7 @@ private:
     /// Aspect ratio for an in-diagram shape.
     double mfAspectRatio = 0;
 
-    /// Number of child shapes to be layouted vertically inside org chart in-diagram shape.
+    /// Number of child shapes to be laid out vertically inside org chart in-diagram shape.
     sal_Int32 mnVerticalShapesCount = 0;
 
     // Is this a connector shape?

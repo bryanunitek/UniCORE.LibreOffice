@@ -19,7 +19,6 @@
 #include <com/sun/star/xml/dom/XDocument.hpp>
 
 #include <rtl/ustrbuf.hxx>
-#include <tools/ref.hxx>
 
 namespace com::sun::star
 {
@@ -57,7 +56,7 @@ enum class SdtControlType
  * w:sdt tokens can't be imported as form fields, as w:sdt supports
  * e.g. date picking as well.
  */
-class SdtHelper final : public virtual SvRefBase
+class SdtHelper
 {
     DomainMapper_Impl& m_rDM_Impl;
     css::uno::Reference<css::uno::XComponentContext> m_xComponentContext;
@@ -146,10 +145,12 @@ class SdtHelper final : public virtual SvRefBase
     /// <w:sdtPr>'s <w:lock w:val="...">.
     OUString m_aLock;
 
+    /// Char style of the SDT's content run, used for data-bound values.
+    OUString m_aPlaceholderCharStyle;
+
 public:
     explicit SdtHelper(DomainMapper_Impl& rDM_Impl,
                        css::uno::Reference<css::uno::XComponentContext> xContext);
-    ~SdtHelper() override;
 
     std::vector<OUString>& getDropDownItems() { return m_aDropDownItems; }
     std::vector<OUString>& getDropDownDisplayTexts() { return m_aDropDownDisplayTexts; }
@@ -212,6 +213,12 @@ public:
 
     void SetShowingPlcHdr();
     bool GetShowingPlcHdr() const;
+
+    void SetPlaceholderCharStyle(const OUString& rCharStyle)
+    {
+        m_aPlaceholderCharStyle = rCharStyle;
+    }
+    const OUString& GetPlaceholderCharStyle() const { return m_aPlaceholderCharStyle; }
 
     void SetChecked();
     bool GetChecked() const;

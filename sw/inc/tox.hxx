@@ -22,6 +22,7 @@
 #include <vector>
 #include <optional>
 
+#include <basegfx/units/Length.hxx>
 #include <cppuhelper/weakref.hxx>
 #include <editeng/svxenum.hxx>
 #include <i18nlangtag/lang.h>
@@ -247,7 +248,7 @@ struct SW_DLLPUBLIC SwFormToken
 {
     OUString        sText;
     UIName          sCharStyleName;
-    SwTwips         nTabStopPosition;
+    gfx::Length nTabStopPosition = 0_emu;
     FormTokenType   eTokenType;
     SwPoolFormatId  nPoolId;
     SvxTabAdjust    eTabAlign;
@@ -260,7 +261,6 @@ struct SW_DLLPUBLIC SwFormToken
                                    // #i21237#
 
     SwFormToken(FormTokenType eType ) :
-        nTabStopPosition(0),
         eTokenType(eType),
         nPoolId(SwPoolFormatId::UNKNOWN),
         eTabAlign( SvxTabAdjust::Left ),
@@ -381,6 +381,7 @@ enum class SwTOXElement : sal_uInt16
     Bookmark              = 0x0400,
     Newline               = 0x0800,
     ParagraphOutlineLevel = 0x1000,
+    LinkedCharStyle       = 0x2000,
 };
 namespace o3tl {
     template<> struct typed_flags<SwTOXElement> : is_typed_flags<SwTOXElement, 0x3fff> {};

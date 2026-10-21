@@ -440,6 +440,7 @@ namespace {
 class TabButtons final : public InterimItemWindow
 {
 public:
+    std::unique_ptr<weld::Button> m_xListButton;
     std::unique_ptr<weld::Button> m_xFirstButton;
     std::unique_ptr<weld::Button> m_xPrevButton;
     std::unique_ptr<weld::Button> m_xNextButton;
@@ -454,6 +455,7 @@ public:
                             pParent->IsMirrored() ? u"svt/ui/tabbuttonsmirrored.ui"_ustr
                                                   : u"svt/ui/tabbuttons.ui"_ustr,
                             u"TabButtons"_ustr)
+        , m_xListButton(m_xBuilder->weld_button(u"list"_ustr))
         , m_xFirstButton(m_xBuilder->weld_button(u"first"_ustr))
         , m_xPrevButton(m_xBuilder->weld_button(u"prev"_ustr))
         , m_xNextButton(m_xBuilder->weld_button(u"next"_ustr))
@@ -464,7 +466,8 @@ public:
         SetPaintTransparent(false);
         SetBackground(rStyleSettings.GetFaceColor());
 
-        m_xFirstButton->set_accessible_name(SvtResId(STR_TABBAR_PUSHBUTTON_MOVET0HOME));
+        m_xListButton->set_accessible_name(SvtResId(STR_TABBAR_PUSHBUTTON_SHEETSLIST));
+        m_xFirstButton->set_accessible_name(SvtResId(STR_TABBAR_PUSHBUTTON_MOVETOHOME));
         m_xPrevButton->set_accessible_name(SvtResId(STR_TABBAR_PUSHBUTTON_MOVELEFT));
         m_xNextButton->set_accessible_name(SvtResId(STR_TABBAR_PUSHBUTTON_MOVERIGHT));
         m_xLastButton->set_accessible_name(SvtResId(STR_TABBAR_PUSHBUTTON_MOVETOEND));
@@ -472,6 +475,7 @@ public:
 
         if (bSheets)
         {
+            m_xListButton->set_tooltip_text(SvtResId(STR_TABBAR_HINT_SHEETSLIST_SHEETS));
             m_xFirstButton->set_tooltip_text(SvtResId(STR_TABBAR_HINT_MOVETOHOME_SHEETS));
             m_xPrevButton->set_tooltip_text(SvtResId(STR_TABBAR_HINT_MOVELEFT_SHEETS));
             m_xNextButton->set_tooltip_text(SvtResId(STR_TABBAR_HINT_MOVERIGHT_SHEETS));
@@ -484,6 +488,7 @@ public:
     {
         if (m_xFirstButton->get_preferred_size() == Size(nHeight, nHeight))
             return;
+        m_xListButton->set_size_request(nHeight, nHeight);
         m_xFirstButton->set_size_request(nHeight, nHeight);
         m_xPrevButton->set_size_request(nHeight, nHeight);
         m_xNextButton->set_size_request(nHeight, nHeight);
@@ -502,6 +507,7 @@ public:
         m_xNextButton.reset();
         m_xPrevButton.reset();
         m_xFirstButton.reset();
+        m_xListButton.reset();
         InterimItemWindow::dispose();
     }
 };
@@ -778,11 +784,9 @@ IMPL_LINK(TabBar, ContextMenuHdl, const CommandEvent&, rCommandEvent, void)
     maScrollAreaContextHdl.Call(rCommandEvent);
 }
 
-IMPL_LINK(TabBar, MousePressHdl, const MouseEvent&, rMouseEvent, bool)
+IMPL_LINK_NOARG( TabBar, ImplListClickHandler, weld::Button&, void )
 {
-    if (rMouseEvent.IsRight())
-        ContextMenuHdl(CommandEvent(rMouseEvent.GetPosPixel(), CommandEventId::ContextMenu, true));
-    return false;
+    maScrollAreaContextHdl.Call( CommandEvent( Point( 0, 0 ), CommandEventId::ContextMenu, true ) );
 }
 
 void TabBar::ImplInitControls()
@@ -807,8 +811,17 @@ void TabBar::ImplInitControls()
     if (mnWinStyle & WB_INSERTTAB)
     {
         Link<weld::Button&,void> aLink = LINK(this, TabBar, ImplAddClickHandler);
-        mpImpl->mxButtonBox->m_xAddRepeater = std::make_shared<weld::ButtonPressRepeater>(
-                    *mpImpl->mxButtonBox->m_xAddButton, aLink, aContextLink);
+        if (mnWinStyle & WB_TABSLIST)
+        {
+            mpImpl->mxButtonBox->m_xAddRepeater = std::make_shared<weld::ButtonPressRepeater>(
+                    *mpImpl->mxButtonBox->m_xAddButton, aLink );
+            aLink = LINK( this, TabBar, ImplListClickHandler );
+            mpImpl->mxButtonBox->m_xListButton->connect_clicked( aLink );
+            mpImpl->mxButtonBox->m_xListButton->show();
+        }
+        else
+            mpImpl->mxButtonBox->m_xAddRepeater = std::make_shared<weld::ButtonPressRepeater>(
+                    *mpImpl->mxButtonBox->m_xAddButton, aLink, aContextLink );
         mpImpl->mxButtonBox->m_xAddButton->show();
     }
 
@@ -817,22 +830,18 @@ void TabBar::ImplInitControls()
     if (mnWinStyle & (WB_MINSCROLL | WB_SCROLL))
     {
         mpImpl->mxButtonBox->m_xPrevRepeater = std::make_shared<weld::ButtonPressRepeater>(
-                    *mpImpl->mxButtonBox->m_xPrevButton, aLink, aContextLink);
+                    *mpImpl->mxButtonBox->m_xPrevButton, aLink );
         mpImpl->mxButtonBox->m_xPrevButton->show();
         mpImpl->mxButtonBox->m_xNextRepeater = std::make_shared<weld::ButtonPressRepeater>(
-                    *mpImpl->mxButtonBox->m_xNextButton, aLink, aContextLink);
+                    *mpImpl->mxButtonBox->m_xNextButton, aLink );
         mpImpl->mxButtonBox->m_xNextButton->show();
     }
 
     if (mnWinStyle & WB_SCROLL)
     {
-        Link<const MouseEvent&, bool> aBtnContextLink = LINK(this, TabBar, MousePressHdl);
-
         mpImpl->mxButtonBox->m_xFirstButton->connect_clicked(aLink);
-        mpImpl->mxButtonBox->m_xFirstButton->connect_mouse_press(aBtnContextLink);
         mpImpl->mxButtonBox->m_xFirstButton->show();
         mpImpl->mxButtonBox->m_xLastButton->connect_clicked(aLink);
-        mpImpl->mxButtonBox->m_xLastButton->connect_mouse_press(aBtnContextLink);
         mpImpl->mxButtonBox->m_xLastButton->show();
     }
 
@@ -1447,6 +1456,7 @@ void TabBar::StateChanged(StateChangedType nType)
             mpImpl->mpSizer->EnableRTL(bIsRTLEnabled);
         if (mpImpl->mxButtonBox)
         {
+            mpImpl->mxButtonBox->m_xListButton->set_direction(bIsRTLEnabled);
             mpImpl->mxButtonBox->m_xFirstButton->set_direction(bIsRTLEnabled);
             mpImpl->mxButtonBox->m_xPrevButton->set_direction(bIsRTLEnabled);
             mpImpl->mxButtonBox->m_xNextButton->set_direction(bIsRTLEnabled);

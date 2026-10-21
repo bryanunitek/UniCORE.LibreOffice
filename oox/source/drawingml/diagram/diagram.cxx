@@ -46,6 +46,7 @@
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/io/TempFile.hpp>
 #include <oox/export/drawingml.hxx>
+#include <oox/export/shapes.hxx>
 
 #include <com/sun/star/xml/sax/XSAXSerializable.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
@@ -155,9 +156,8 @@ void SmartArtDiagram::createShapeHierarchyFromModel( const ShapePtr & pParentSha
     if (mpData->getBackgroundShapeLineProperties())
         pBackground->getLineProperties() = *mpData->getBackgroundShapeLineProperties();
 
-    // create and set ModelID for BackgroundShape to allow later association
-    getData()->setBackgroundShapeModelID(OStringToOUString(comphelper::xml::generateGUIDString(), RTL_TEXTENCODING_UTF8));
-    pBackground->setDiagramDataModelID(getData()->getBackgroundShapeModelID());
+    // create BackgroundShape, use empty string for identification
+    pBackground->setDiagramDataModelID(EMPTY_OUSTRING);
 
     auto& aChildren = pParentShape->getChildren();
     aChildren.insert(aChildren.begin(), pBackground);
@@ -176,6 +176,23 @@ uno::Reference<xml::dom::XDocument> SmartArtDiagram::convertAndSet(std::u16strin
 
     // set DomTree locally
     setOOXDomValue(aDomMapFlag, uno::Any(aDomTree));
+    return aDomTree;
+}
+
+css::uno::Reference<css::xml::dom::XDocument> SmartArtDiagram::convertAndSet(std::u16string_view rDOMData, svx::diagram::DomMapFlag aDomMapFlag, bool bAdd)
+{
+    // construct MemoryStream and OStreamWrapper
+    const OString sUtf8(OUStringToOString(rDOMData, RTL_TEXTENCODING_UTF8));
+    SvMemoryStream aStream(const_cast<char*>(sUtf8.getStr()), sUtf8.getLength(), StreamMode::READ);
+    rtl::Reference<utl::OStreamWrapper> pStreamWrapper = new utl::OStreamWrapper(aStream);
+
+    // create the dom parser & create DomTree
+    uno::Reference<xml::dom::XDocumentBuilder> xDomBuilder(xml::dom::DocumentBuilder::create(comphelper::getProcessComponentContext()));
+    uno::Reference<xml::dom::XDocument> aDomTree(xDomBuilder->parse(pStreamWrapper->getInputStream()));
+
+    // set DomTree locally
+    if (bAdd)
+        setOOXDomValue(aDomMapFlag, uno::Any(aDomTree));
     return aDomTree;
 }
 
@@ -199,59 +216,63 @@ SmartArtDiagram::SmartArtDiagram(SmartArtDiagram const& rSource)
 {
 }
 
-SmartArtDiagram::SmartArtDiagram(const boost::property_tree::ptree& rDiagramModel)
+SmartArtDiagram::SmartArtDiagram(std::u16string_view rLayout, std::u16string_view rData, std::u16string_view rColors, std::u16string_view rQuickstyle)
 : maDiagramFontHeights()
-, mpData(std::make_shared<DiagramData_oox>(rDiagramModel))
+, mpData(std::make_shared<DiagramData_oox>())
 , mpLayout(std::make_shared<DiagramLayout>(*this))
 , maStyles()
 , maColors()
 , maDiagramPRDomMap()
 {
-#ifdef DBG_UTIL
-    mpData->dump();
-#endif
-    const OUString aOOXLayoutDOM(OUString::fromUtf8(rDiagramModel.get("OOXLayout", "")));
-    const OUString aOOXStyleDOM(OUString::fromUtf8(rDiagramModel.get("OOXStyle", "")));
-    const OUString aOOXColorDOM(OUString::fromUtf8(rDiagramModel.get("OOXColor", "")));
+    if (rLayout.empty() || rData.empty() || rQuickstyle.empty() || rColors.empty())
+        return;
 
-    if (!aOOXLayoutDOM.isEmpty() || !aOOXStyleDOM.isEmpty() || !aOOXColorDOM.isEmpty())
+    // we need a PowerPointImport for the FragmentHandlers, so create a single
+    // temporary one. Use this for all possible DomTrees
+    rtl::Reference<oox::ppt::PowerPointImport> xPPTImport(new oox::ppt::PowerPointImport(comphelper::getProcessComponentContext()));
+
+    if (!rData.empty())
     {
-        // we need a PowerPointImport for the FragmentHandlers, so create a single
-        // temporary one. Use this for all possible DomTrees
-        rtl::Reference<oox::ppt::PowerPointImport> xPPTImport(new oox::ppt::PowerPointImport(comphelper::getProcessComponentContext()));
+        // create and set DomTree locally/do *not* add to DomTree holder, this is a temporary instance
+        uno::Reference<xml::dom::XDocument> xDom(convertAndSet(rData, svx::diagram::DomMapFlag::OOXLayout, false));
 
-        if (!aOOXLayoutDOM.isEmpty())
-        {
-            // create and set DomTree locally
-            uno::Reference<xml::dom::XDocument> xDom(convertAndSet(aOOXLayoutDOM, svx::diagram::DomMapFlag::OOXLayout));
+        // import DomTree to mpLayout
+        uno::Reference<xml::sax::XFastSAXSerializable> xSerializer(xDom, uno::UNO_QUERY_THROW);
+        rtl::Reference< core::FragmentHandler > xRefLayout(new DiagramDataFragmentHandler(*xPPTImport, u"internal"_ustr, mpData));
+        xPPTImport->importFragment(xRefLayout, xSerializer);
+    }
 
-            // import DomTree to mpLayout
-            uno::Reference<xml::sax::XFastSAXSerializable> xSerializer(xDom, uno::UNO_QUERY_THROW);
-            rtl::Reference< core::FragmentHandler > xRefLayout(new DiagramLayoutFragmentHandler(*this, *xPPTImport, "internal", mpLayout));
-            xPPTImport->importFragment(xRefLayout, xSerializer);
-        }
+    if (!rLayout.empty())
+    {
+        // create and set DomTree locally
+        uno::Reference<xml::dom::XDocument> xDom(convertAndSet(rLayout, svx::diagram::DomMapFlag::OOXLayout, true));
 
-        if (!aOOXStyleDOM.isEmpty())
-        {
-            // create and set DomTree locally
-            uno::Reference<xml::dom::XDocument> xDom(convertAndSet(aOOXStyleDOM, svx::diagram::DomMapFlag::OOXStyle));
+        // import DomTree to mpLayout
+        uno::Reference<xml::sax::XFastSAXSerializable> xSerializer(xDom, uno::UNO_QUERY_THROW);
+        rtl::Reference< core::FragmentHandler > xRefLayout(new DiagramLayoutFragmentHandler(*this, *xPPTImport, u"internal"_ustr, mpLayout));
+        xPPTImport->importFragment(xRefLayout, xSerializer);
+    }
 
-            // import DomTree to maStyles
-            uno::Reference<xml::sax::XFastSAXSerializable> xSerializer(xDom, uno::UNO_QUERY_THROW);
-            rtl::Reference< core::FragmentHandler > xRefLayout(new DiagramQStylesFragmentHandler(*xPPTImport, "internal", maStyles));
-            xPPTImport->importFragment(xRefLayout, xSerializer);
-        }
+    if (!rQuickstyle.empty())
+    {
+        // create and set DomTree locally
+        uno::Reference<xml::dom::XDocument> xDom(convertAndSet(rQuickstyle, svx::diagram::DomMapFlag::OOXStyle, true));
 
-        if (!aOOXColorDOM.isEmpty())
-        {
-            // create and set DomTree locally
-            uno::Reference<xml::dom::XDocument> xDom(convertAndSet(aOOXColorDOM, svx::diagram::DomMapFlag::OOXColor));
+        // import DomTree to maStyles
+        uno::Reference<xml::sax::XFastSAXSerializable> xSerializer(xDom, uno::UNO_QUERY_THROW);
+        rtl::Reference< core::FragmentHandler > xRefLayout(new DiagramQStylesFragmentHandler(*xPPTImport, u"internal"_ustr, maStyles));
+        xPPTImport->importFragment(xRefLayout, xSerializer);
+    }
 
-            // import DomTree to maColors
-            uno::Reference<xml::sax::XFastSAXSerializable> xSerializer(xDom, uno::UNO_QUERY_THROW);
-            rtl::Reference< core::FragmentHandler > xRefLayout(new ColorFragmentHandler(*xPPTImport, "internal", maColors));
-            xPPTImport->importFragment(xRefLayout, xSerializer);
-        }
+    if (!rColors.empty())
+    {
+        // create and set DomTree locally
+        uno::Reference<xml::dom::XDocument> xDom(convertAndSet(rColors, svx::diagram::DomMapFlag::OOXColor, true));
+
+        // import DomTree to maColors
+        uno::Reference<xml::sax::XFastSAXSerializable> xSerializer(xDom, uno::UNO_QUERY_THROW);
+        rtl::Reference< core::FragmentHandler > xRefLayout(new ColorFragmentHandler(*xPPTImport, u"internal"_ustr, maColors));
+        xPPTImport->importFragment(xRefLayout, xSerializer);
     }
 }
 
@@ -310,10 +331,10 @@ void SmartArtDiagram::writeDiagramOOXData(DrawingML& rOriginalDrawingML, uno::Re
 
     // re-create OOXData DomFile from model data
     sax_fastparser::FSHelperPtr aFS = std::make_shared<sax_fastparser::FastSerializerHelper>(xOutputStream, true);
-    getData()->writeDiagramData(rOriginalDrawingML, aFS, rDrawingRelId);
+    getData()->writeDiagramData(rOriginalDrawingML, aFS, rDrawingRelId, false);
 
     // this call is *important*, without it xDocBuilder->parse below fails and some strange
-    // and wrong assertion gets thrown in ~FastSerializerHelper that  shall get called
+    // and wrong assertion gets thrown in ~FastSerializerHelper that shall get called
     xOutputStream->closeOutput();
 
 #ifdef DBG_UTIL
@@ -342,6 +363,50 @@ void SmartArtDiagram::writeDiagramOOXData(DrawingML& rOriginalDrawingML, uno::Re
 #endif
 }
 
+void SmartArtDiagram::writeDiagramReducedOOXData(css::uno::Reference<css::io::XOutputStream>& xOutputStream) const
+{
+    // need a XmlFilterBase for ShapeExport/DrawingML. All the 'big' exports classes for
+    // this are in sd/sc/sw and we are not in an oox export here, so none exist. Use
+    // a minimal one. It's main purpose is to host the XModel access. In this case we
+    // will not write any Line/Fill/TextAttributes and/or text, so will be fine for the
+    // reduced form.
+    class LocalFilterBase final : public oox::core::XmlFilterBase
+    {
+    public:
+        explicit LocalFilterBase(css::uno::Reference<css::uno::XComponentContext> const& rxContext)
+        : XmlFilterBase(rxContext) {}
+        // virtual ~LocalFilterBase() override;
+
+        virtual const oox::drawingml::Theme* getCurrentTheme() const override { return mpTheme.get(); }
+        virtual std::shared_ptr<oox::drawingml::Theme> getCurrentThemePtr() const override { return mpTheme; }
+
+        virtual oox::vml::Drawing* getVmlDrawing() override { return nullptr; }
+        virtual oox::drawingml::table::TableStyleListPtr getTableStyles() override { return oox::drawingml::table::TableStyleListPtr(); }
+        virtual oox::drawingml::chart::ChartConverter* getChartConverter() override { return nullptr; }
+        virtual oox::ole::VbaProject* implCreateVbaProject() const override { return nullptr; }
+
+        virtual bool importDocument() override { return false; }
+        virtual bool exportDocument() override { return true; }
+
+    private:
+        virtual OUString SAL_CALL getImplementationName() override { return EMPTY_OUSTRING; }
+        oox::drawingml::ThemePtr mpTheme;
+    };
+
+    rtl::Reference<LocalFilterBase> xLocalFilterBase(new LocalFilterBase(comphelper::getProcessComponentContext()));
+    xLocalFilterBase->setSourceDocument(getData()->accessRootModel());
+
+    // need a sax_fastparser
+    sax_fastparser::FSHelperPtr aFS = std::make_shared<sax_fastparser::FastSerializerHelper>(xOutputStream, true);
+
+    // need a DrawingML, use a ShapeExport. Claim to be a DOCUMENT_PPTX for all ODF targets
+    oox::drawingml::ShapeExport aShapeExport(XML_dsp, aFS, nullptr, xLocalFilterBase.get(), DOCUMENT_PPTX, nullptr, true);
+    aShapeExport.setDiagaramExport(true);
+
+    // write reduced DiagramData
+    getData()->writeDiagramData(aShapeExport, aFS, EMPTY_OUSTRING, true);
+}
+
 void SmartArtDiagram::writeDiagramOOXDrawing(DrawingML& rOriginalDrawingML, uno::Reference<io::XOutputStream>& xOutputStream) const
 {
     if (!xOutputStream)
@@ -353,7 +418,7 @@ void SmartArtDiagram::writeDiagramOOXDrawing(DrawingML& rOriginalDrawingML, uno:
     getData()->writeDiagramReplacement(rOriginalDrawingML, aFS);
 
     // this call is *important*, without it xDocBuilder->parse below fails and some strange
-    // and wrong assertion gets thrown in ~FastSerializerHelper that  shall get called
+    // and wrong assertion gets thrown in ~FastSerializerHelper that shall get called
     xOutputStream->closeOutput();
 
 #ifdef DBG_UTIL
@@ -382,65 +447,8 @@ void SmartArtDiagram::writeDiagramOOXDrawing(DrawingML& rOriginalDrawingML, uno:
 #endif
 }
 
-void SmartArtDiagram::addDomTreeToModelData(svx::diagram::DomMapFlag aId, std::u16string_view aName, boost::property_tree::ptree& rTarget) const
-{
-    uno::Reference<xml::dom::XDocument> aDomTree;
-    getOOXDomValue(aId) >>= aDomTree;
-
-    if (aDomTree)
-    {
-        // serialize DomTree to a MemoryStream
-        SvMemoryStream aStream( 1024, 1024 );
-        rtl::Reference<utl::OStreamWrapper> pStreamWrapper = new utl::OStreamWrapper( aStream );
-        uno::Reference<xml::sax::XSAXSerializable> serializer;
-        uno::Reference<xml::sax::XWriter> writer = xml::sax::Writer::create(comphelper::getProcessComponentContext());
-        serializer.set(aDomTree, uno::UNO_QUERY);
-        writer->setOutputStream(pStreamWrapper->getOutputStream());
-        serializer->serialize(uno::Reference<xml::sax::XDocumentHandler>(writer, uno::UNO_QUERY_THROW), uno::Sequence<beans::StringPair>());
-
-        // put into string
-        const OUString aContent(static_cast<const char*>(aStream.GetData()), aStream.TellEnd(), RTL_TEXTENCODING_UTF8);
-
-        // add to ModelData
-        const OString sUtf8(OUStringToOString(aName, RTL_TEXTENCODING_UTF8));
-        rTarget.put(sUtf8.getStr(), aContent);
-    }
-}
-
-void SmartArtDiagram::addDiagramModelData(boost::property_tree::ptree& rTarget) const
-{
-    // add Point and Connection data
-    getData()->addDiagramModelData(rTarget);
-
-    // What DomMaps are needed?
-    //
-    // With the above OOXData is covered. OOXDataImageRels/OOXDataHlinkRels also,
-    // these may/will be re-created when OOX export and a new OOXDataDomTree
-    // needs to be created.
-    // Similar with OOXDrawing: This contains parts of ModelData, e.g. Text and
-    // Attributes represented by the XShapes/Sdrobjects, so for internal formats
-    // this is not needed to be saved. This also true for OOXDrawingImageRels
-    // and OOXDrawingHlinkRels.
-    // We *do* import OOXLayoutDomTree/ModelInfo and this is used in the layouting
-    // mechanism (reLayout), but it is not changed. We could add an export of that
-    // for internal formats, but since it's not changed it just needs to be
-    // preserved, either for internal use or export to OOX formats.
-    // OOXStyle and OOXColor are imported only on oox import side, partially held
-    // for initial import at Diagram classes. Also never changed, but maybe needed
-    // for export to OOX formats. Not sure about that since Style and Color is
-    // part of XShape/SdrObject Model Hierarchy, so exports to OOX should be possible
-    // without these, but maybe MSO wants that data...
-    //
-    // OOXLayout = 3,
-    // OOXStyle = 4,
-    // OOXColor = 5,
-    addDomTreeToModelData(svx::diagram::DomMapFlag::OOXLayout, u"OOXLayout", rTarget);
-    addDomTreeToModelData(svx::diagram::DomMapFlag::OOXStyle, u"OOXStyle", rTarget);
-    addDomTreeToModelData(svx::diagram::DomMapFlag::OOXColor, u"OOXColor", rTarget);
-}
-
 using ShapePairs
-    = std::map<std::shared_ptr<drawingml::Shape>, uno::Reference<drawing::XShape>>;
+    = std::unordered_map<std::shared_ptr<drawingml::Shape>, uno::Reference<drawing::XShape>>;
 
 void SmartArtDiagram::syncDiagramFontHeights()
 {

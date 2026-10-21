@@ -61,6 +61,7 @@
 #include <navicfg.hxx>
 #include <edtwin.hxx>
 #include <doc.hxx>
+#include <charformats.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentOutlineNodes.hxx>
@@ -138,10 +139,18 @@
 
 #include <sfx2/passwd.hxx>
 #include <svl/PasswordHelper.hxx>
+#include <frozen/bits/defines.h>
+#include <frozen/bits/elsa_std.h>
+#include <frozen/unordered_map.h>
 
 #include <officecfg/Office/Common.hxx>
 
 #include <txttxmrk.hxx>
+
+#include <IDocumentUndoRedo.hxx>
+#include <pagefrm.hxx>
+#include <notxtfrm.hxx>
+#include <ftnfrm.hxx>
 
 #define CTYPE_CNT   0
 #define CTYPE_CTT   1
@@ -155,7 +164,7 @@ namespace {
 
 /*
     Symbolic name representations of numeric values used for the Outline Content Visibility popup
-    menu item ids. The numbers are chosen arbitrarily to not over overlap other menu item ids.
+    menu item ids. The numbers are chosen arbitrarily to not overlap other menu item ids.
     see: SwContentTree::ExecuteContextMenuAction, navigatorcontextmenu.ui
 
     1512 toggle outline content visibility of the selected outline entry
@@ -1075,43 +1084,108 @@ void SwContentType::FillMemberList(bool* pbContentChanged)
             }
 
             // use stable sort array to list hyperlinks in document order
-            const SwNodeOffset nEndOfExtrasIndex = m_pWrtShell->GetNodes().GetEndOfExtras().GetIndex();
-            bool bHasEntryInFly = false;
-            std::vector<SwGetINetAttr*> aStableSortINetAttrsArray;
+            const SwNodeOffset nEndOfExtrasIndex
+                = m_pWrtShell->GetNodes().GetEndOfExtras().GetIndex();
+            std::vector<SwGetINetAttr*> aSortedINetAttrsArray;
 
             for (SwGetINetAttr& r : aArr)
-            {
-                aStableSortINetAttrsArray.emplace_back(&r);
-                if (!bHasEntryInFly)
+                aSortedINetAttrsArray.emplace_back(&r);
+
+            std::stable_sort(
+                aSortedINetAttrsArray.begin(), aSortedINetAttrsArray.end(),
+                [this, nEndOfExtrasIndex](const SwGetINetAttr* a, const SwGetINetAttr* b)
                 {
-                    if (nEndOfExtrasIndex >= r.rINetAttr.GetTextNode().GetIndex())
+                    const SwNode& aTextNode = a->rINetAttr.GetTextNode();
+                    const SwNode& bTextNode = b->rINetAttr.GetTextNode();
+                    SwPosition aPos(*aTextNode.GetContentNode(), a->rINetAttr.GetStart());
+                    SwPosition bPos(*bTextNode.GetContentNode(), b->rINetAttr.GetStart());
+
+                    const SwFrame* paFrame
+                        = aTextNode.GetContentNode()->getLayoutFrame(m_pWrtShell->GetLayout());
+                    const SwFrame* pbFrame
+                        = bTextNode.GetContentNode()->getLayoutFrame(m_pWrtShell->GetLayout());
+
+                    // case when both a and b are in footnotes on the same page
+                    if (paFrame && pbFrame && paFrame->IsInFootnote() && pbFrame->IsInFootnote()
+                        && (paFrame->GetPhyPageNum() == pbFrame->GetPhyPageNum()))
                     {
-                        // Not a node of BodyText
-                        // Are we in a fly?
-                        if (r.rINetAttr.GetTextNode().GetFlyFormat())
-                            bHasEntryInFly = true;
+                        while (paFrame->GetType() != SwFrameType::Footnote)
+                            paFrame = paFrame->GetUpper();
+                        while (pbFrame->GetType() != SwFrameType::Footnote)
+                            pbFrame = pbFrame->GetUpper();
+
+                        const SwTextFootnote* aTextFootnote
+                            = static_cast<const SwFootnoteFrame*>(paFrame)->GetAttr();
+                        const SwTextFootnote* bTextFootnote
+                            = static_cast<const SwFootnoteFrame*>(pbFrame)->GetAttr();
+
+                        // footnote anchor positions
+                        aPos.Assign(aTextFootnote->GetTextNode(), aTextFootnote->GetStart());
+                        bPos.Assign(bTextFootnote->GetTextNode(), bTextFootnote->GetStart());
+
+                        // when in the same footnote
+                        if (aPos == bPos)
+                            return a->rINetAttr.GetStart() < b->rINetAttr.GetStart();
+
+                        return aPos < bPos;
                     }
-                }
-            }
 
-            std::stable_sort(aStableSortINetAttrsArray.begin(), aStableSortINetAttrsArray.end(),
-                             [](const SwGetINetAttr* a, const SwGetINetAttr* b){
-                SwPosition aSwPos(a->rINetAttr.GetTextNode(),
-                                  a->rINetAttr.GetStart());
-                SwPosition bSwPos(b->rINetAttr.GetTextNode(),
-                                  b->rINetAttr.GetStart());
-                return aSwPos < bSwPos;});
+                    if (paFrame && paFrame->IsInFootnote())
+                    {
+                        while (paFrame->GetType() != SwFrameType::FootnoteContainer)
+                            paFrame = paFrame->GetUpper();
+                        paFrame = paFrame->GetUpper();
+                        // paFrame should now point to a SwPageFrame object
+                        if (static_cast<const SwPageFrame*>(paFrame)->IsEndNotePage())
+                        {
+                            // use the end of content node for comparison position for endnotes
+                            aPos.Assign(m_pWrtShell->GetDoc()->GetNodes().GetEndOfContent());
+                        }
+                        else if (const SwContentFrame* pContentFrame
+                                 = static_cast<const SwPageFrame*>(paFrame)->FindLastBodyContent())
+                        {
+                            // use the end position on the footnote page for comparison positions
+                            const SwNode* pNode(
+                                pContentFrame->IsTextFrame()
+                                    ? static_cast<SwTextFrame const*>(pContentFrame)
+                                          ->GetTextNodeFirst()
+                                    : static_cast<SwNoTextFrame const*>(pContentFrame)->GetNode());
+                            aPos.Assign(
+                                *pNode,
+                                pContentFrame->IsTextFrame()
+                                    ? static_cast<const SwTextNode*>(pNode)->GetText().getLength()
+                                    : 0);
+                        }
+                    }
 
-            // When there are hyperlinks in text frames do an additional sort using the text frame
-            // anchor position to place entries in the order of document layout appearance.
-            if (bHasEntryInFly)
-            {
-                std::stable_sort(aStableSortINetAttrsArray.begin(), aStableSortINetAttrsArray.end(),
-                                 [nEndOfExtrasIndex](const SwGetINetAttr* a, const SwGetINetAttr* b){
-                    const SwTextNode& aTextNode = a->rINetAttr.GetTextNode();
-                    const SwTextNode& bTextNode = b->rINetAttr.GetTextNode();
-                    SwPosition aPos(aTextNode, a->rINetAttr.GetStart());
-                    SwPosition bPos(bTextNode, b->rINetAttr.GetStart());
+                    if (pbFrame && pbFrame->IsInFootnote())
+                    {
+                        while (pbFrame->GetType() != SwFrameType::FootnoteContainer)
+                            pbFrame = pbFrame->GetUpper();
+                        pbFrame = pbFrame->GetUpper();
+                        // pbFrame should now point to a SwPageFrame object
+                        if (static_cast<const SwPageFrame*>(pbFrame)->IsEndNotePage())
+                        {
+                            // use the end of content node for comparison position for endnotes
+                            bPos.Assign(m_pWrtShell->GetDoc()->GetNodes().GetEndOfContent());
+                        }
+                        else if (const SwContentFrame* pContentFrame
+                                 = static_cast<const SwPageFrame*>(pbFrame)->FindLastBodyContent())
+                        {
+                            // use the end position on the footnote page comparison positions
+                            const SwNode* pNode(
+                                pContentFrame->IsTextFrame()
+                                    ? static_cast<SwTextFrame const*>(pContentFrame)
+                                          ->GetTextNodeFirst()
+                                    : static_cast<SwNoTextFrame const*>(pContentFrame)->GetNode());
+                            bPos.Assign(
+                                *pNode,
+                                pContentFrame->IsTextFrame()
+                                    ? static_cast<const SwTextNode*>(pNode)->GetText().getLength()
+                                    : 0);
+                        }
+                    }
+
                     // use anchor position for entries that are located in flys
                     if (nEndOfExtrasIndex >= aTextNode.GetIndex())
                         if (auto pFlyFormat = aTextNode.GetFlyFormat())
@@ -1121,11 +1195,12 @@ void SwContentType::FillMemberList(bool* pbContentChanged)
                         if (auto pFlyFormat = bTextNode.GetFlyFormat())
                             if (const SwPosition* pPos = pFlyFormat->GetAnchor().GetContentAnchor())
                                 bPos = *pPos;
-                    return aPos < bPos;});
-            }
+
+                    return aPos < bPos;
+                });
 
             SwGetINetAttrs::size_type n = 0;
-            for (auto p : aStableSortINetAttrsArray)
+            for (auto p : aSortedINetAttrsArray)
             {
                 auto pCnt = std::make_unique<SwURLFieldContent>(this, p->sText,
                             INetURLObject::decode(p->rINetAttr.GetINetFormat().GetValue(),
@@ -1372,10 +1447,10 @@ const TranslateId STR_CONTEXT_ARY[] =
     STR_OUTLINE_TRACKING_OFF
 };
 
-SwContentTree::SwContentTree(std::unique_ptr<weld::TreeView> xTreeView, SwNavigationPI* pDialog)
+SwContentTree::SwContentTree(std::unique_ptr<weld::TreeView> xTreeView, SwNavigationPI& rDialog)
     : m_xTreeView(std::move(xTreeView))
     , m_aDropTargetHelper(*this)
-    , m_pDialog(pDialog)
+    , m_rDialog(rDialog)
     , m_sSpace(u"                    "_ustr)
     , m_aUpdTimer("SwContentTree m_aUpdTimer")
     , m_aOverlayObjectDelayTimer("SwContentTree m_aOverlayObjectDelayTimer")
@@ -1597,7 +1672,7 @@ sal_Int8 SwContentTree::AcceptDrop(const AcceptDropEvent& rEvt)
             nRet = rEvt.mnAction;
     }
     else if (!IsInDrag())
-        nRet = GetParentWindow()->AcceptDrop();
+        nRet = GetParentWindow().AcceptDrop();
     return nRet;
 }
 
@@ -1687,7 +1762,7 @@ sal_Int8 SwContentTree::ExecuteDrop(const ExecuteDropEvent& rEvt)
         MoveOutline(nTargetPos);
 
     }
-    return IsInDrag() ? DND_ACTION_NONE : GetParentWindow()->ExecuteDrop(rEvt);
+    return IsInDrag() ? DND_ACTION_NONE : GetParentWindow().ExecuteDrop(rEvt);
 }
 
 namespace
@@ -2933,6 +3008,10 @@ bool SwContentTree::RequestingChildren(const weld::TreeIter& rParent)
                     }
                 }
 
+                // tdf#173801 Prevent Navigator loop with groupshape in footer
+                if (vMemberIndexes == vNoParentYetFoundForMemberIndexes)
+                    break;
+
                 vMemberIndexes = std::move(vNoParentYetFoundForMemberIndexes);
             }
         }
@@ -3319,8 +3398,36 @@ IMPL_LINK(SwContentTree, EditedEntryHdl, const weld::TreeView::IterColText&, rIt
         break;
         case ContentTypeId::INDEX:
         {
-            rtl::Reference<SwXDocumentIndexes> xIdxAcc = xModel->getSwDocumentIndexes();
-            xNameAccess = xIdxAcc;
+            m_bEditing = false;
+            SwTOXBaseContent* pTOXBaseContent = static_cast<SwTOXBaseContent*>(pCnt);
+            if (const SwTOXBase* pTOXBase = pTOXBaseContent->GetTOXBase())
+            {
+                // based on code from SwTOXMgr::UpdateOrInsertTOX
+                SwDoc* pDoc = m_pActiveShell->GetDoc();
+
+                if (pDoc->GetIDocumentUndoRedo().DoesUndo())
+                {
+                    pDoc->GetIDocumentUndoRedo().StartUndo(SwUndoId::TOXCHANGE, nullptr);
+                }
+
+                SwTOXBase* pTOX = const_cast<SwTOXBase*>(pTOXBase);
+                SwTOXBase* pNewTOX = new SwTOXBase(*pTOX);
+                pNewTOX->SetTitle(sNewName);
+                m_pActiveShell->GetDoc()->ChangeTOX(*pTOX, *pNewTOX);
+
+                pTOX->DisableKeepExpression();
+                m_pActiveShell->UpdateTableOf(*pTOX);
+                pTOX->EnableKeepExpression();
+
+                if (pDoc->GetIDocumentUndoRedo().DoesUndo())
+                {
+                    pDoc->GetIDocumentUndoRedo().EndUndo(SwUndoId::TOXCHANGE, nullptr);
+                }
+
+                return true;
+            }
+
+            return false;
         }
         break;
         case ContentTypeId::DRAWOBJECT:
@@ -3364,7 +3471,7 @@ IMPL_LINK(SwContentTree, EditedEntryHdl, const weld::TreeView::IterColText&, rIt
     }
     else if (ContentTypeId::TABLE == nType)
     {
-        sForbiddenChars = " .<>";
+        sForbiddenChars = ".<>";
     }
 
     if (!sForbiddenChars.isEmpty())
@@ -4111,7 +4218,7 @@ void SwContentTree::ToggleToRoot()
         Display(State::HIDDEN != m_eState);
     }
     m_pConfig->SetRootType( m_nRootType );
-    weld::Toolbar* pBox = GetParentWindow()->m_xContent5ToolBox.get();
+    weld::Toolbar* pBox = GetParentWindow().m_xContent5ToolBox.get();
     pBox->set_item_active(u"root"_ustr, m_bIsRoot);
 }
 
@@ -4404,7 +4511,7 @@ void SwContentTree::SetHiddenShell(SwWrtShell* pSh)
     }
     Display(false);
 
-    GetParentWindow()->UpdateListBox();
+    GetParentWindow().UpdateListBox();
 }
 
 void SwContentTree::SetActiveShell(SwWrtShell* pSh)
@@ -4547,7 +4654,7 @@ void SwContentTree::ExecCommand(std::u16string_view rCmd, bool bOutlineWithChild
         return;
     if (GetWrtShell()->GetView().GetDocShell()->IsReadOnly() ||
         (State::ACTIVE != m_eState &&
-         (State::CONSTANT != m_eState || m_pActiveShell != GetParentWindow()->GetCreateView()->GetWrtShellPtr())))
+         (State::CONSTANT != m_eState || m_pActiveShell != GetParentWindow().GetCreateView()->GetWrtShellPtr())))
     {
         return;
     }
@@ -5098,7 +5205,7 @@ IMPL_LINK_NOARG(SwContentTree, TimerUpdate, Timer *, void)
     // No update while focus is not in document.
     // No update while drag and drop.
     // Query view because the Navigator is cleared too late.
-    SwView* pView = GetParentWindow()->GetCreateView();
+    SwView* pView = GetParentWindow().GetCreateView();
 
     SwWrtShell* pActShell = pView ? pView->GetWrtShellPtr() : nullptr;
     if(pActShell && pActShell->GetWin() &&
@@ -5110,7 +5217,7 @@ IMPL_LINK_NOARG(SwContentTree, TimerUpdate, Timer *, void)
             if (State::CONSTANT == m_eState && !lcl_FindShell(m_pActiveShell))
             {
                 SetActiveShell(pActShell);
-                GetParentWindow()->UpdateListBox();
+                GetParentWindow().UpdateListBox();
             }
             if (State::ACTIVE == m_eState && pActShell != GetWrtShell())
             {
@@ -5887,7 +5994,7 @@ void SwContentTree::MoveOutline(SwOutlineNodes::size_type nTargetPos)
                 nTargetPos = nPrevTargetPosOrOffset;
             }
         }
-        GetParentWindow()->MoveOutline(nSourcePos, nTargetPos);
+        GetParentWindow().MoveOutline(nSourcePos, nTargetPos);
     }
 
     pShell->EndUndo();
@@ -5900,7 +6007,7 @@ void SwContentTree::MoveOutline(SwOutlineNodes::size_type nTargetPos)
 // Update immediately
 IMPL_LINK_NOARG(SwContentTree, FocusInHdl, weld::Widget&, void)
 {
-    SwView* pActView = GetParentWindow()->GetCreateView();
+    SwView* pActView = GetParentWindow().GetCreateView();
     if(pActView)
     {
         SwWrtShell* pActShell = pActView->GetWrtShellPtr();
@@ -5947,7 +6054,7 @@ IMPL_LINK(SwContentTree, KeyInputHdl, const KeyEvent&, rEvent, bool)
             {
                 case KEY_MOD2:
                     // Switch boxes
-                    GetParentWindow()->ToggleTree();
+                    GetParentWindow().ToggleTree();
                 break;
                 case KEY_MOD1:
                     // Switch RootMode
@@ -6339,27 +6446,28 @@ void SwContentTree::ExecuteContextMenuAction(const OUString& rSelectedPopupEntry
     }
 
     {
-        std::map<OUString, ContentTypeId> mPopupEntryToContentTypeId
+        static auto constexpr mPopupEntryToContentTypeId = frozen::make_unordered_map<std::u16string_view, ContentTypeId>(
         {
-            {"tabletracking", ContentTypeId::TABLE},
-            {"frametracking", ContentTypeId::FRAME},
-            {"imagetracking", ContentTypeId::GRAPHIC},
-            {"oleobjecttracking", ContentTypeId::OLE},
-            {"bookmarktracking", ContentTypeId::BOOKMARK},
-            {"sectiontracking", ContentTypeId::REGION},
-            {"hyperlinktracking", ContentTypeId::URLFIELD},
-            {"referencetracking", ContentTypeId::REFERENCE},
-            {"indextracking", ContentTypeId::INDEX},
-            {"commenttracking", ContentTypeId::POSTIT},
-            {"drawingobjecttracking", ContentTypeId::DRAWOBJECT},
-            {"fieldtracking", ContentTypeId::TEXTFIELD},
-            {"footnotetracking", ContentTypeId::FOOTNOTE},
-            {"endnotetracking", ContentTypeId::ENDNOTE}
-        };
+            {u"tabletracking", ContentTypeId::TABLE},
+            {u"frametracking", ContentTypeId::FRAME},
+            {u"imagetracking", ContentTypeId::GRAPHIC},
+            {u"oleobjecttracking", ContentTypeId::OLE},
+            {u"bookmarktracking", ContentTypeId::BOOKMARK},
+            {u"sectiontracking", ContentTypeId::REGION},
+            {u"hyperlinktracking", ContentTypeId::URLFIELD},
+            {u"referencetracking", ContentTypeId::REFERENCE},
+            {u"indextracking", ContentTypeId::INDEX},
+            {u"commenttracking", ContentTypeId::POSTIT},
+            {u"drawingobjecttracking", ContentTypeId::DRAWOBJECT},
+            {u"fieldtracking", ContentTypeId::TEXTFIELD},
+            {u"footnotetracking", ContentTypeId::FOOTNOTE},
+            {u"endnotetracking", ContentTypeId::ENDNOTE}
+        });
 
-        if (mPopupEntryToContentTypeId.count(rSelectedPopupEntry))
+        auto it = mPopupEntryToContentTypeId.find(rSelectedPopupEntry);
+        if (it != mPopupEntryToContentTypeId.end())
         {
-            ContentTypeId eCntTypeId = mPopupEntryToContentTypeId[rSelectedPopupEntry];
+            ContentTypeId eCntTypeId = it->second;
             SetContentTypeTracking(eCntTypeId, !mTrackContentType[eCntTypeId]);
             return;
         }
@@ -6394,14 +6502,14 @@ void SwContentTree::ExecuteContextMenuAction(const OUString& rSelectedPopupEntry
         {
             if (pSection->GetPassword().hasElements() && aSectionData.IsProtectFlag())
             {
-                SfxPasswordDialog aPasswordDlg(m_pDialog->GetFrameWeld());
+                SfxPasswordDialog aPasswordDlg(m_rDialog.GetFrameWeld());
                 if (aPasswordDlg.run() != RET_OK)
                     return;
                 if (!SvPasswordHelper::CompareHashPassword(aSectionData.GetPassword(),
                                                            aPasswordDlg.GetPassword()))
                 {
                     std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(
-                        m_pDialog->GetFrameWeld(), VclMessageType::Info, VclButtonsType::Ok,
+                        m_rDialog.GetFrameWeld(), VclMessageType::Info, VclButtonsType::Ok,
                         SwResId(STR_WRONG_PASSWORD)));
                     xInfoBox->run();
                     return;
@@ -6671,7 +6779,7 @@ void SwContentTree::ExecuteContextMenuAction(const OUString& rSelectedPopupEntry
                 m_eState = (nSelectedPopupEntry == 1) ? State::ACTIVE : State::HIDDEN;
                 Display(nSelectedPopupEntry == 1);
             }
-            GetParentWindow()->UpdateListBox();
+            GetParentWindow().UpdateListBox();
         }
     }
 }
@@ -6779,10 +6887,10 @@ void SwContentTree::ShowHiddenShell()
 // only called from IMPL_LINK(SwNavigationPI, DocListBoxSelectHdl, weld::ComboBox&, rBox, void)
 void SwContentTree::ShowActualView()
 {
-    if (SwView* pView = m_pDialog->GetCreateView())
+    if (SwView* pView = m_rDialog.GetCreateView())
     {
         SetConstantShell(pView->GetWrtShellPtr());
-        m_pDialog->UpdateListBox();
+        m_rDialog.UpdateListBox();
     }
 }
 
@@ -6802,14 +6910,12 @@ IMPL_LINK_NOARG(SwContentTree, SelectHdl, weld::ItemView&, void)
         return;
     while (m_xTreeView->get_iter_depth(*xEntry))
         m_xTreeView->iter_parent(*xEntry);
-    m_pDialog->SelectNavigateByContentType(m_xTreeView->get_text(*xEntry));
+    m_rDialog.SelectNavigateByContentType(m_xTreeView->get_text(*xEntry));
 }
 
 void SwContentTree::UpdateContentFunctionsToolbar()
 {
-    SwNavigationPI* pNavi = GetParentWindow();
-    if (pNavi)
-        pNavi->UpdateContentFunctionsToolbar();
+    GetParentWindow().UpdateContentFunctionsToolbar();
 }
 
 void SwContentTree::SetRootType(ContentTypeId nType)
@@ -7653,10 +7759,7 @@ bool NaviContentBookmark::Paste( const TransferableDataHelper& rData, const OUSt
     return bRet;
 }
 
-SwNavigationPI* SwContentTree::GetParentWindow()
-{
-    return m_pDialog;
-}
+SwNavigationPI& SwContentTree::GetParentWindow() { return m_rDialog; }
 
 void SwContentTree::SelectContentType(std::u16string_view rContentTypeName)
 {
@@ -7709,35 +7812,48 @@ void SwContentTree::OverlayObject(std::vector<basegfx::B2DRange>&& aRanges)
 
 void SwContentTree::BringCommentToAttention(sal_uInt16 nCommentId)
 {
+    assert(nCommentId != 0 && "nCommentId is 0, which is not a valid comment Id");
+    if (nCommentId == 0)
+    {
+        SAL_WARN("sw.ui", "nCommentId is 0, which is not a valid comment Id");
+        return;
+    }
+
     std::unique_ptr<weld::TreeIter> xIter(m_xTreeView->make_iterator());
     if (!m_xTreeView->get_iter_first(*xIter))
         return;
     do
     {
         SwContentType* pCntType = weld::fromId<SwContentType*>(m_xTreeView->get_id(*xIter));
-        if (pCntType && pCntType->GetType() == ContentTypeId::POSTIT)
+        if (!pCntType || pCntType->GetType() != ContentTypeId::POSTIT)
         {
-            m_xTreeView->set_cursor(*xIter);
-            m_xTreeView->select(*xIter);
-            m_xTreeView->expand_row(*xIter);
-            UpdateContentFunctionsToolbar();
+            m_xTreeView->collapse_row(*xIter);
+            continue;
+        }
 
-            for (bool bChild = m_xTreeView->iter_children(*xIter); bChild; bChild = m_xTreeView->iter_next(*xIter))
+        m_xTreeView->set_cursor(*xIter);
+        m_xTreeView->select(*xIter);
+        m_xTreeView->expand_row(*xIter);
+        UpdateContentFunctionsToolbar();
+
+        const int nBaseDepth = m_xTreeView->get_iter_depth(*xIter);
+        for (bool bChild = m_xTreeView->iter_children(*xIter); bChild; bChild = m_xTreeView->iter_next(*xIter))
+        {
+            // iter_next() doesn't stop when starting node's descendants are exhausted -> leave
+            if (m_xTreeView->get_iter_depth(*xIter) <= nBaseDepth)
+                break;
+
+            if (const SwPostItContent* pPostIt = weld::fromId<SwPostItContent*>(m_xTreeView->get_id(*xIter)))
             {
-                if (const SwPostItContent* pPostIt = weld::fromId<SwPostItContent*>(m_xTreeView->get_id(*xIter)))
+                const SwPostItField* pPostItField = pPostIt->GetPostItField();
+                if (pPostItField && nCommentId == pPostItField->GetPostItId())
                 {
-                    if (nCommentId == pPostIt->GetPostItField()->GetPostItId())
-                    {
-                        GotoContent(weld::fromId<SwContent*>(m_xTreeView->get_id(*xIter)));
-                        m_xTreeView->grab_focus();
-                        break;
-                    }
+                    GotoContent(weld::fromId<SwContent*>(m_xTreeView->get_id(*xIter)));
+                    m_xTreeView->grab_focus();
+                    return;
                 }
             }
-            break;
         }
-        else
-            m_xTreeView->collapse_row(*xIter);
 
     } while (m_xTreeView->iter_next_sibling(*xIter));
 }

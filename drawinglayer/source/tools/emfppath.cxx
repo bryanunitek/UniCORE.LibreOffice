@@ -64,17 +64,10 @@ namespace emfplushelper
         return static_cast<sal_Int16>(nRet);
     }
 
-    EMFPPath::EMFPPath (sal_uInt32 _nPoints, bool bLines)
+    EMFPPath::EMFPPath (sal_uInt32 _nPoints, bool _bHasPointTypes)
+        : nPoints(_nPoints)
+        , bHasPointTypes(_bHasPointTypes)
     {
-        if (_nPoints > SAL_MAX_UINT32 / (2 * sizeof(float)))
-        {
-            _nPoints = SAL_MAX_UINT32 / (2 * sizeof(float));
-        }
-
-        nPoints = _nPoints;
-
-        if (!bLines)
-            pPointTypes.reset( new sal_uInt8 [_nPoints] );
     }
 
     EMFPPath::~EMFPPath ()
@@ -83,6 +76,30 @@ namespace emfplushelper
 
     void EMFPPath::Read (SvStream& s, sal_uInt32 pathFlags)
     {
+        // A point requires at least this many bytes in the stream, so the
+        // stream that is left says how many points there can really be,
+        // whatever count the file gave.
+        sal_uInt32 nBytesPerPoint;
+        if (pathFlags & 0x800)
+            nBytesPerPoint = 2; // EmfPlusPointR, one byte for each of the two coordinates
+        else if (pathFlags & 0x4000)
+            nBytesPerPoint = 4; // EmfPlusPoint
+        else
+            nBytesPerPoint = 8; // EmfPlusPointF
+        if (bHasPointTypes)
+            nBytesPerPoint += 1;
+
+        const sal_uInt64 nMaxPoints = s.remainingSize() / nBytesPerPoint;
+        if (nPoints > nMaxPoints)
+        {
+            SAL_WARN("drawinglayer.emf", "EMF+\tpath wants " << nPoints
+                     << " points, the stream holds " << nMaxPoints);
+            nPoints = nMaxPoints;
+        }
+
+        if (bHasPointTypes)
+            pPointTypes.reset( new sal_uInt8 [nPoints] );
+
         float fx(0), fy(0);
         for (sal_uInt32 i = 0; i < nPoints; i++)
         {
@@ -129,16 +146,6 @@ namespace emfplushelper
         aPolygon.clear();
     }
 
-    ::basegfx::B2DPolygon EMFPPath::GetRawPointsPolygon() const
-    {
-        ::basegfx::B2DPolygon aOut;
-        for (sal_uInt32 i = 0; i < nPoints; ++i)
-            aOut.append(::basegfx::B2DPoint(xPoints[i], yPoints[i]));
-        if (nPoints >= 1)
-            aOut.setClosed(true);
-        return aOut;
-    }
-
     ::basegfx::B2DPolyPolygon& EMFPPath::GetPolygon (EmfPlusHelperData const & rR, bool bMapIt, bool bAddLineToCloseShape)
     {
         ::basegfx::B2DPolygon polygon;
@@ -149,7 +156,7 @@ namespace emfplushelper
 
         for (sal_uInt32 i = 0; i < nPoints; i++)
         {
-            if (p && pPointTypes && (pPointTypes [i] == 0))
+            if (p && pPointTypes && (pPointTypes[i] == 0))
             {
                 aPolygon.append (polygon);
                 last_normal = i;
@@ -158,15 +165,15 @@ namespace emfplushelper
             }
 
             if (bMapIt)
-                mapped = rR.Map(xPoints[i], yPoints [i]);
+                mapped = rR.Map(xPoints[i], yPoints[i]);
             else
                 mapped = ::basegfx::B2DPoint(xPoints[i], yPoints[i]);
 
             if (pPointTypes)
             {
-                if ((pPointTypes [i] & 0x07) == 3)
+                if ((pPointTypes[i] & 0x07) == 3)
                 {
-                    if (((i - last_normal )% 3) == 1)
+                    if (((i - last_normal) % 3) == 1)
                     {
                         assert(p != 0);
                         polygon.setNextControlPoint (p - 1, mapped);
@@ -198,7 +205,7 @@ namespace emfplushelper
 
             p++;
 
-            if (pPointTypes && (pPointTypes [i] & 0x80)) // closed polygon
+            if (pPointTypes && (pPointTypes[i] & 0x80)) // closed polygon
             {
                 polygon.setClosed (true);
                 aPolygon.append (polygon);
@@ -274,6 +281,8 @@ namespace emfplushelper
             return aPolygon;
         if (aNumSegments >= nPoints)
             aNumSegments = nPoints - 1;
+        if (aOffset >= aNumSegments)
+            return aPolygon;
         GetCardinalMatrix(fTension, mat);
         // duplicate first point
         xPoints.push_front(xPoints.front());
@@ -330,6 +339,6 @@ namespace emfplushelper
             aPolygon.append(polygon);
         return aPolygon;
     }
-}
+} // namespace emfplushelper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

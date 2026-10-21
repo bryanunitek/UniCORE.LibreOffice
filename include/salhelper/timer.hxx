@@ -152,7 +152,7 @@ public:
      */
     sal_Bool    SAL_CALL isExpired() const;
 
-    /** Does pTimer expires before us?
+    /** Does pTimer expire before us?
      */
     sal_Bool    SAL_CALL expiresBefore( const Timer* pTimer ) const;
 
@@ -164,7 +164,7 @@ public:
      */
     void        SAL_CALL setRemainingTime( const TTimeValue& Remaining );
 
-    /** Set the time to fire to 'now' + Remaining with repeat interveal
+    /** Set the time to fire to 'now' + Remaining with repeat interval
      * Repeat.
      */
     void        SAL_CALL setRemainingTime( const TTimeValue& Remaining, const TTimeValue& Repeat );
@@ -177,7 +177,7 @@ public:
      */
     TTimeValue  SAL_CALL getRemainingTime() const;
 
-    /** Internal method to shutdown the timer thread
+    /** Internal method to shut down the timer thread
      */
     static void SAL_CALL joinThread();
 
@@ -205,7 +205,7 @@ protected:
      */
     TTimeValue  m_aExpired;
 
-    /** holds the time interveal of successive expirations.
+    /** holds the time interval of successive expirations.
      */
     TTimeValue  m_aRepeatDelta;
 

@@ -29,6 +29,7 @@ $(eval $(call gb_Library_add_componentimpls,svx, \
 $(eval $(call gb_Library_set_include,svx,\
     -I$(SRCDIR)/svx/inc \
     -I$(SRCDIR)/svx/source/inc \
+    -I$(SRCDIR)/sc/inc \
     $$(INCLUDE) \
 ))
 
@@ -237,13 +238,13 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/sidebar/area/AreaPropertyPanelBase \
     svx/source/sidebar/area/AreaTransparencyGradientPopup \
     svx/source/sidebar/effect/EffectPropertyPanel \
+    svx/source/sidebar/effect/EffectPropertyPanelBase \
     svx/source/sidebar/effect/TextEffectPropertyPanel \
     svx/source/sidebar/fontwork/FontworkPropertyPanel \
     svx/source/sidebar/shadow/ShadowPropertyPanel \
     svx/source/sidebar/graphic/GraphicPropertyPanel \
     svx/source/sidebar/line/LinePropertyPanel \
     svx/source/sidebar/line/LinePropertyPanelBase \
-    svx/source/sidebar/line/LineWidthValueSet \
     svx/source/sidebar/line/LineWidthPopup \
     $(call gb_Helper_optional,AVMEDIA,svx/source/sidebar/media/MediaPlaybackPanel) \
     svx/source/sidebar/possize/PosSizePropertyPanel \
@@ -272,6 +273,7 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/tbxctrls/bulletsnumbering \
     svx/source/tbxctrls/colrctrl \
     svx/source/tbxctrls/SvxColorChildWindow \
+    svx/source/tbxctrls/SvxColorValueSet \
     svx/source/tbxctrls/fillctrl \
     svx/source/tbxctrls/formatpaintbrushctrl \
     svx/source/tbxctrls/grafctrl \

@@ -98,7 +98,7 @@ void WinSalYieldMutex::BeforeReleaseHandler()
 
     if ( GetSalData()->mnAppThreadId != GetCurrentThreadId() )
     {
-        // If we don't call these message, the Output from the
+        // If we don't call these messages, the Output from the
         // Java clients doesn't come in the right order
         GdiFlush();
     }
@@ -801,7 +801,7 @@ int WinSalInstance::WorkaroundExceptionHandlingInUSER32Lib(int, LPEXCEPTION_POIN
 {
     // Decide if an exception is a c++ (mostly UNO) exception or a process violation.
     // Depending on this information we pass process violations directly to our signal handler ...
-    // and c++ (UNO) exceptions are sended to the following code on the current stack.
+    // and c++ (UNO) exceptions are sent to the following code on the current stack.
     // Problem behind: user32.dll sometime consumes exceptions/process violations .-)
     // see also #112221#
 
@@ -815,10 +815,7 @@ int WinSalInstance::WorkaroundExceptionHandlingInUSER32Lib(int, LPEXCEPTION_POIN
 
 OUString WinSalInstance::GetToolkitName() const { return u"win"_ustr; }
 
-void WinSalInstance::BeforeAbort(const OUString&, bool)
-{
-    ImplFreeSalGDI();
-}
+void WinSalInstance::BeforeAbort() { ImplFreeSalGDI(); }
 
 css::uno::Reference<css::datatransfer::dnd::XDragSource>
 WinSalInstance::ImplCreateDragSource(const SystemEnvData& rSysEnv)

@@ -54,8 +54,8 @@ TextField::TextField()
 
 namespace {
 
-/** instantiate the textfields. Because of semantics difference between
- * OpenXML and OpenOffice, some OpenXML field might cause two fields to be created.
+/** instantiate the textfields. Because of semantic differences between
+ * OpenXML and OpenOffice, some OpenXML fields might cause two fields to be created.
  * @param aFields the created fields. The list is empty if no field has been created.
  * @param xModel the model
  * @param sType the OpenXML field type.
@@ -215,7 +215,9 @@ SvxDateFormat TextField::getLODateFormat(std::u16string_view rDateTimeType)
     if( aDateTimeNum.empty() ) // "datetime"
         return SvxDateFormat::StdSmall;
 
-    int nDateTimeNum = o3tl::toInt32(aDateTimeNum);
+    // "datetimeFigureOut", which is what PowerPoint writes in a date placeholder, is an alias of
+    // datetime1: MS-OI29500 part 1, 21.1.2.2.4 (fld).
+    int nDateTimeNum = aDateTimeNum == u"FigureOut" ? 1 : o3tl::toInt32(aDateTimeNum);
 
     switch( nDateTimeNum )
     {

@@ -49,6 +49,13 @@ inline constexpr OString constDictionaryKeyModificationDate = "M"_ostr;
 inline constexpr OString constDictionaryKeyInteriorColor = "IC"_ostr;
 inline constexpr OString constDictionaryKey_DefaultStyle = "DS"_ostr;
 inline constexpr OString constDictionaryKey_RichContent = "RC"_ostr;
+// PDF markup-annotation keys: /IRT links a reply to its parent annotation;
+// /RT says whether /IRT is a reply ("R", default) or a grouping ("Group");
+// /State + /StateModel describe the annotation's review/marked state.
+inline constexpr OString constDictionaryKey_InReplyTo = "IRT"_ostr;
+inline constexpr OString constDictionaryKey_ReplyType = "RT"_ostr;
+inline constexpr OString constDictionaryKey_State = "State"_ostr;
+inline constexpr OString constDictionaryKey_StateModel = "StateModel"_ostr;
 
 class PDFiumBitmap;
 class PDFiumDocument;
@@ -153,6 +160,8 @@ public:
     virtual ~PDFiumAnnotation() = default;
     virtual PDFAnnotationSubType getSubType() = 0;
     virtual basegfx::B2DRectangle getRectangle() = 0;
+    /// Value of the /F (annotation flags) entry; 0 if absent.
+    virtual int getFlags() = 0;
     virtual bool hasKey(OString const& rKey) = 0;
     virtual PDFObjectType getValueType(OString const& rKey) = 0;
     virtual OUString getString(OString const& rKey) = 0;
@@ -217,6 +226,8 @@ public:
 
     virtual PDFPageObjectType getType() = 0;
     virtual OUString getText(std::unique_ptr<PDFiumTextPage> const& pTextPage) = 0;
+    // what ties the object to a structure element within the page, or -1
+    virtual int getMarkedContentID() = 0;
 
     virtual int getFormObjectCount() = 0;
     virtual std::unique_ptr<PDFiumPageObject> getFormObject(int nIndex) = 0;
@@ -230,14 +241,10 @@ public:
     virtual std::unique_ptr<PDFiumFont> getFont() = 0;
     virtual PDFTextRenderMode getTextRenderMode() = 0;
     virtual Color getFillColor() = 0;
-    virtual std::unique_ptr<PDFiumBitmap> getRenderedFillPattern(PDFiumDocument& rDoc,
-                                                                 PDFiumPage& rPage)
-        = 0;
+    virtual std::unique_ptr<PDFiumBitmap> getRenderedFillPattern(PDFiumDocument& rDoc) = 0;
     virtual Color getStrokeColor() = 0;
     virtual double getStrokeWidth() = 0;
-    virtual std::unique_ptr<PDFiumBitmap> getRenderedStrokePattern(PDFiumDocument& rDoc,
-                                                                   PDFiumPage& rPage)
-        = 0;
+    virtual std::unique_ptr<PDFiumBitmap> getRenderedStrokePattern(PDFiumDocument& rDoc) = 0;
     // Path
     virtual int getPathSegmentCount() = 0;
     virtual std::unique_ptr<PDFiumPathSegment> getPathSegment(int index) = 0;

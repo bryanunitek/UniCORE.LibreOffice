@@ -53,14 +53,14 @@ bool SbModule::Compile()
 
     GetSbData()->pCompMod = pOld;
 
-    // compiling a module, the module-global
+    // When compiling a module, the module-global
     // variables of all modules become invalid
     bool bRet = IsCompiled();
     if( bRet )
     {
         if( dynamic_cast<const SbObjModule*>( this) == nullptr )
             pBasic->ClearAllModuleVars();
-        RemoveVars(); // remove 'this' Modules variables
+        RemoveVars(); // remove 'this' Module's variables
         // clear all method statics
         for (sal_uInt32 i = 0; i < pMethods->Count(); i++)
         {

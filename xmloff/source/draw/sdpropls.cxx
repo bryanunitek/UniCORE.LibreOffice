@@ -25,6 +25,7 @@
 #include <com/sun/star/drawing/LineCap.hpp>
 #include <com/sun/star/presentation/AnimationSpeed.hpp>
 #include <com/sun/star/presentation/FadeEffect.hpp>
+#include <com/sun/star/presentation/XSoundReference.hpp>
 
 #include <com/sun/star/text/WritingMode.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
@@ -174,6 +175,15 @@ const XMLPropertyMapEntry aXMLSDProperties[] =
 
     // soft edge attributes
     GMAPV( PROP_SoftEdgeRadius,                XML_NAMESPACE_LO_EXT, XML_SOFTEDGE_RADIUS,      XML_TYPE_MEASURE          , 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+
+    // reflection attributes
+    GMAPV( PROP_ReflectionEffect,                   XML_NAMESPACE_LO_EXT, XML_REFLECTION,                    XML_TYPE_BOOL     , 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+    GMAPV( PROP_ReflectionEffectDistance,           XML_NAMESPACE_LO_EXT, XML_REFLECTION_DISTANCE,           XML_TYPE_MEASURE  , 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+    GMAPV( PROP_ReflectionEffectBlurRadius,         XML_NAMESPACE_LO_EXT, XML_REFLECTION_BLUR,               XML_TYPE_MEASURE  , 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+    GMAPV( PROP_ReflectionEffectStartTransparency,  XML_NAMESPACE_LO_EXT, XML_REFLECTION_START_TRANSPARENCY, XML_TYPE_PERCENT16, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+    GMAPV( PROP_ReflectionEffectStartPosition,      XML_NAMESPACE_LO_EXT, XML_REFLECTION_START_POSITION,     XML_TYPE_PERCENT16, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+    GMAPV( PROP_ReflectionEffectEndTransparency,    XML_NAMESPACE_LO_EXT, XML_REFLECTION_END_TRANSPARENCY,   XML_TYPE_PERCENT16, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+    GMAPV( PROP_ReflectionEffectEndPosition,        XML_NAMESPACE_LO_EXT, XML_REFLECTION_END_POSITION,       XML_TYPE_PERCENT16, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
 
     // glow text attributes
     TMAPV( PROP_GlowTextEffectRadius,           XML_NAMESPACE_LO_EXT, XML_GLOW_TEXT_RADIUS,          XML_TYPE_MEASURE  , 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
@@ -331,6 +341,7 @@ const XMLPropertyMapEntry aXMLSDProperties[] =
     GMAP( PROP_WritingMode,                XML_NAMESPACE_STYLE, XML_WRITING_MODE,              XML_SD_TYPE_WRITINGMODE2, CTF_WRITINGMODE2 ),
     { PROP_WritingMode, XML_NAMESPACE_LO_EXT, XML_WRITING_MODE, XML_SD_TYPE_WRITINGMODE2|XML_TYPE_PROP_GRAPHIC, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, true},
     { PROP_Decorative, XML_NAMESPACE_LO_EXT, XML_DECORATIVE, XML_TYPE_BOOL|XML_TYPE_PROP_GRAPHIC, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, false },
+    { PROP_HorizontalRule, XML_NAMESPACE_LO_EXT, XML_HORIZONTAL_RULE, XML_TYPE_BOOL|XML_TYPE_PROP_GRAPHIC, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED, false },
 
     MAP_END()
 };
@@ -1984,7 +1995,15 @@ void XMLPageExportPropertyMapper::handleElementItem(
         case CTF_PAGE_SOUND_URL:
             {
                 OUString aSoundURL;
-                if( (rProperty.maValue >>= aSoundURL) && !aSoundURL.isEmpty() )
+                css::uno::Reference<css::presentation::XSoundReference> xSound;
+                if( rProperty.maValue >>= xSound )
+                {
+                    if( xSound.is() )
+                        aSoundURL = xSound->getURL();
+                }
+                else
+                    rProperty.maValue >>= aSoundURL;
+                if( !aSoundURL.isEmpty() )
                 {
                     mrExport.AddAttribute(XML_NAMESPACE_XLINK, XML_HREF, mrExport.GetRelativeReference(aSoundURL) );
                     mrExport.AddAttribute( XML_NAMESPACE_XLINK, XML_TYPE, XML_SIMPLE );

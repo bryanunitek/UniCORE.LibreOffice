@@ -39,6 +39,7 @@
 #include <svtools/ctrlbox.hxx>
 #include <svtools/imagemgr.hxx>
 #include <sal/log.hxx>
+#include <officecfg/Office/Common.hxx>
 #include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <openuriexternally.hxx>
@@ -343,6 +344,7 @@ bool SfxDocumentInfoItem::operator==( const SfxPoolItem& rItem) const
          m_Type                 == rInfoItem.m_Type              &&
          m_Subject              == rInfoItem.m_Subject           &&
          m_Title                == rInfoItem.m_Title             &&
+         m_bUseThumbnailSave    == rInfoItem.m_bUseThumbnailSave &&
          comphelper::ContainerUniquePtrEquals(m_aCustomProperties, rInfoItem.m_aCustomProperties) &&
          m_aCmisProperties.getLength() == rInfoItem.m_aCmisProperties.getLength();
 }
@@ -1271,7 +1273,10 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
     m_xUseUserDataCB->set_sensitive( bEnableUseUserData );
     bHandleDelete = false;
     m_xDeleteBtn->set_sensitive( bEnableUseUserData );
-    m_xUseThumbnailSaveCB->set_active(bUseThumbnailSave);
+
+    const bool bGenThumbnail = officecfg::Office::Common::Save::Document::GenerateThumbnail::get();
+    m_xUseThumbnailSaveCB->set_sensitive(bGenThumbnail);
+    m_xUseThumbnailSaveCB->set_active(bUseThumbnailSave && bGenThumbnail);
     m_xUseThumbnailSaveCB->save_state();
 
     SfxObjectShell* pDocSh = SfxObjectShell::Current();
@@ -1347,21 +1352,21 @@ SfxDocumentInfoDialog::SfxDocumentInfoDialog(weld::Window* pParent, const SfxIte
     m_xDialog->set_title(aTitle);
 
     // Property Pages
-    AddTabPage(u"general"_ustr, TabResId(RID_TAB_ORGANIZER.aLabel), SfxDocumentPage::Create,
-               RID_L + RID_TAB_ORGANIZER.sIconName);
-    AddTabPage(u"description"_ustr, TabResId(RID_TAB_DESCRIPTION.aLabel), SfxDocumentDescPage::Create,
-               RID_L + RID_TAB_DESCRIPTION.sIconName);
+    AddTabPage(u"general"_ustr, TabResId(RID_TAB_SFX2PROP_ORGANIZER), SfxDocumentPage::Create,
+               RID_L + RID_TAB_ORGANIZER_IMG);
+    AddTabPage(u"description"_ustr, TabResId(RID_TAB_SFX2PROP_DESCRIPTION), SfxDocumentDescPage::Create,
+               RID_L + RID_TAB_DESCRIPTION_IMG);
 
-    AddTabPage(u"customprops"_ustr, TabResId(RID_TAB_CUSTOM.aLabel),
-               SfxCustomPropertiesPage::Create, RID_L + RID_TAB_CUSTOM.sIconName);
+    AddTabPage(u"customprops"_ustr, TabResId(RID_TAB_SFX2PROP_CUSTOM),
+               SfxCustomPropertiesPage::Create, RID_L + RID_TAB_CUSTOM_IMG);
 
     if (rInfoItem.isCmisDocument())
-        AddTabPage(u"cmisprops"_ustr, TabResId(RID_TAB_CMIS.aLabel),
-                   SfxCmisPropertiesPage::Create, RID_L + RID_TAB_CMIS.sIconName);
+        AddTabPage(u"cmisprops"_ustr, TabResId(RID_TAB_SFX2PROP_CMIS),
+                   SfxCmisPropertiesPage::Create, RID_L + RID_TAB_CMIS_IMG);
     // Disable security page for online as not fully asynced yet
     if (!comphelper::LibreOfficeKit::isActive())
-        AddTabPage(u"security"_ustr, TabResId(RID_TAB_SECURITY.aLabel), SfxSecurityPage::Create,
-                   RID_L + RID_TAB_SECURITY.sIconName);
+        AddTabPage(u"security"_ustr, TabResId(RID_TAB_SFX2PROP_SECURITY), SfxSecurityPage::Create,
+                   RID_L + RID_TAB_SECURITY_IMG);
 }
 
 void SfxDocumentInfoDialog::PageCreated(const OUString& rId, SfxTabPage &rPage)
@@ -1372,8 +1377,8 @@ void SfxDocumentInfoDialog::PageCreated(const OUString& rId, SfxTabPage &rPage)
 
 void SfxDocumentInfoDialog::AddFontTabPage()
 {
-    AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel),
-               SfxDocumentFontsPage::Create, RID_L + RID_TAB_FONT.sIconName);
+    AddTabPage(u"font"_ustr, TabResId(RID_TAB_SFX2PROP_FONT),
+               SfxDocumentFontsPage::Create, RID_L + RID_TAB_FONT_IMG);
 }
 
 // class CustomPropertiesYesNoButton -------------------------------------

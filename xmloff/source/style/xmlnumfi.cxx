@@ -858,7 +858,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > SvXMLNumFmtElementCont
     sal_Int32 nElement,
     const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
 {
-    //  only number:number and number:scientific-number supports number:embedded-text child element
+    //  only number:number and number:scientific-number support number:embedded-text child element
 
     if ( ( nType == SvXMLStyleTokens::Number || nType == SvXMLStyleTokens::ScientificNumber ) &&
          nElement == XML_ELEMENT(NUMBER, XML_EMBEDDED_TEXT) )
@@ -2206,6 +2206,17 @@ void SvXMLNumFormatContext::AddColor( Color const nColor )
             aColName = pFormatter->GetKeyword( m_nFormatLang, sal::static_int_cast< sal_uInt16 >(NF_KEY_FIRSTCOLOR + i) );
             break;
         }
+
+    if (aColName.isEmpty())
+    {
+        const sal_Int32 nColorIndex = pFormatter->GetUserDefColorIndex(nColor);
+        if (nColorIndex >= 0)
+        {
+            // COLOR<n> is 1-based, while XColorList is 0-based.
+            aColName.append(pFormatter->GetKeyword(m_nFormatLang, NF_KEY_COLOR));
+            aColName.append(nColorIndex + 1);
+        }
+    }
 
     if ( !aColName.isEmpty() )
     {

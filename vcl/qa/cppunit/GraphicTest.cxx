@@ -440,7 +440,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testEmfToWmfConversion)
     OUString aURL = aDirectories.getURLFromSrc(DATA_DIRECTORY) + "to-wmf.emf";
     SvFileStream aStream(aURL, StreamMode::READ);
     Graphic aGraphic;
-    // This similar to an application/x-openoffice-wmf mime type in manifest.xml in the ODF case.
+    // This is similar to an application/x-openoffice-wmf mime type in manifest.xml in the ODF case.
     sal_uInt16 nFormatEMF = aGraphicFilter.GetImportFormatNumberForShortName(u"EMF");
     CPPUNIT_ASSERT_EQUAL(ERRCODE_NONE,
                          aGraphicFilter.ImportGraphic(aGraphic, u"", aStream, nFormatEMF));
@@ -1246,12 +1246,28 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testLoadEPS)
     CPPUNIT_ASSERT_EQUAL(GraphicType::GdiMetafile, aGraphic.GetType());
 }
 
+CPPUNIT_TEST_FIXTURE(GraphicTest, testLoadJXL)
+{
+    Graphic aGraphic = loadGraphic(u"TypeDetectionExample.jxl");
+    CPPUNIT_ASSERT_EQUAL(GraphicType::Bitmap, aGraphic.GetType());
+    CPPUNIT_ASSERT_EQUAL(tools::Long(10), aGraphic.GetSizePixel().Width());
+    CPPUNIT_ASSERT_EQUAL(tools::Long(10), aGraphic.GetSizePixel().Height());
+
+    // The imported Graphic is tagged with its JPEG XL origin
+    CPPUNIT_ASSERT_EQUAL(true, aGraphic.IsGfxLink());
+    CPPUNIT_ASSERT_EQUAL(GfxLinkType::NativeJxl, aGraphic.GetGfxLink().GetType());
+}
+
 CPPUNIT_TEST_FIXTURE(GraphicTest, testLoadWEBP)
 {
     Graphic aGraphic = loadGraphic(u"TypeDetectionExample.webp");
     CPPUNIT_ASSERT_EQUAL(GraphicType::Bitmap, aGraphic.GetType());
     CPPUNIT_ASSERT_EQUAL(tools::Long(10), aGraphic.GetSizePixel().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(10), aGraphic.GetSizePixel().Height());
+
+    // The imported Graphic is tagged with its WebP origin
+    CPPUNIT_ASSERT_EQUAL(true, aGraphic.IsGfxLink());
+    CPPUNIT_ASSERT_EQUAL(GfxLinkType::NativeWebp, aGraphic.GetGfxLink().GetType());
 }
 
 CPPUNIT_TEST_FIXTURE(GraphicTest, testLoadSVGZ)
@@ -1341,6 +1357,25 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testColorChangeToTransparent)
     // colorChange with nTolerance 15 shouldn't change this pixel.
     CPPUNIT_ASSERT_EQUAL(rBitmapBefore.GetPixelColor(410, 140),
                          rBitmapAfter.GetPixelColor(410, 140));
+}
+
+CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappedOutGraphicKeepsSizeAfterThreadedLoad)
+{
+    // Given a PNG graphic that was loaded once and then swapped out:
+    Graphic aGraphic = makeUnloadedGraphic(u"png");
+    CPPUNIT_ASSERT(aGraphic.makeAvailable());
+    CPPUNIT_ASSERT(aGraphic.ImplGetImpGraphic()->swapOut());
+
+    // When it is loaded again by the threaded loader and swapped out once more:
+    std::vector<Graphic*> aGraphics{ &aGraphic };
+    GraphicFilter::GetGraphicFilter().MakeGraphicsAvailableThreaded(aGraphics);
+    CPPUNIT_ASSERT(aGraphic.isAvailable());
+    CPPUNIT_ASSERT(aGraphic.ImplGetImpGraphic()->swapOut());
+
+    // Then it still reports its size, so it does not look like an empty graphic.
+    // Without the fix in place, this test would have failed, the graphic reported a size of 0
+    // bytes.
+    CPPUNIT_ASSERT(aGraphic.GetSizeBytes() > 0);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

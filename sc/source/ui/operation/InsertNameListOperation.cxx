@@ -40,7 +40,7 @@ bool InsertNameListOperation::runImplementation()
     const bool bRecord = rDoc.IsUndoEnabled();
     SCTAB nTab = aStartPos.Tab();
 
-    //local names have higher priority than global names
+    // local names have higher priority than global names
     ScRangeName* pLocalList = rDoc.GetRangeName(nTab);
     sal_uInt16 nValidCount = 0;
     for (const auto& rEntry : *pLocalList)
@@ -49,8 +49,8 @@ bool InsertNameListOperation::runImplementation()
         if (!r.HasType(ScRangeData::Type::Database))
             ++nValidCount;
     }
-    ScRangeName* pList = rDoc.GetRangeName();
-    for (const auto& rEntry : *pList)
+    ScRangeName& rList = rDoc.GetRangeName();
+    for (const auto& rEntry : rList)
     {
         const ScRangeData& r = *rEntry.second;
         if (!r.HasType(ScRangeData::Type::Database)
@@ -89,7 +89,7 @@ bool InsertNameListOperation::runImplementation()
                 if (!r.HasType(ScRangeData::Type::Database))
                     ppSortArray[j++] = &r;
             }
-            for (const auto & [ rName, rxData ] : *pList)
+            for (const auto & [ rName, rxData ] : rList)
             {
                 ScRangeData& r = *rxData;
                 if (!r.HasType(ScRangeData::Type::Database) && !pLocalList->findByUpperName(rName))

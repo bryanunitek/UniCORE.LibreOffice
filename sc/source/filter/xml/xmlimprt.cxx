@@ -1296,9 +1296,9 @@ public:
             if (!p.bIsExpression)
                 ScXMLConverter::ConvertCellRangeAddress(aContent);
 
-            ScRangeData* pData = new ScRangeData(
-                mrDoc, p.sName, aContent, aPos, nNewType, p.eGrammar);
-            mrRangeName.insert(pData);
+            std::unique_ptr<ScRangeData> pData(new ScRangeData(
+                mrDoc, p.sName, aContent, aPos, nNewType, p.eGrammar));
+            mrRangeName.insert(std::move(pData));
         }
     }
 };
@@ -1314,9 +1314,9 @@ void ScXMLImport::SetNamedRanges()
         return;
 
     // Insert the namedRanges
-    ScRangeName* pRangeNames = mpDoc->GetRangeName();
+    ScRangeName& rRangeNames = mpDoc->GetRangeName();
     ::std::for_each(m_aMyNamedExpressions.begin(), m_aMyNamedExpressions.end(),
-            RangeNameInserter(*mpDoc, *pRangeNames, -1));
+            RangeNameInserter(*mpDoc, rRangeNames, -1));
 }
 
 void ScXMLImport::SetSheetNamedRanges()
@@ -1407,6 +1407,14 @@ void SAL_CALL ScXMLImport::endDocument()
                 mpDoc->GetExternalRefManager()->updateAbsAfterLoad();
         }
 
+        // tdf#171228 - compute page size once per sheet after row visibility was applied
+        if (mpDoc)
+        {
+            const SCTAB nTabCount = mpDoc->GetTableCount();
+            for (SCTAB nTab = 0; nTab < nTabCount; ++nTab)
+                mpDoc->SetDrawPageSize(nTab);
+        }
+
         // If the stream contains cells outside of the current limits, the styles can't be re-created,
         // so stream copying is disabled then.
         if (mpDoc && GetModel().is() && !mpDoc->HasRangeOverflow())
@@ -1418,7 +1426,6 @@ void SAL_CALL ScXMLImport::endDocument()
             SCTAB nTabCount = mpDoc->GetTableCount();
             for (SCTAB nTab=0; nTab<nTabCount; ++nTab)
             {
-                mpDoc->SetDrawPageSize(nTab);
                 if (!pSheetData->IsSheetBlocked( nTab ))
                     mpDoc->SetStreamValid( nTab, true );
             }
@@ -1614,7 +1621,7 @@ void ScXMLImport::ExtractFormulaNamespaceGrammar(
     /*  Check if a namespace URL could be resolved from the attribute value.
         Use that namespace only, if the Calc document knows an associated
         external formula parser. This prevents that the range operator in
-        conjunction with defined names is confused as namespaces prefix, e.g.
+        conjunction with defined names is confused as a namespace prefix, e.g.
         in the expression 'table:A1' where 'table' is a named reference. */
     if( ((nNsId & XML_NAMESPACE_UNKNOWN_FLAG) != 0) && !rFormulaNmsp.isEmpty() &&
         mpDoc->GetFormulaParserPool().hasFormulaParser( rFormulaNmsp ) )
@@ -1680,9 +1687,10 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportFODS(SvStream &rStream)
 {
     ScDLL::Init();
 
-    SfxObjectShellLock xDocSh(new ScDocShell);
-    xDocSh->DoInitNew();
-    uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
+    rtl::Reference<ScDocShell> xDocSh(new ScDocShell);
+    SfxObjectShellLock xLock(xDocSh.get());
+    xDocSh->DoInitNew(SfxNewDocumentMacros::Disallow);
+    rtl::Reference<ScModelObj> xModel(xDocSh->GetModel());
 
     uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
     uno::Reference<io::XInputStream> xStream(new ::utl::OSeekableInputStreamWrapper(rStream));
@@ -1719,7 +1727,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportFODS(SvStream &rStream)
     //SetLoading hack because the document properties will be re-initted
     //by the xml filter and during the init, while it's considered uninitialized,
     //setting a property will inform the document it's modified, which attempts
-    //to update the properties, which throws cause the properties are uninitialized
+    //to update the properties, which throws because the properties are uninitialized
     xDocSh->SetLoading(SfxLoadedFlags::NONE);
     bool ret = xFilter->filter(aArgs);
     xDocSh->SetLoading(SfxLoadedFlags::ALL);
@@ -1733,9 +1741,10 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestFODSExportXLS(SvStream &rStream)
 {
     ScDLL::Init();
 
-    SfxObjectShellLock xDocSh(new ScDocShell);
-    xDocSh->DoInitNew();
-    uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
+    rtl::Reference<ScDocShell> xDocSh(new ScDocShell);
+    SfxObjectShellLock xLock(xDocSh.get());
+    xDocSh->DoInitNew(SfxNewDocumentMacros::Disallow);
+    rtl::Reference<ScModelObj> xModel(xDocSh->GetModel());
 
     uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
     uno::Reference<io::XInputStream> xStream(new ::utl::OSeekableInputStreamWrapper(rStream));
@@ -1772,7 +1781,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestFODSExportXLS(SvStream &rStream)
     //SetLoading hack because the document properties will be re-initted
     //by the xml filter and during the init, while it's considered uninitialized,
     //setting a property will inform the document it's modified, which attempts
-    //to update the properties, which throws cause the properties are uninitialized
+    //to update the properties, which throws because the properties are uninitialized
     xDocSh->SetLoading(SfxLoadedFlags::NONE);
     bool ret = xFilter->filter(aArgs);
     xDocSh->SetLoading(SfxLoadedFlags::ALL);
@@ -1807,9 +1816,10 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportXLSX(SvStream &rStream)
 {
     ScDLL::Init();
 
-    SfxObjectShellLock xDocSh(new ScDocShell);
-    xDocSh->DoInitNew();
-    uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
+    rtl::Reference<ScDocShell> xDocSh(new ScDocShell);
+    SfxObjectShellLock xLock(xDocSh.get());
+    xDocSh->DoInitNew(SfxNewDocumentMacros::Disallow);
+    rtl::Reference<ScModelObj> xModel(xDocSh->GetModel());
 
     uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
     uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
@@ -1827,7 +1837,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportXLSX(SvStream &rStream)
     //SetLoading hack because the document properties will be re-initted
     //by the xml filter and during the init, while it's considered uninitialized,
     //setting a property will inform the document it's modified, which attempts
-    //to update the properties, which throws cause the properties are uninitialized
+    //to update the properties, which throws because the properties are uninitialized
     xDocSh->SetLoading(SfxLoadedFlags::NONE);
     bool ret = false;
     try

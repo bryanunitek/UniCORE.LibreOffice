@@ -22,6 +22,7 @@
 #endif
 
 #include <rtl/character.hxx>
+#include <rtl/random.h>
 #include <rtl/strbuf.hxx>
 #include <rtl/string.hxx>
 #include <sal/log.hxx>
@@ -30,7 +31,6 @@
 #include <comphelper/base64.hxx>
 #include <comphelper/hash.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/random.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <comphelper/lok.hxx>
 #include <com/sun/star/security/XCertificate.hpp>
@@ -1086,7 +1086,8 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
         src.reqPolicy.data = nullptr;
         src.reqPolicy.len = 0;
 
-        unsigned int nNonce = comphelper::rng::uniform_uint_distribution(0, SAL_MAX_UINT32);
+        unsigned int nNonce;
+        rtl_random_getBytes(nullptr, &nNonce, sizeof(nNonce));
         src.nonce.type = siUnsignedInteger;
         src.nonce.data = reinterpret_cast<unsigned char*>(&nNonce);
         src.nonce.len = sizeof(nNonce);
@@ -1481,7 +1482,8 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
         CMSG_SIGNER_INFO *pDecodedSignerInfo = reinterpret_cast<CMSG_SIGNER_INFO *>(pDecodedSignerInfoBuf.get());
 
         CRYPT_TIMESTAMP_PARA aTsPara;
-        unsigned int nNonce = comphelper::rng::uniform_uint_distribution(0, SAL_MAX_UINT32);
+        unsigned int nNonce;
+        rtl_random_getBytes(nullptr, &nNonce, sizeof(nNonce));
 
         aTsPara.pszTSAPolicyId = nullptr;
         aTsPara.fRequestCerts = TRUE;
@@ -2201,9 +2203,18 @@ bool Signing::Verify(SvStream& rStream,
 #if USE_CRYPTO_ANY
     std::vector<unsigned char> buffer;
 
+    const sal_uInt64 nStreamSize = rStream.TellEnd();
+
     // Copy the byte ranges into a single buffer.
     for (const auto& rByteRange : aByteRanges)
     {
+        // A signature covers a part of the file, so both ends of every range are inside it.
+        if (rByteRange.first > nStreamSize || rByteRange.second > nStreamSize - rByteRange.first)
+        {
+            SAL_WARN("svl.crypto", "Verify: byte range is outside the stream");
+            return false;
+        }
+
         rStream.Seek(rByteRange.first);
         const size_t size = buffer.size();
         buffer.resize(size + rByteRange.second);

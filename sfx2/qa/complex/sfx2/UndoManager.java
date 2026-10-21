@@ -25,6 +25,7 @@ import com.sun.star.awt.Size;
 import com.sun.star.awt.XControl;
 import com.sun.star.awt.XControlModel;
 import com.sun.star.awt.XToolkitExperimental;
+import com.sun.star.awt.XVclWindowPeer;
 import com.sun.star.beans.NamedValue;
 import com.sun.star.beans.XPropertySet;
 import com.sun.star.container.NoSuchElementException;
@@ -384,7 +385,7 @@ public class UndoManager
         final XControlModel controlModel = UnoRuntime.queryInterface( XControlModel.class,
             getORB().createInstance( sQualifiedComponentName ) );
 
-        // knitt both
+        // knit both
         xShape.setControl( controlModel );
 
         // add the shape to the shapes collection of the document
@@ -434,7 +435,9 @@ public class UndoManager
         final XControlAccess controlAccess = UnoRuntime.queryInterface( XControlAccess.class,
             m_currentDocument.getCurrentView().getController() );
         final XControl control = controlAccess.getControl( UnoRuntime.queryInterface( XControlModel.class, i_buttonModel ) );
-        final XAccessible accessible = UnoRuntime.queryInterface( XAccessible.class, control );
+        final XVclWindowPeer peer = UnoRuntime.queryInterface(XVclWindowPeer.class, control.getPeer());
+        // see VCLXWindow::getProperty
+        final XAccessible accessible = UnoRuntime.queryInterface(XAccessible.class, peer.getProperty("XAccessible"));
         final XAccessibleAction controlActions = UnoRuntime.queryInterface( XAccessibleAction.class, accessible.getAccessibleContext() );
         for ( int i=0; i<controlActions.getAccessibleActionCount(); ++i )
         {
@@ -1173,7 +1176,7 @@ public class UndoManager
         final CustomUndoAction action3 = new CustomUndoAction( "action 3" );
         i_undoManager.addUndoAction( action3 );
         i_undoManager.enterHiddenUndoContext();
-        assertEquals( "mixed hidden/normal context do are not properly notified", 4, m_undoListener.getCurrentUndoContextDepth() );
+        assertEquals( "mixed hidden/normal contexts are not properly notified", 4, m_undoListener.getCurrentUndoContextDepth() );
         i_undoManager.leaveUndoContext();
         assertTrue( "the left context was empty - why wasn't 'cancelled' notified?", m_undoListener.hasContextBeenCancelled() );
         assertFalse( m_undoListener.wasContextLeft() );

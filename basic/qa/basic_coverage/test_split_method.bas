@@ -53,6 +53,33 @@ Sub verify_testSplit
         TestUtil.AssertEqual(VarType(splitArr(i)), 8200, "VarType(splitArr(i))")
     Next
 
+    ' tdf#146873 - CoreReflection.getType() must not error after Split() elements are wrapped in Array()
+    splitArr = Split("a-b-c", "-")
+    For i = 0 To UBound(splitArr)
+        splitArr(i) = Array(splitArr(i))
+    Next
+    Dim oReflection As Object : oReflection = CreateUnoService("com.sun.star.reflection.CoreReflection")
+    ' Without the fix in place, this assignment would have failed
+    Dim oObject As Object : oObject = oReflection.GetType(splitArr)
+    ' Without the fix in place, this test would have failed with:
+    ' - Expected: 20 (20 for typelib_TypeClass_SEQUENCE)
+    ' - Actual  : Object variable not set
+    TestUtil.AssertEqual(oObject.TypeClass, 20, "CoreReflection.getType() for oObject.TypeClass after Split() + Array()")
+
+    ' cid#1700598 - guard the element probe against empty arrays
+    Dim aEmpty() As Integer
+    ' Without the fix in place, this assignment would have failed with
+    ' "Inadmissible value or data type. Index out of defined range"
+    oObject = oReflection.GetType(aEmpty)
+    TestUtil.AssertEqual(oObject.Name, "[]short", "CoreReflection.getType() for an empty Integer array")
+
+    ' cid#1700598 - the element probe must use the dimension and not the flat storage index
+    Dim aNegative(-5 To -1) As Integer
+    ' Without the fix in place, this assignment would have failed with
+    ' "Inadmissible value or data type. Index out of defined range"
+    oObject = oReflection.GetType(aNegative)
+    TestUtil.AssertEqual(oObject.Name, "[]short", "CoreReflection.getType() for an array with a negative lower bound")
+
     ' tdf#141474 keyword names need to match that of VBA
     TestUtil.AssertEqual(Split(expression:="LibreOffice StarOffice")(1), "StarOffice", "Split with 1 keyword name" )
     Dim txt As String : txt = "Libre_Office_Star_Office"

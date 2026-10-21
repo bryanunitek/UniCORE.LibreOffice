@@ -268,6 +268,14 @@ namespace slideshow::internal
         }
 
 
+        bool ViewMediaShape::implMediaLinkAllowed() const
+        {
+            SdrMediaObj* pObj
+                = dynamic_cast<SdrMediaObj*>(SdrObject::getSdrObjectFromXShape(mxShape));
+            return pObj && pObj->isLinkAllowed();
+        }
+
+
         bool ViewMediaShape::implInitialize( const ::basegfx::B2DRectangle& rBounds )
         {
             if( !mxPlayer.is() && mxShape.is() )
@@ -295,7 +303,8 @@ namespace slideshow::internal
                             {
                                 implInitializeMediaPlayer( aURL, sMimeType );
                             }
-                            else if (xPropSet->getPropertyValue(u"MediaURL"_ustr) >>= aURL)
+                            else if ((xPropSet->getPropertyValue(u"MediaURL"_ustr) >>= aURL)
+                                     && implMediaLinkAllowed())
                             {
                                 if ( maFallbackDir.getLength() &&
                                      aURL.startsWith("file:///") &&

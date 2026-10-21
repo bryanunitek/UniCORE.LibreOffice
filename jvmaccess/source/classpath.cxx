@@ -29,9 +29,11 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
+#include <com/sun/star/uri/XUriReference.hpp>
 #include <com/sun/star/uri/XVndSunStarExpandUrlReference.hpp>
 #include <com/sun/star/util/theMacroExpander.hpp>
 #include <cppuhelper/exc_hlp.hxx>
+#include <rtl/uri.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <o3tl/string_view.hxx>
@@ -75,6 +77,28 @@ jobjectArray jvmaccess::ClassPath::translateToUrls(
                          + e.Message,
                          nullptr, anyEx );
                 }
+            }
+            css::uno::Reference< css::uri::XUriReference > uriRef(
+                css::uri::UriReferenceFactory::create(context)->parse(url));
+            bool bLocal = uriRef.is() && uriRef->getScheme().equalsIgnoreAsciiCase("file");
+            if (bLocal && uriRef->hasAuthority())
+            {
+                OUString aAuthority(uriRef->getAuthority());
+                bLocal = aAuthority.isEmpty() || aAuthority.equalsIgnoreAsciiCase("localhost");
+            }
+            if (bLocal)
+            {
+                // Java reads a path that starts with two separators as a network share name.
+                OUString aPath(rtl::Uri::decode(uriRef->getPath(), rtl_UriDecodeWithCharset,
+                                                RTL_TEXTENCODING_UTF8));
+                bLocal = aPath.getLength() >= 2 && aPath[0] == '/' && aPath[1] != '/'
+                         && aPath[1] != '\\';
+            }
+            if (!bLocal)
+            {
+                throw css::lang::IllegalArgumentException(
+                    "non-local Java class path entry: " + url,
+                    css::uno::Reference< css::uno::XInterface >(), 0);
             }
             jvalue arg;
             arg.l = environment->NewString(

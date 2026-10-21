@@ -278,7 +278,20 @@ void SmDocShell::ArrangeFormula()
     // Numbers should not be converted, for now.
     pOutDev->SetDigitLanguage( LANGUAGE_ENGLISH );
 
-    mpTree->Arrange(*pOutDev, rFormat);
+    // To get the current Math font in the format tab
+    pOutDev->Push(vcl::PushFlags::FONT);
+    pOutDev->SetFont(rFormat.GetFont(FNT_MATH));
+    bool bSupportsMath = pOutDev->SupportsOpenTypeMath();
+    pOutDev->Pop();
+
+    if (bSupportsMath)
+    {
+        pOutDev->SetFont(rFormat.GetFont(FNT_MATH));
+        mpTree->ArrangeOpenType(*pOutDev, rFormat);
+    }
+    else
+        mpTree->Arrange(*pOutDev, rFormat);
+
 
     pOutDev->EnableRTL(bOldRTL);
 
@@ -329,7 +342,7 @@ void SmDocShell::DrawFormula(OutputDevice &rDev, Point &rPosition, bool bDrawSel
     // Problem: What happens to WYSIWYG? While we're active inplace, we don't have a reference
     // device and aren't aligned to that either. So now there can be a difference between the
     // VisArea (i.e. the size within the client) and the current size.
-    // Idea: The difference could be adapted with SmNod::SetSize (no long-term solution)
+    // Idea: The difference could be adapted with SmNode::SetSize (no long-term solution)
 
     rPosition.AdjustX(maFormat.GetDistance( DIS_LEFTSPACE ) );
     rPosition.AdjustY(maFormat.GetDistance( DIS_TOPSPACE  ) );
@@ -443,7 +456,7 @@ SmPrinterAccess::SmPrinterAccess( SmDocShell &rDocShell )
             // if it is an embedded object (without its own printer)
             // we change the MapMode temporarily.
             //!If it is a document with its own printer the MapMode should
-            //!be set correct (once) elsewhere(!), in order to avoid numerous
+            //!be set correctly (once) elsewhere(!), in order to avoid numerous
             //!superfluous pushing and popping of the MapMode when using
             //!this class.
 
@@ -471,7 +484,7 @@ SmPrinterAccess::SmPrinterAccess( SmDocShell &rDocShell )
     // if it is an embedded object (without its own printer)
     // we change the MapMode temporarily.
     //!If it is a document with its own printer the MapMode should
-    //!be set correct (once) elsewhere(!), in order to avoid numerous
+    //!be set correctly (once) elsewhere(!), in order to avoid numerous
     //!superfluous pushing and popping of the MapMode when using
     //!this class.
 
@@ -502,7 +515,7 @@ Printer* SmDocShell::GetPrt()
     {
         // Normally the server provides the printer. But if it doesn't provide one (e.g. because
         // there is no connection) it still can be the case that we know the printer because it
-        // has been passed on by the server in OnDocumentPrinterChanged and being kept temporarily.
+        // has been passed on by the server in OnDocumentPrinterChanged and is being kept temporarily.
         Printer* pPrt = GetDocumentPrinter();
         if (!pPrt && mpTmpPrinter)
             pPrt = mpTmpPrinter;
@@ -822,7 +835,9 @@ void SmDocShell::writeFormulaOoxml(
         Parse();
     if( mpTree )
         ArrangeFormula();
-    SmOoxmlExport aEquation(mpTree.get(), version, documentType);
+    SmOoxmlExport aEquation(mpTree.get(), version, documentType,
+                            o3tl::convert(maFormat.GetBaseSize().Height() * 2, SmO3tlLengthUnit(),
+                                          o3tl::Length::pt));
     if(documentType == oox::drawingml::DOCUMENT_DOCX)
         aEquation.ConvertFromStarMath( pSerializer, nAlign);
     else
@@ -843,6 +858,19 @@ void SmDocShell::readFormulaOoxml( oox::formulaimport::XmlStream& stream )
 {
     SmOoxmlImport aEquation( stream );
     SetText( aEquation.ConvertToStarMath());
+    mnOoxmlFontSizeInHalfPoints = aEquation.GetFontSizeInHalfPoints();
+    SetFontSizeInHalfPoints(mnOoxmlFontSizeInHalfPoints);
+}
+
+void SmDocShell::SetFontSizeInHalfPoints(sal_Int32 nFontSize)
+{
+    if (nFontSize <= 0)
+        return;
+    SmFormat aFormat(GetFormat());
+    Size aSize(aFormat.GetBaseSize());
+    aSize.setHeight(o3tl::convert(nFontSize, o3tl::Length::pt, SmO3tlLengthUnit()) / 2);
+    aFormat.SetBaseSizeAndFonts(aSize);
+    SetFormat(aFormat);
 }
 
 void SmDocShell::Execute(SfxRequest& rReq)

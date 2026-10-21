@@ -208,6 +208,8 @@ std::span<const SfxItemPropertyMapEntry> SwUnoPropertyMapProvider::GetCharStyleP
         { UNO_NAME_CHAR_NO_HYPHENATION, RES_CHRATR_NOHYPHEN   ,   cppu::UnoType<bool>::get()  ,       PROPERTY_NONE,     0},
         { UNO_NAME_CHAR_OPTICAL_SIZING, RES_CHRATR_OPTICAL_SIZING  ,  cppu::UnoType<bool>::get()  ,       PROPERTY_NONE,     0},
         { UNO_NAME_CHAR_FONT_VARIATIONS, RES_CHRATR_FONT_VARIATIONS  ,  cppu::UnoType<OUString>::get()  ,       PROPERTY_NONE,     0},
+        { UNO_NAME_CHAR_CJK_FONT_VARIATIONS, RES_CHRATR_CJK_FONT_VARIATIONS  ,  cppu::UnoType<OUString>::get()  ,       PROPERTY_NONE,     0},
+        { UNO_NAME_CHAR_CTL_FONT_VARIATIONS, RES_CHRATR_CTL_FONT_VARIATIONS  ,  cppu::UnoType<OUString>::get()  ,       PROPERTY_NONE,     0},
         { UNO_NAME_CHAR_SHADOWED, RES_CHRATR_SHADOWED  ,  cppu::UnoType<bool>::get()  ,       PROPERTY_NONE, 0},
         { UNO_NAME_CHAR_CONTOURED, RES_CHRATR_CONTOUR,    cppu::UnoType<bool>::get()  ,       PROPERTY_NONE, 0},
         { UNO_NAME_CHAR_WORD_MODE, RES_CHRATR_WORDLINEMODE,cppu::UnoType<bool>::get()  ,    PROPERTY_NONE,     0},
@@ -282,6 +284,8 @@ std::span<const SfxItemPropertyMapEntry>  SwUnoPropertyMapProvider::GetAutoCharS
         { UNO_NAME_CHAR_NO_HYPHENATION, RES_CHRATR_NOHYPHEN   ,   cppu::UnoType<bool>::get()  ,       PROPERTY_NONE,     0},
         { UNO_NAME_CHAR_OPTICAL_SIZING, RES_CHRATR_OPTICAL_SIZING  ,  cppu::UnoType<bool>::get()  ,       PROPERTY_NONE,     0},
         { UNO_NAME_CHAR_FONT_VARIATIONS, RES_CHRATR_FONT_VARIATIONS  ,  cppu::UnoType<OUString>::get()  ,       PROPERTY_NONE,     0},
+        { UNO_NAME_CHAR_CJK_FONT_VARIATIONS, RES_CHRATR_CJK_FONT_VARIATIONS  ,  cppu::UnoType<OUString>::get()  ,       PROPERTY_NONE,     0},
+        { UNO_NAME_CHAR_CTL_FONT_VARIATIONS, RES_CHRATR_CTL_FONT_VARIATIONS  ,  cppu::UnoType<OUString>::get()  ,       PROPERTY_NONE,     0},
         { UNO_NAME_CHAR_SHADOWED, RES_CHRATR_SHADOWED  ,  cppu::UnoType<bool>::get()  ,       PROPERTY_NONE, 0},
         { UNO_NAME_CHAR_CONTOURED, RES_CHRATR_CONTOUR,    cppu::UnoType<bool>::get()  ,       PROPERTY_NONE, 0},
         { UNO_NAME_CHAR_WORD_MODE, RES_CHRATR_WORDLINEMODE,cppu::UnoType<bool>::get()  ,    PROPERTY_NONE,     0},
@@ -380,6 +384,7 @@ std::span<const SfxItemPropertyMapEntry> SwUnoPropertyMapProvider::GetFrameStyle
         { UNO_NAME_RIGHT_MARGIN, RES_LR_SPACE,            cppu::UnoType<sal_Int32>::get(), PROPERTY_NONE, MID_R_MARGIN|CONVERT_TWIPS},
         { UNO_NAME_HORI_ORIENT, RES_HORI_ORIENT,      cppu::UnoType<sal_Int16>::get(),           PROPERTY_NONE ,MID_HORIORIENT_ORIENT    },
         { UNO_NAME_HORI_ORIENT_POSITION, RES_HORI_ORIENT,     cppu::UnoType<sal_Int32>::get(),           PROPERTY_NONE ,MID_HORIORIENT_POSITION|CONVERT_TWIPS    },
+        { UNO_NAME_HORI_ORIENT_POSITION_EMU, RES_HORI_ORIENT, cppu::UnoType<sal_Int64>::get(),           PROPERTY_NONE ,MID_HORIORIENT_POSITION_EMU },
         { UNO_NAME_HORI_ORIENT_RELATION, RES_HORI_ORIENT,     cppu::UnoType<sal_Int16>::get(),           PROPERTY_NONE ,MID_HORIORIENT_RELATION  },
         { UNO_NAME_HYPER_LINK_U_R_L, RES_URL,                 cppu::UnoType<OUString>::get(), PROPERTY_NONE ,MID_URL_URL},
         { UNO_NAME_HYPER_LINK_TARGET, RES_URL,                cppu::UnoType<OUString>::get(), PROPERTY_NONE ,MID_URL_TARGET},
@@ -416,6 +421,7 @@ std::span<const SfxItemPropertyMapEntry> SwUnoPropertyMapProvider::GetFrameStyle
         { UNO_NAME_BACK_TRANSPARENT, RES_BACKGROUND,      cppu::UnoType<bool>::get(),         PROPERTY_NONE ,MID_GRAPHIC_TRANSPARENT       },
         { UNO_NAME_VERT_ORIENT, RES_VERT_ORIENT,      cppu::UnoType<sal_Int16>::get(),           PROPERTY_NONE ,MID_VERTORIENT_ORIENT    },
         { UNO_NAME_VERT_ORIENT_POSITION, RES_VERT_ORIENT,     cppu::UnoType<sal_Int32>::get(),           PROPERTY_NONE ,MID_VERTORIENT_POSITION|CONVERT_TWIPS    },
+        { UNO_NAME_VERT_ORIENT_POSITION_EMU, RES_VERT_ORIENT, cppu::UnoType<sal_Int64>::get(),           PROPERTY_NONE ,MID_VERTORIENT_POSITION_EMU             },
         { UNO_NAME_VERT_ORIENT_RELATION, RES_VERT_ORIENT,     cppu::UnoType<sal_Int16>::get(),           PROPERTY_NONE ,MID_VERTORIENT_RELATION  },
         { UNO_NAME_LEFT_BORDER, RES_BOX,              cppu::UnoType<css::table::BorderLine>::get(),  0, LEFT_BORDER  |CONVERT_TWIPS },
         { UNO_NAME_RIGHT_BORDER, RES_BOX,             cppu::UnoType<css::table::BorderLine>::get(),  0, RIGHT_BORDER |CONVERT_TWIPS },
@@ -514,6 +520,10 @@ std::span<const SfxItemPropertyMapEntry> SwUnoPropertyMapProvider::GetPageStyleP
 
 
         { UNO_NAME_FIRST_IS_SHARED, SID_ATTR_PAGE_SHARED_FIRST,   cppu::UnoType<bool>::get(), PROPERTY_NONE, 0 },
+        { UNO_NAME_HEADER_NO_FIRST, SID_ATTR_PAGE_NO_FIRST, cppu::UnoType<bool>::get(), PROPERTY_NONE, 0 },
+        { UNO_NAME_FOOTER_NO_FIRST, SID_ATTR_PAGE_NO_FIRST, cppu::UnoType<bool>::get(), PROPERTY_NONE, 0 },
+        { u"MinBottomBodyDistance"_ustr, RES_FRMATR_PAGE_MIN_BOTTOM, cppu::UnoType<sal_Int32>::get(), PropertyAttribute::MAYBEVOID, /*CONVERT_TWIPS*/0, PropertyMoreFlags::METRIC_ITEM },
+        { u"MinTopBodyDistance"_ustr, RES_FRMATR_PAGE_MIN_TOP, cppu::UnoType<sal_Int32>::get(), PropertyAttribute::MAYBEVOID, /*CONVERT_TWIPS*/0, PropertyMoreFlags::METRIC_ITEM },
 
         //UUU use real WhichIDs for Footer, see Header (above) for more infos
         { UNO_NAME_FOOTER_BACK_COLOR, RES_BACKGROUND,   cppu::UnoType<sal_Int32>::get(),           PROPERTY_NONE ,MID_BACK_COLOR        },

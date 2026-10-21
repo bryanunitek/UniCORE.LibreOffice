@@ -35,7 +35,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 using ::sd::framework::FrameworkHelper;
 
@@ -125,7 +124,7 @@ void ToolBarModule::notifyConfigurationChange (
                 if (rEvent.ResourceId->getResourceURL().match(
                     FrameworkHelper::msViewURLPrefix)
                     && rEvent.ResourceId->isBoundToURL(
-                        FrameworkHelper::msCenterPaneURL, AnchorBindingMode_DIRECT))
+                        FrameworkHelper::msCenterPaneURL, AnchorBindingMode::DIRECT))
                 {
                     mbMainViewSwitchUpdatePending = true;
                 }
@@ -196,7 +195,7 @@ void ToolBarModule::HandleUpdateEnd()
             UpdateToolbars(pViewShell.get());
         }
     }
-    // Releasing the update lock of the ToolBarManager  will let the
+    // Releasing the update lock of the ToolBarManager will let the
     // ToolBarManager with the help of the ViewShellManager take care of
     // updating tool bars and view shell with the minimal amount of
     // shell stack modifications and tool bar updates.

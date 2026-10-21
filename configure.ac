@@ -18,7 +18,7 @@ dnl cspell:ignoreRegExp / -isystem /
 # several non-alphanumeric characters, those are split off and used only for the
 # ABOUTBOXPRODUCTVERSIONSUFFIX in openoffice.lst. Why that is necessary, no idea.
 
-AC_INIT([LibreOffice],[26.8.0.0.alpha1+],[],[],[http://documentfoundation.org/])
+AC_INIT([LibreOffice],[27.2.0.0.alpha0+],[],[],[http://documentfoundation.org/])
 
 dnl libnumbertext needs autoconf 2.68, but that can pick up autoconf268 just fine if it is installed
 dnl whereas aclocal (as run by autogen.sh) insists on using autoconf and fails hard
@@ -313,6 +313,21 @@ dnl path location is gpg, so make sure we find it
     unset mac_gpg_path
 }
 
+dnl format a header path taking into account Mac frameworks
+format_header_path()
+{
+    local package_dir="${1}"
+    local parent_dir="${2}"
+    local header_file="${3}"
+
+    local header_path="${1}/${2}/${3}"
+    if test "$_os" = "Darwin"; then
+        header_path="${1}/${2}.framework/Versions/A/Headers/${3}"
+    fi
+	PathFormat "${header_path}"
+}
+
+
 dnl semantically test a three digits version
 dnl $1 - $3 = minimal version
 dnl $4 - $6 = current version
@@ -606,10 +621,6 @@ AC_DEFINE_UNQUOTED(LIBO_VERSION_MINOR,$LIBO_VERSION_MINOR)
 AC_DEFINE_UNQUOTED(LIBO_VERSION_MICRO,$LIBO_VERSION_MICRO)
 AC_DEFINE_UNQUOTED(LIBO_VERSION_PATCH,$LIBO_VERSION_PATCH)
 
-git_date=`git log -1 --pretty=format:"%cd" --date=format:'%Y' 2>/dev/null`
-LIBO_THIS_YEAR=${git_date:-2026}
-AC_DEFINE_UNQUOTED(LIBO_THIS_YEAR,$LIBO_THIS_YEAR)
-
 dnl ===================================================================
 dnl Product version
 dnl ===================================================================
@@ -626,6 +637,17 @@ BUILDDIR=`pwd`
 cd $srcdir
 SRC_ROOT=`pwd`
 cd $BUILDDIR
+
+# AC_DEFINE_UNQUOTED immediately appends to the intermediate confdefs.h, but
+# we need that in the builddir so that the later AC_CONFIG_HEADERS calls have
+# access to the value
+git_date=`git -C $SRC_ROOT log -1 --pretty=format:"%cd" --date=format:'%Y' 2>/dev/null`
+LIBO_THIS_YEAR=${git_date:-2026}
+AC_DEFINE_UNQUOTED(LIBO_THIS_YEAR,$LIBO_THIS_YEAR)
+# commit-time in unix epoch timestamp format in prep for reproducible builds
+SOURCE_DATE_EPOCH=`git -C $SRC_ROOT log -1 --pretty=%ct 2>/dev/null`
+AC_SUBST(SOURCE_DATE_EPOCH)
+
 x_Cygwin=[\#]
 
 dnl ======================================
@@ -870,7 +892,7 @@ if test -n "$with_android_ndk"; then
     # NDK 15 or later toolchain is 64bit-only, except for Windows that we don't support. Using a 64-bit
     # linker is required if you compile large parts of the code with -g. A 32-bit linker just won't
     # manage to link the (app-specific) single huge .so that is built for the app in
-    # android/source/ if there is debug information in a significant part of the object files.
+    # android/app/ if there is debug information in a significant part of the object files.
     # (A 64-bit ld.gold grows too much over 10 gigabytes of virtual space when linking such a .so if
     # all objects have been built with debug information.)
     case $build_os in
@@ -1086,8 +1108,6 @@ cygwin*|wsl*)
 
     DLLPOST=".dll"
     LINKFLAGSNOUNDEFS=
-    # bypass check for ninja, it is not in default path, but it can be used nevertheless by default
-    NINJA="assumed to be available from Visual Studio"
 
     if test "$host_cpu" = "aarch64"; then
         build_skia=yes
@@ -1110,6 +1130,7 @@ darwin*) # macOS
         mac_sanitize_path
         AC_MSG_NOTICE([sanitized the PATH to $PATH])
     fi
+    test_qt6=yes
     _os=Darwin
     INSTROOTBASESUFFIX=/$PRODUCTNAME_WITHOUT_SPACES.app
     INSTROOTCONTENTSUFFIX=/Contents
@@ -1149,7 +1170,6 @@ ios*) # iOS
     enable_lotuswordpro=no
     disable_database_connectivity_dependencies
     enable_coinmp=no
-    enable_lpsolve=no
     enable_extension_integration=no
     enable_xmlhelp=no
     with_ppds=no
@@ -1242,7 +1262,6 @@ linux-android*)
     enable_mpl_subset=yes
     enable_cairo_canvas=no
     enable_coinmp=yes
-    enable_lpsolve=no
     enable_odk=no
     enable_python=no
     enable_xmlhelp=no
@@ -1477,6 +1496,7 @@ if test "$_os" != "WINNT"; then
     # Clang 12.0.1 occasionally SEGVs on some of the test invocations during AC_PROG_CC with -O2):
     save_CFLAGS=$CFLAGS
     CFLAGS=-g
+    ac_cv_prog_cc_c23=no
     AC_PROG_CC
     CFLAGS=$save_CFLAGS
     if test -z "$CC_BASE"; then
@@ -1667,10 +1687,6 @@ libo_FUZZ_ARG_ENABLE(ext-wiki-publisher,
         [Enable the Wiki Publisher extension.])
 )
 
-libo_FUZZ_ARG_ENABLE(lpsolve,
-    AS_HELP_STRING([--disable-lpsolve],
-        [Disable compilation of the lp solve solver ])
-)
 libo_FUZZ_ARG_ENABLE(coinmp,
     AS_HELP_STRING([--disable-coinmp],
         [Disable compilation of the CoinMP solver ])
@@ -2470,14 +2486,6 @@ libo_FUZZ_ARG_WITH(fonts,
          known to be available on the system then you should use this option.]),
 ,)
 
-libo_FUZZ_ARG_WITH(docrepair-fonts,
-    AS_HELP_STRING([--with-docrepair-fonts],
-        [LibreOffice optionally includes fonts from 'The DocRepair Project' that
-         provide metrically equivalent fallback fonts for a variety of common fonts
-         seen in Office Open XML documents. See https://github.com/docrepair-fonts
-         for more details. This option has no effect when --without-fonts is used.]),
-,)
-
 AC_ARG_WITH(epm,
     AS_HELP_STRING([--with-epm],
         [Decides which epm to use. Default is to use the one from the system if
@@ -2593,6 +2601,11 @@ AC_ARG_WITH(system-expat,
     AS_HELP_STRING([--with-system-expat],
         [Use expat already on system.]),,
     [with_system_expat="$with_system_libs"])
+
+AC_ARG_WITH(system-libjxl,
+    AS_HELP_STRING([--with-system-libjxl],
+        [Use libjxl already on system.]),,
+    [with_system_libjxl="$with_system_libs"])
 
 AC_ARG_WITH(system-libxml,
     AS_HELP_STRING([--with-system-libxml],
@@ -2860,16 +2873,6 @@ AC_ARG_WITH(system-altlinuxhyph,
     AS_HELP_STRING([--with-system-altlinuxhyph],
         [Use ALTLinuxhyph already on system.]),,
     [with_system_altlinuxhyph="$with_system_libs"])
-
-AC_ARG_WITH(system-lpsolve,
-    AS_HELP_STRING([--with-system-lpsolve],
-        [Use lpsolve already on system.]),,
-    [with_system_lpsolve="$with_system_libs"])
-
-AC_ARG_WITH(system-colamd,
-    AS_HELP_STRING([--with-system-colamd],
-        [Use COLAMD already on system.]),,
-    [with_system_colamd="$with_system_libs"])
 
 AC_ARG_WITH(system-coinmp,
     AS_HELP_STRING([--with-system-coinmp],
@@ -3471,7 +3474,6 @@ if test "$enable_wasm_strip" = "yes"; then
     enable_gpgmepp=no
     enable_ldap=no
     enable_lotuswordpro=no
-    enable_lpsolve=no
     enable_nss=no
     enable_odk=no
     enable_online_update=no
@@ -3878,10 +3880,10 @@ if test $_os = Darwin; then
     # we don't target the lower versions anymore, so it doesn't matter that we don't generate the
     # correct version in case such an old SDK is specified, it will be rejected later anyway
     MACOSX_SDK_VERSION=$(echo $macosx_sdk | $AWK -F. '{ print $1*10000+$2*100+$3 }')
-    # we require Xcode 14.2 or later, and thus macOS SDK 13.1 or later/older versions might work
+    # we require Xcode 16.2 or later, and thus macOS SDK 15.2 or later/older versions might work
     # but are untested
-    if test $MACOSX_SDK_VERSION -lt 130300; then
-        AC_MSG_ERROR([macOS SDK $macosx_sdk is not supported, lowest supported version is 13.3])
+    if test $MACOSX_SDK_VERSION -lt 150200; then
+        AC_MSG_ERROR([macOS SDK $macosx_sdk is not supported, lowest supported version is 15.2])
     fi
     AC_MSG_RESULT([macOS SDK $macosx_sdk at $MACOSX_SDK_PATH])
 
@@ -3914,19 +3916,10 @@ if test $_os = Darwin; then
     my_xcode_ver1=$(xcrun xcodebuild -version | head -n 1)
     my_xcode_ver2=${my_xcode_ver1#Xcode }
     my_xcode_ver3=$(printf %s "$my_xcode_ver2" | $AWK -F. '{ print $1*100+($2<100?$2:99) }')
-    if test "$my_xcode_ver3" -ge 1403; then
+    if test "$my_xcode_ver3" -ge 1602; then
         AC_MSG_RESULT([yes ($my_xcode_ver2)])
-        if test $MAC_OS_X_VERSION_MIN_REQUIRED -lt 120000; then
-            if test "$my_xcode_ver3" -eq 1500; then
-                dnl the bug was already fixed on 15.1 and 15.2 still has the same OS requirements as 15.0
-                dnl in other words all affected users could update to a working Xcode version
-                AC_MSG_WARN([Use a current version of XCode or bump the minimum deployment target])
-                AC_MSG_WARN([[see https://developer.apple.com/documentation/xcode-release-notes/xcode-15-release-notes#Linking]])
-                AC_MSG_ERROR([Xcode 15.0 has a bug in the new linker that causes runtime crashes on macOS 11 - aborting])
-            fi
-        fi
     else
-        AC_MSG_ERROR(["$my_xcode_ver1" is too old or unrecognized, must be at least Xcode 14.3])
+        AC_MSG_ERROR(["$my_xcode_ver1" is too old or unrecognized, must be at least Xcode 16.2])
     fi
 
     my_xcode_ver1=$(xcrun xcodebuild -version | tail -n 1)
@@ -4734,6 +4727,10 @@ if test "$_os" = "WINNT"; then
     PathFormat "$VC_PRODUCT_DIR/../Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
     CMAKE="$formatted_path"
 
+    # Find the ninja that ships with Visual Studio, beside that cmake.
+    PathFormat "$VC_PRODUCT_DIR/../Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
+    NINJA="$formatted_path"
+
     # Find the version of devenv.exe
     PathFormat "$VC_PRODUCT_DIR/../Common7/IDE/devenv.exe"
     DEVENV="$formatted_path"
@@ -5216,6 +5213,37 @@ if test "$enable_ld" != "no"; then
 fi
 AC_SUBST(USE_LD)
 AC_SUBST(LD)
+
+dnl ===================================================================
+dnl Check whether the linker supports -debug:fastlink, which links debug
+dnl builds faster. link.exe offered it from VS 2017 to VS 2022 and dropped it
+dnl in the VS 2026 toolset; lld-link never had it. Both then warn on every
+dnl link and fall back to -debug:full, so probe the linker that will be used,
+dnl and only pass the flag when it takes it silently.
+dnl ===================================================================
+HAVE_LINK_DEBUG_FASTLINK=
+if test "$_os" = "WINNT"; then
+    AC_MSG_CHECKING([whether the linker supports -debug:fastlink])
+    if test -n "$LLD_LINK"; then
+        fastlink_linker=$LLD_LINK
+    else
+        dnl PATH doesn't cover the MSVC tools yet; link.exe sits next to cl.exe
+        fastlink_linker=`win_short_path_for_make "$MSVC_HOST_PATH/link.exe"`
+    fi
+    dnl the link fails on the missing input file, and any mention of the flag in
+    dnl the output is a complaint about the flag itself: not being able to use it
+    if "$fastlink_linker" -debug:fastlink conftest-nonexistent.obj 2>&1 | grep -iq "debug:fastlink"; then
+        HAVE_LINK_DEBUG_FASTLINK=
+    else
+        HAVE_LINK_DEBUG_FASTLINK=TRUE
+    fi
+    if test -n "$HAVE_LINK_DEBUG_FASTLINK"; then
+        AC_MSG_RESULT([yes])
+    else
+        AC_MSG_RESULT([no])
+    fi
+fi
+AC_SUBST(HAVE_LINK_DEBUG_FASTLINK)
 
 HAVE_LD_BSYMBOLIC_FUNCTIONS=
 if test "$GCC" = "yes" -a "$_os" != Emscripten ; then
@@ -5883,7 +5911,7 @@ dnl Target-specific options
 dnl ===================================================================
 
 ENABLE_LASX="TRUE"
-if test "$CPUNAME" == LOONGARCH64; then
+if test "$CPUNAME" = LOONGARCH64; then
     AC_ARG_ENABLE(lasx,
         AS_HELP_STRING([--enable-lasx],
             [build with LASX vectorization])
@@ -6315,7 +6343,7 @@ if test "$cross_compiling" = "yes"; then
     # similarly: at least skia headers need to be available in the cross-toolset
     test "${PLATFORMID}" = "windows_aarch64" && sub_conf_opts="$sub_conf_opts --enable-openssl --with-tls=openssl --enable-skia"
     # cross-compilations don't necessarily enable python support in the product/the sub-configure needs to know
-    # that the minimum supported python version is 3.7 or later...
+    # that the minimum supported python version is 3.11 or later...
     test "$with_system_harfbuzz" != "yes" && sub_conf_opts="$sub_conf_opts NEED_MESON=TRUE"
 
     # Don't bother having configure look for stuff not needed for the build platform anyway
@@ -6376,6 +6404,7 @@ if test "$cross_compiling" = "yes"; then
         ARGON2
         AVMEDIA
         BOOST
+        BROTLI
         BZIP2
         CAIRO
         CLUCENE
@@ -6392,9 +6421,11 @@ if test "$cross_compiling" = "yes"; then
         GRAPHITE
         HARFBUZZ
         HELPTOOLS
+        HIGHWAY
         ICU
         LCMS2
         LIBJPEG_TURBO
+        LIBJXL
         LIBLANGTAG
         LibO
         LIBFFI
@@ -7075,7 +7106,12 @@ if test "$_os" = "WINNT"; then
         done
     fi
 fi
-if test "$with_system_hsqldb" = "yes"; then
+
+# required for solenv/bin/rewrite_zip_timestamps.pl/for reproducible builds
+# and also needed for --with-system-hsqldb
+if test -n "$WSL_ONLY_AS_HELPER"; then
+    perl_use_string_spp="$perl_use_string_spp ; use Archive::Zip"
+else
     perl_use_string="$perl_use_string ; use Archive::Zip"
 fi
 if test "$enable_openssl" = "yes" -a "$with_system_openssl" != "yes"; then
@@ -8281,18 +8317,24 @@ dnl C++11
 dnl ===================================================================
 
 if test -z "${CXXFLAGS_CXX11+x}"; then
-    AC_MSG_CHECKING([whether $CXX_BASE supports C++20])
+    AC_MSG_CHECKING([whether $CXX_BASE supports C++23])
     if test "$COM" = MSC -a "$COM_IS_CLANG" != TRUE; then
-        if test "$with_latest_c__" = yes; then
+        # /std:c++23 will only arrive in MSVC 14.52, so we have to
+        # use c++latest for older build tool versions
+        AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+            #if _MSC_VER < 1952
+            #endif
+        ]])],[with_latest_c__=yes])
+        if test "$with_latest_c__" = "yes"; then
             CXXFLAGS_CXX11=-std:c++latest
         else
-            CXXFLAGS_CXX11=-std:c++20
+            CXXFLAGS_CXX11=-std:c++23
         fi
         CXXFLAGS_CXX11="$CXXFLAGS_CXX11 -permissive- -Zc:__cplusplus,preprocessor"
     elif test "$GCC" = "yes" -o "$COM_IS_CLANG" = TRUE; then
-        my_flags='-std=c++20 -std=c++2a'
-        if test "$with_latest_c__" = yes; then
-            my_flags="-std=c++26 -std=c++2c -std=c++23 -std=c++2b $my_flags"
+        my_flags='-std=c++23 -std=c++2b'
+        if test "$with_latest_c__" = "yes"; then
+            my_flags="-std=c++29 -std=c++2d -std=c++26 -std=c++2c $my_flags"
         fi
         for flag in $my_flags; do
             if test "$COM" = MSC; then
@@ -9300,7 +9342,13 @@ if test "$ENABLE_JAVA" != "" -a "$cross_compiling" != "yes"; then
             if test "$_jdk_ver" -ge 180000 && test "$_jdk_ver" -lt 240000; then
                 JDK_SECURITYMANAGER_DISALLOWED=TRUE
             fi
-
+            # reproducible builds make use of jar --date and that was introduced in jdk19
+            # and backported to openJDK 17.0.3/oracle JDK 17.0.6 respectively
+            if test "$_jdk_ver" -lt 170006 || test "$_jdk_ver" -ge 180000 && test "$_jdk_ver" -lt 190000; then
+                AC_MSG_WARN([JDK too old for reproducible builds, needs jar --date support (see https://bugs.openjdk.org/browse/JDK-8276766 )])
+                add_warning "JDK too old for reproducible builds, needs jar --date support (see https://bugs.openjdk.org/browse/JDK-8276766 )"
+                SOURCE_DATE_EPOCH=""
+            fi
             JAVA_HOME=`echo $JAVAINTERPRETER | $SED -n "s,//*bin//*java,,p"`
             if test "$_os" = "WINNT"; then
                 JAVA_HOME=`echo $JAVA_HOME | $SED "s,\.[[eE]][[xX]][[eE]]$,,"`
@@ -10090,6 +10138,8 @@ if test "x$with_system_md4c" = "xauto"; then
 fi
 
 AC_MSG_CHECKING([which md4c to use])
+MD4C_MAJOR=0
+MD4C_MINOR=6
 case "$with_system_md4c" in
   yes)
     AC_MSG_RESULT([system])
@@ -10109,6 +10159,10 @@ case "$with_system_md4c" in
     AC_CHECK_LIB([md4c-html], [md_html],
       [ MD4C_LIBS="$MD4C_LIBS -lmd4c-html" ],
       [ AC_MSG_ERROR([system md4c-html library not found or broken.]) ])
+
+    MD4C_VERSION=`$PKG_CONFIG --modversion md4c 2>/dev/null`
+    MD4C_MAJOR=`echo $MD4C_VERSION | cut -d"." -f1`
+    MD4C_MINOR=`echo $MD4C_VERSION | cut -d"." -f2`
     ;;
 
   ""|no)
@@ -10128,6 +10182,9 @@ AC_SUBST(SYSTEM_MD4C)
 AC_SUBST(MD4C_LIBS)
 AC_SUBST(MD4C_CFLAGS)
 AC_SUBST(BUILD_TYPE)
+
+AC_DEFINE_UNQUOTED(MD4C_MAJOR,$MD4C_MAJOR)
+AC_DEFINE_UNQUOTED(MD4C_MINOR,$MD4C_MINOR)
 
 dnl ===================================================================
 dnl Check for system jpeg
@@ -10572,9 +10629,9 @@ else
     fi
     if test "$COM" = "MSC"; then
         if test "$MSVC_USE_DEBUG_RUNTIME" = TRUE; then
-            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/Debug/libxml2d.lib"
+            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/libxml2d.lib"
         else
-            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/Release/libxml2.lib"
+            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/libxml2.lib"
         fi
     else
         LIBXML_LIBS="-L${WORKDIR}/UnpackedTarball/libxml2/.libs -lxml2"
@@ -10594,7 +10651,7 @@ AC_SUBST(LIBXML_LIBS)
 AC_SUBST(XMLLINT)
 
 # =====================================================================
-# Checking for a Python interpreter with version >= 3.3 (or 3.7 if the build needs meson)
+# Checking for a Python interpreter with version >= 3.11
 # Optionally user can pass an option to configure, i. e.
 # ./configure PYTHON=/usr/bin/python
 # =====================================================================
@@ -10608,12 +10665,7 @@ if test "$build_os" != "cygwin" -a "$enable_python" != fully-internal; then
         PYTHON_FOR_BUILD=$PYTHON
     else
         # This allows a lack of system python with no error, we use internal one in that case.
-        if test "$with_system_harfbuzz" = "yes"; then
-            AM_PATH_PYTHON([3.3],, [:])
-        else
-            # harfbuzz is built using meson, and current meson requires at least python 3.7
-            AM_PATH_PYTHON([3.7],, [:])
-        fi
+        AM_PATH_PYTHON([3.11],, [:])
         # Clean PYTHON_VERSION checked below if cross-compiling
         PYTHON_VERSION=""
         if test "$PYTHON" != ":"; then
@@ -10655,11 +10707,7 @@ no|disable)
         # we actually do check anew.
         AC_MSG_RESULT([])
         unset PYTHON am_cv_pathless_PYTHON ac_cv_path_PYTHON am_cv_python_version am_cv_python_platform am_cv_python_pythondir am_cv_python_pyexecdir
-        if test -z "$NEED_MESON"; then
-            AM_PATH_PYTHON([3.3],, [:])
-        else
-            AM_PATH_PYTHON([3.7],, [:])
-        fi
+        AM_PATH_PYTHON([3.11],, [:])
         AC_MSG_CHECKING([which Python to use for Pyuno])
         if test "$PYTHON" = ":"; then
             if test -z "$PYTHON_FOR_BUILD"; then
@@ -10707,12 +10755,8 @@ if test $enable_python = system; then
         unset PYTHON am_cv_pathless_PYTHON ac_cv_path_PYTHON am_cv_python_version am_cv_python_platform am_cv_python_pythondir am_cv_python_pyexecdir
         # This causes an error if no python command is found
         # the version found here also sets PYTHON_FOR_BUILD below, so the python picked here
-        # needs to be suitable for meson/the harfbuzz build
-        if test "$with_system_harfbuzz" = "yes" -o -n "$NEED_MESON" ; then
-            AM_PATH_PYTHON([3.7])
-        else
-            AM_PATH_PYTHON([3.3])
-        fi
+        # needs to be suitable for the build
+        AM_PATH_PYTHON([3.11])
         python_include=`$PYTHON -c "import distutils.sysconfig; print(distutils.sysconfig.get_config_var('INCLUDEPY'));"`
         python_version=`$PYTHON -c "import distutils.sysconfig; print(distutils.sysconfig.get_config_var('VERSION'));"`
         python_libs=`$PYTHON -c "import distutils.sysconfig; print(distutils.sysconfig.get_config_var('LIBS'));"`
@@ -10796,7 +10840,7 @@ if test \( "$cross_compiling" = yes -a -z "$PYTHON_FOR_BUILD" \) -o "$enable_pyt
     SYSTEM_PYTHON=
     PYTHON_VERSION_MAJOR=3
     PYTHON_VERSION_MINOR=13
-    PYTHON_VERSION=${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}.13
+    PYTHON_VERSION=${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}.16
     if ! grep -q -i python.*${PYTHON_VERSION} ${SRC_ROOT}/download.lst; then
         AC_MSG_ERROR([PYTHON_VERSION ${PYTHON_VERSION} but no matching file in download.lst])
     fi
@@ -10824,10 +10868,10 @@ system)
 #include <Python.h>
 
 int main(int argc, char **argv) {
-   if ((PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 3)) return 0;
+   if ((PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 11)) return 0;
    else return 1;
 }
-       ]])],[AC_MSG_RESULT([ok])],[AC_MSG_ERROR([Python >= 3.3 is needed when building with Python 3])],[AC_MSG_RESULT([skipped; cross-compiling])])
+       ]])],[AC_MSG_RESULT([ok])],[AC_MSG_ERROR([Python >= 3.11 is needed when building with Python 3])],[AC_MSG_RESULT([skipped; cross-compiling])])
     AC_LANG_POP(C)
 
     dnl FIXME Check if the Python library can be linked with, too?
@@ -11280,6 +11324,12 @@ if test "$enable_firebird_sdbc" = "yes" ; then
             FIREBIRD_LIBS=`$FIREBIRDCONFIG --embedlibs`
             FilterLibs "${FIREBIRD_LIBS}"
             FIREBIRD_LIBS="${filteredlibs}"
+            dnl The directories chosen when firebird was built. A firebird patched to resolve them
+            dnl under the FIREBIRD variable instead needs to be told where its plugin modules and
+            dnl its international modules are.
+            FIREBIRD_CONFDIR=`$FIREBIRDCONFIG --confdir`
+            FIREBIRD_PLUGINSDIR=`$FIREBIRDCONFIG --pluginsdir`
+            FIREBIRD_INTLDIR=`$FIREBIRDCONFIG --intldir`
         fi
         AC_MSG_RESULT([includes `$FIREBIRD_CFLAGS', libraries `$FIREBIRD_LIBS'])
         AC_MSG_CHECKING([Firebird version])
@@ -11301,6 +11351,14 @@ int fb_api_is_30(void) { return 0; }
 #endif]])],AC_MSG_RESULT([OK]),AC_MSG_ERROR([Ensure firebird 3.0.x is installed]))
             CFLAGS="$save_CFLAGS"
         fi
+        if test -z "$FIREBIRD_PLUGINSDIR"; then
+            AC_MSG_WARN([Firebird plugins directory unknown, so a firebird that looks for its plugins
+                         under the FIREBIRD variable cannot be told where they are, and will not open
+                         a database. Install fb_config to get the directory.])
+        fi
+        AC_DEFINE_UNQUOTED([SYSTEM_FIREBIRD_PLUGINS_DIRECTORY],["$FIREBIRD_PLUGINSDIR"])
+        AC_DEFINE_UNQUOTED([SYSTEM_FIREBIRD_INTL_DIRECTORY],["$FIREBIRD_INTLDIR"])
+        AC_DEFINE_UNQUOTED([SYSTEM_FIREBIRD_CONF_DIRECTORY],["$FIREBIRD_CONFDIR"])
         ENABLE_FIREBIRD_SDBC=TRUE
         AC_DEFINE([ENABLE_FIREBIRD_SDBC],1)
     elif test "$enable_database_connectivity" = no; then
@@ -11717,13 +11775,6 @@ AC_SUBST(ICU_MAJOR)
 AC_SUBST(ICU_MINOR)
 
 dnl ==================================================================
-dnl CURL
-dnl ==================================================================
-if test "$enable_curl" = "yes"; then
-    AC_DEFINE([HAVE_FEATURE_CURL])
-fi
-
-dnl ==================================================================
 dnl Breakpad
 dnl ==================================================================
 DEFAULT_CRASHDUMP_VALUE="true"
@@ -11807,12 +11858,12 @@ AC_SUBST(WITH_PARQUET_FILTER)
 dnl ===================================================================
 dnl HarfBuzz
 dnl ===================================================================
-harfbuzz_required_version=8.3.1
+harfbuzz_required_version=14.3.0
 
 GRAPHITE_CFLAGS_internal="-I${WORKDIR}/UnpackedTarball/graphite/include -DGRAPHITE2_STATIC"
 HARFBUZZ_CFLAGS_internal="-I${WORKDIR}/UnpackedTarball/harfbuzz/src"
 case "$_os" in
-    Linux)
+    FreeBSD|Linux)
         GRAPHITE_LIBS_internal='$(gb_StaticLibrary_WORKDIR)/libgraphite.a'
         HARFBUZZ_LIBS_internal='$(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz.a $(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz-subset.a $(GRAPHITE_LIBS)'
         ;;
@@ -12370,64 +12421,6 @@ AC_SUBST(ENABLE_COINMP)
 AC_SUBST(SYSTEM_COINMP)
 AC_SUBST(COINMP_CFLAGS)
 AC_SUBST(COINMP_LIBS)
-
-ENABLE_LPSOLVE=
-AC_MSG_CHECKING([whether to build with lpsolve])
-if test "$enable_lpsolve" != "no"; then
-    ENABLE_LPSOLVE=TRUE
-    AC_MSG_RESULT([yes])
-else
-    AC_MSG_RESULT([no])
-fi
-AC_SUBST(ENABLE_LPSOLVE)
-
-if test "$ENABLE_LPSOLVE" = TRUE; then
-    AC_MSG_CHECKING([which lpsolve to use])
-    if test "$with_system_lpsolve" = "yes"; then
-        AC_MSG_RESULT([external])
-        SYSTEM_LPSOLVE=TRUE
-        AC_CHECK_HEADER(lpsolve/lp_lib.h, [],
-           [ AC_MSG_ERROR(lpsolve headers not found.)], [])
-        save_LIBS=$LIBS
-        # some systems need this. Like Ubuntu...
-        AC_CHECK_LIB(m, floor)
-        AC_CHECK_LIB(dl, dlopen)
-        AC_CHECK_LIB([lpsolve55], [make_lp], [:],
-            [ AC_MSG_ERROR(lpsolve library not found or too old.)], [])
-        LIBS=$save_LIBS
-    else
-        AC_MSG_RESULT([internal])
-        SYSTEM_LPSOLVE=
-        BUILD_TYPE="$BUILD_TYPE LPSOLVE"
-        AC_MSG_CHECKING([which colamd to use])
-        if test "$with_system_colamd" = "yes"; then
-               AC_MSG_RESULT([external])
-               SYSTEM_COLAMD=TRUE
-               # This assumes suitesparse, which has
-               # /usr/lib/x86_64-linux-gnu/pkgconfig/COLAMD.pc
-               PKG_CHECK_MODULES([COLAMD], [COLAMD],
-                      [],
-                      [
-                       # older versions don't. Look in /usr/include/suitesparse
-                       COLAMD_CFLAGS=-I/usr/include/suitesparse
-                       save_CFLAGS=$CFLAGS
-                       CFLAGS="$CFLAGS $COLAMD_CFLAGS"
-                       AC_CHECK_HEADER(colamd.h, [],
-                               [ AC_MSG_ERROR(colamd.h header not found.)], [])
-                       CFLAGS=$save_CFLAGS
-                       AC_CHECK_LIB(colamd, colamd)
-                       COLAMD_LIBS=-lcolamd
-                     ])
-       else
-               AC_MSG_RESULT([internal])
-               SYSTEM_COLAMD=
-       fi
-    fi
-fi
-AC_SUBST(SYSTEM_COLAMD)
-AC_SUBST(COLAMD_CFLAGS)
-AC_SUBST(COLAMD_LIBS)
-AC_SUBST(SYSTEM_LPSOLVE)
 
 dnl ===================================================================
 dnl Checking for libexttextcat
@@ -13304,6 +13297,8 @@ if test \( "$ENABLE_SKIA" = TRUE -o "$ENABLE_PDFIUM" = TRUE \) -a "$COM_IS_CLANG
             AC_MSG_CHECKING([for clang-cl])
             if test -x "$VC_PRODUCT_DIR/Tools/Llvm/bin/clang-cl.exe"; then
                 LO_CLANG_CC=`win_short_path_for_make "$VC_PRODUCT_DIR/Tools/Llvm/bin/clang-cl.exe"`
+            elif test -x "$VC_PRODUCT_DIR/Tools/Llvm/$WIN_BUILD_ARCH/bin/clang-cl.exe"; then
+                LO_CLANG_CC=`win_short_path_for_make "$VC_PRODUCT_DIR/Tools/Llvm/$WIN_BUILD_ARCH/bin/clang-cl.exe"`
             elif test -n "$PROGRAMFILES" -a -x "$(cygpath -u "$PROGRAMFILES/LLVM/bin/clang-cl.exe")"; then
                 LO_CLANG_CC=`win_short_path_for_make "$PROGRAMFILES/LLVM/bin/clang-cl.exe"`
             elif test -x "$(cygpath -u "c:/Program Files/LLVM/bin/clang-cl.exe")"; then
@@ -14225,7 +14220,7 @@ then
     if test "$QMAKE6" = "no"; then
         AC_MSG_ERROR([Qmake not found.  Please specify the root of your Qt6 installation by exporting QT6DIR before running "configure".])
     else
-        qmake6_test_ver="`$QMAKE6 -v 2>&1 | $SED -n -e 's/^Using Qt version \(6\.[[0-9.]]\+\).*$/\1/p'`"
+        qmake6_test_ver="`$QMAKE6 -v 2>&1 | $SED -n -e 's/^Using Qt version \(6\..*\) in.*$/\1/p'`"
         if test -z "$qmake6_test_ver"; then
             AC_MSG_ERROR([Wrong qmake for Qt6 found. Please specify the root of your Qt6 installation by exporting QT6DIR before running "configure".])
         fi
@@ -14237,43 +14232,62 @@ then
     qt6_platformsdir="`$QMAKE6 -query QT_INSTALL_PLUGINS | tr -d '\r'`/platforms"
     QT6_PLATFORMS_SRCDIR="$qt6_platformsdir"
 
-    qt6_test_include="QtWidgets/qapplication.h"
-    AC_MSG_CHECKING([for Qt6 headers])
-    qt6_incdir="no"
-    for inc_dir in $qt6_incdirs; do
-        PathFormat "$inc_dir"
-        if test -r "${formatted_path_unix}/${qt6_test_include}"; then
+    # Look for Qt6 headers; on Mac we use the Qt framework that we find below, not
+    # a separate headers directory
+    if test "$_os" == "Darwin"; then
+        for inc_dir in $qt6_incdirs; do
             qt6_incdir="$inc_dir"
             break
+        done
+    else
+        qt6_test_include="QtWidgets/qapplication.h"
+        AC_MSG_CHECKING([for Qt6 headers])
+        qt6_incdir="no"
+        for inc_dir in $qt6_incdirs; do
+            PathFormat "$inc_dir"
+            if test -r "${formatted_path_unix}/${qt6_test_include}"; then
+                qt6_incdir="$inc_dir"
+                break
+            fi
+        done
+        AC_MSG_RESULT([$qt6_incdir])
+        if test "x$qt6_incdir" = "xno"; then
+            AC_MSG_ERROR([Qt6 headers not found.  Please specify the root of your Qt6 installation by exporting QT6DIR before running "configure".])
         fi
-    done
-    AC_MSG_RESULT([$qt6_incdir])
-    if test "x$qt6_incdir" = "xno"; then
-        AC_MSG_ERROR([Qt6 headers not found.  Please specify the root of your Qt6 installation by exporting QT6DIR before running "configure".])
-    fi
-    # check for scenario: qt6-qtbase-devel-*.86_64 installed but host is i686
-    AC_LANG_PUSH([C++])
-    save_CPPFLAGS=$CPPFLAGS
-    CPPFLAGS="${CPPFLAGS} -I${qt6_incdir}"
-    AC_CHECK_HEADER(QtCore/qconfig.h, [],
-        [AC_MSG_ERROR(qconfig.h header not found.)], [])
-    CPPFLAGS=$save_CPPFLAGS
-    AC_LANG_POP([C++])
 
-    if test "$_os" = "Emscripten"; then
+        # check for scenario: qt6-qtbase-devel-*.86_64 installed but host is i686
+        AC_LANG_PUSH([C++])
+        save_CPPFLAGS=$CPPFLAGS
+        CPPFLAGS="${CPPFLAGS} -I${qt6_incdir}"
+        AC_CHECK_HEADER(QtCore/qconfig.h, [],
+            [AC_MSG_ERROR(qconfig.h header not found.)], [])
+        CPPFLAGS=$save_CPPFLAGS
+        AC_LANG_POP([C++])
+    fi
+
+    qt6_test_library="Qt6Widgets"
+    case "$_os" in
+    Emscripten)
         qt6_library_prefix="lib"
         qt6_library_suffixes=".a"
-    elif test "$_os" = "WINNT"; then
+        ;;
+    WINNT)
         qt6_library_prefix=""
         # file names of libraries built in debug mode have an additional
         # "d" suffix in the file name, e.g. "Qt6Widgetsd.lib"
         qt6_library_suffixes=".lib d.lib"
-    else
+        ;;
+    Darwin)
+        qt6_library_prefix=""
+        qt6_library_suffixes=".framework"
+        qt6_test_library="QtWidgets"
+        ;;
+    *)
         qt6_library_prefix="lib"
         qt6_library_suffixes=".so"
-    fi
+        ;;
+    esac
 
-    qt6_test_library="Qt6Widgets"
     AC_MSG_CHECKING([for Qt6 libraries])
     qt6_libdir="no"
     for lib_dir in $qt6_libdirs; do
@@ -14290,6 +14304,7 @@ then
     if test "x$qt6_libdir" = "xno"; then
         AC_MSG_ERROR([Qt6 libraries not found.  Please specify the root of your Qt6 installation by exporting QT6DIR before running "configure".])
     fi
+    QT6_LIBDIR="${qt6_libdir}"
 
     if test "$_os" = "Emscripten"; then
         if test ! -f "$QT6_PLATFORMS_SRCDIR"/wasm_shell.html ; then
@@ -14301,25 +14316,34 @@ then
     fi
 
     QT6_CFLAGS="-I$qt6_incdir -DQT_NO_VERSION_TAGGING"
-    QT6_CFLAGS=$(printf '%s' "$QT6_CFLAGS" | sed -e "s/-I/${ISYSTEM?}/g")
     if test "$_os" = "WINNT"; then
         QT6_LIBS="-LIBPATH:${qt6_libdir} Qt6Core${qt6_library_suffix} Qt6Gui${qt6_library_suffix} Qt6Widgets${qt6_library_suffix}"
+    elif test "$_os" = "Darwin"; then
+        QT6_LIBS="-F ${qt6_libdir} -framework QtCore -framework QtGui -framework QtWidgets -framework QtNetwork"
+        QT6_CFLAGS="${QT6_CFLAGS} -F ${qt6_libdir}"
     else
         QT6_LIBS="-L$qt6_libdir -lQt6Core -lQt6Gui -lQt6Widgets"
     fi
+    QT6_CFLAGS=$(printf '%s' "$QT6_CFLAGS" | sed -e "s/-I/${ISYSTEM?}/g")
 
     if test "$_os" = "Emscripten"; then
         QT6_LIBS="$QT6_LIBS -lQt6BundledPcre2 -lQt6BundledZLIB -L${qt6_platformsdir} -lqwasm -sGL_ENABLE_GET_PROC_ADDRESS"
     else
         if ! test "$enable_qt6_multimedia" = "no"; then
-            PathFormat "${qt6_incdir}"
-            if ! test -r "${formatted_path_unix}/QtMultimediaWidgets/QVideoWidget"; then
+            qt6_mm_headerdir="${qt6_incdir}"
+            if test "$_os" = "Darwin"; then
+                qt6_mm_headerdir="${qt6_libdir}"
+            fi
+            format_header_path "${qt6_mm_headerdir}" "QtMultimediaWidgets" "QVideoWidget"
+            if ! test -r "${formatted_path_unix}"; then
                 AC_MSG_ERROR([Qt 6 QMultimedia not found.])
                 break
             fi
             ENABLE_QT6_MULTIMEDIA=TRUE
             if test "$_os" = "WINNT"; then
                 QT6_LIBS="$QT6_LIBS Qt6Multimedia${qt6_library_suffix} Qt6MultimediaWidgets${qt6_library_suffix}"
+            elif test "$_os" = "Darwin"; then
+                QT6_LIBS="$QT6_LIBS -framework QtMultimedia -framework QtMultimediaWidgets"
             else
                 QT6_LIBS="$QT6_LIBS -lQt6Multimedia -lQt6MultimediaWidgets"
             fi
@@ -14362,6 +14386,7 @@ the root of your Qt installation by exporting QT6DIR before running "configure".
 fi
 AC_SUBST(QT6_CFLAGS)
 AC_SUBST(QT6_LIBS)
+AC_SUBST(QT6_LIBDIR)
 AC_SUBST(MOC6)
 AC_SUBST(QT6_PLATFORMS_SRCDIR)
 AC_SUBST(ENABLE_QT6_MULTIMEDIA)
@@ -14613,24 +14638,17 @@ dnl ===================================================================
 dnl Test whether to include fonts
 dnl ===================================================================
 WITH_FONTS=
-WITH_DOCREPAIR_FONTS=
 AC_MSG_CHECKING([whether to include third-party fonts])
 if test "$with_fonts" != "no"; then
     AC_MSG_RESULT([yes])
     WITH_FONTS=TRUE
     BUILD_TYPE="$BUILD_TYPE MORE_FONTS"
     AC_DEFINE(HAVE_MORE_FONTS)
-    AC_MSG_CHECKING([whether to include 'docrepair' fonts])
-    if test "$with_docrepair_fonts" = "yes"; then
-        AC_MSG_RESULT([yes])
-        WITH_DOCREPAIR_FONTS=TRUE
-    fi
 else
     AC_MSG_RESULT([no])
     SCPDEFS="$SCPDEFS -DWITHOUT_FONTS"
 fi
 AC_SUBST(WITH_FONTS)
-AC_SUBST(WITH_DOCREPAIR_FONTS)
 
 dnl ===================================================================
 dnl Test whether to enable online update service
@@ -14990,7 +15008,7 @@ if test "$need_meson" = "yes"; then
     fi
 fi
 
-if test -z "$NINJA" || test "$NINJA" = 'assumed to be available from Visual Studio'; then
+if test -z "$NINJA"; then
     x_NINJA=[\#]
 else
     x_NINJA=
@@ -15036,6 +15054,16 @@ fi
 AC_SUBST(ENABLE_MSVC_ANALYZE)
 
 dnl ===================================================================
+dnl Test whether to build libjxl or rely on the system version
+dnl highway and brotli libraries are only built with internal libjxl
+dnl ===================================================================
+
+if test "$with_system_libjxl" != "yes"; then
+    BUILD_TYPE="$BUILD_TYPE HIGHWAY BROTLI"
+fi
+
+libo_CHECK_SYSTEM_MODULE([libjxl],[LIBJXL],[libjxl libjxl_threads])
+
 dnl Test whether to use liblangtag
 dnl ===================================================================
 SYSTEM_LIBLANGTAG=
@@ -15245,7 +15273,8 @@ EOF
         AC_MSG_RESULT([Ant lib directory found.])
     fi
 
-    ant_minver=1.6.0
+    # reproducible builds need the modificationtime parameter for the jar task introduced in 1.10.2
+    ant_minver=1.10.2
     ant_minminor1=`echo $ant_minver | cut -d"." -f2`
 
     AC_MSG_CHECKING([whether Ant is >= $ant_minver])
@@ -16105,10 +16134,6 @@ if test "$enable_mpl_subset" = "yes"; then
 
     ENABLE_OPENGL_TRANSITIONS=
 
-    if test "$enable_lpsolve" != "no" -o "x$ENABLE_LPSOLVE" = "xTRUE"; then
-        mpl_error_string="$mpl_error_string$newline Need to --disable-lpsolve - calc linear programming solver."
-    fi
-
     if test "x$mpl_error_string" != "x"; then
         AC_MSG_ERROR([$mpl_error_string])
     fi
@@ -16474,6 +16499,8 @@ if test -n "$WSL_ONLY_AS_HELPER"; then
         mkdir -p tmp
         TEMP_DIRECTORY="$BUILDDIR/tmp"
     fi
+    # gnucp might be detected in the Linux container, force it to known cp.exe
+    GNUCP="cp.exe"
 fi
 
 # Keep in sync with list of files far up, at AC_MSG_CHECKING([for
@@ -16541,6 +16568,7 @@ AC_CONFIG_HEADERS([config_host/config_lgpl.h])
 AC_CONFIG_HEADERS([config_host/config_libcxx.h])
 AC_CONFIG_HEADERS([config_host/config_liblangtag.h])
 AC_CONFIG_HEADERS([config_host/config_locales.h])
+AC_CONFIG_HEADERS([config_host/config_md4c.h])
 AC_CONFIG_HEADERS([config_host/config_mpl.h])
 AC_CONFIG_HEADERS([config_host/config_oox.h])
 AC_CONFIG_HEADERS([config_host/config_options.h])

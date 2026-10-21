@@ -57,6 +57,8 @@
 #include <swcont.hxx>
 #include <content.hxx>
 
+#include <officecfg/Office/Writer.hxx>
+
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::frame;
 
@@ -154,7 +156,8 @@ void SwNavigationPI::UpdateNavigateBy()
 
 IMPL_LINK(SwNavigationPI, NavigateByComboBoxSelectHdl, weld::ComboBox&, rComboBox, void)
 {
-    m_xContentTree->SelectContentType(rComboBox.get_active_text());
+    if (officecfg::Office::Writer::Navigator::NavigateByCategoryBinding::get())
+        m_xContentTree->SelectContentType(rComboBox.get_active_text());
     UpdateNavigateBy();
 }
 
@@ -438,7 +441,7 @@ SwNavigationPI::SwNavigationPI(weld::Widget* pParent,
     , m_xGlobalToolBox(m_xBuilder->weld_toolbar(u"global"_ustr))
     , m_xGotoPageSpinButton(m_xBuilder->weld_spin_button(u"gotopage"_ustr))
     , m_xContentBox(m_xBuilder->weld_widget(u"contentbox"_ustr))
-    , m_xContentTree(new SwContentTree(m_xBuilder->weld_tree_view(u"contenttree"_ustr), this))
+    , m_xContentTree(new SwContentTree(m_xBuilder->weld_tree_view(u"contenttree"_ustr), *this))
     , m_xGlobalBox(m_xBuilder->weld_widget(u"globalbox"_ustr))
     , m_xGlobalTree(new SwGlobalTree(m_xBuilder->weld_tree_view(u"globaltree"_ustr), this))
     , m_xDocListBox(m_xBuilder->weld_combo_box(u"documents"_ustr))
@@ -1269,6 +1272,8 @@ bool SwNavigationPI::IsGlobalDoc() const
 
 void SwNavigationPI::SelectNavigateByContentType(const OUString& rContentTypeName)
 {
+    if (!officecfg::Office::Writer::Navigator::NavigateByCategoryBinding::get())
+        return;
     if (!m_pNavigateByComboBox)
         return;
     if (auto nPos = m_pNavigateByComboBox->find_text(rContentTypeName); nPos != -1)
@@ -1297,12 +1302,13 @@ SwView*  SwNavigationPI::GetCreateView() const
     return m_pCreateView;
 }
 
-SwNavigatorWin::SwNavigatorWin(SfxBindings* _pBindings, SfxChildWindow* _pMgr,
-                               vcl::Window* pParent, SfxChildWinInfo* pInfo)
-    : SfxNavigator(_pBindings, _pMgr, pParent, pInfo)
-    , m_xNavi(std::make_unique<SwNavigationPI>(m_xContainer.get(), _pBindings->GetActiveFrame(), _pBindings, this))
+SwNavigatorWin::SwNavigatorWin(SfxBindings& rBindings, SfxChildWindow* _pMgr, vcl::Window* pParent,
+                               SfxChildWinInfo& rInfo)
+    : SfxNavigator(rBindings, _pMgr, pParent, rInfo)
+    , m_xNavi(std::make_unique<SwNavigationPI>(m_xContainer.get(), rBindings.GetActiveFrame(),
+                                               &rBindings, this))
 {
-    _pBindings->Invalidate(SID_NAVIGATOR);
+    rBindings.Invalidate(SID_NAVIGATOR);
 
     SwNavigationConfig* pNaviConfig = SwModule::get()->GetNavigationConfig();
 
@@ -1320,11 +1326,11 @@ void SwNavigatorWin::StateChanged(StateChangedType nStateChange)
 
 SFX_IMPL_DOCKINGWINDOW_WITHID(SwNavigatorWrapper, SID_NAVIGATOR);
 
-SwNavigatorWrapper::SwNavigatorWrapper(vcl::Window *_pParent, sal_uInt16 nId,
-                                       SfxBindings* pBindings, SfxChildWinInfo* pInfo)
+SwNavigatorWrapper::SwNavigatorWrapper(vcl::Window* _pParent, sal_uInt16 nId,
+                                       SfxBindings& rBindings, SfxChildWinInfo& rInfo)
     : SfxNavigatorWrapper(_pParent, nId)
 {
-    SetWindow(VclPtr<SwNavigatorWin>::Create(pBindings, this, _pParent, pInfo));
+    SetWindow(VclPtr<SwNavigatorWin>::Create(rBindings, this, _pParent, rInfo));
     Initialize();
 }
 

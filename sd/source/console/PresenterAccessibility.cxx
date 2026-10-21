@@ -53,7 +53,6 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 namespace sdext::presenter {
 
@@ -97,7 +96,7 @@ PresenterAccessible::PresenterAccessible(
     if (VclPtr<vcl::Window> pMainPaneWin = VCLUnoHelper::GetWindow(mxMainWindow))
     {
         pMainPaneWin->SetAccessible(this);
-        mxAccessibleParent = pMainPaneWin->GetAccessibleParent();
+        mpAccessibleParent = pMainPaneWin->GetAccessibleParent();
     }
 }
 
@@ -275,7 +274,7 @@ PresenterAccessible::Create(const rtl::Reference<PresenterController>& xPresente
     pPresenterAcc->UpdateStateSet();
 
     pPresenterAcc->SetWindow(pPresenterAcc->mxMainWindow, nullptr);
-    pPresenterAcc->SetAccessibleParent(pPresenterAcc->mxAccessibleParent);
+    pPresenterAcc->SetAccessibleParent(pPresenterAcc->mpAccessibleParent);
     pPresenterAcc->UpdateAccessibilityHierarchy();
 
     return pPresenterAcc;
@@ -304,6 +303,6 @@ void SAL_CALL PresenterAccessible::disposing (const css::lang::EventObject& rEve
         mxMainWindow = nullptr;
 }
 
-} // end of namespace ::sd::presenter
+} // end of namespace sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

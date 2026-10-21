@@ -127,7 +127,8 @@ public:
                                          const bool printFormula = false);
     void printRange(ScDocument* pDoc, const ScRange& rRange,
                                          const OString& rCaption, const bool printFormula = false);
-    void clearRange(ScDocument* pDoc, const ScRange& rRange);
+    void clearRange(ScDocument* pDoc, const ScRange& rRange,
+                    InsertDeleteFlags eFlags = InsertDeleteFlags::CONTENTS);
     void clearSheet(ScDocument* pDoc, SCTAB nTab);
     bool checkFormulaPosition(ScDocument& rDoc, const ScAddress& rPos);
     bool checkFormulaPositions(
@@ -177,7 +178,8 @@ public:
     void goToCell(const OUString& rCell);
     void typeString(std::u16string_view rStr);
     void insertStringToCell(const OUString& rCell, std::u16string_view rStr);
-    void insertArrayToCell(const OUString& rCell, std::u16string_view rStr);
+    void insertArrayToCell(const OUString& rCell, std::u16string_view rStr,
+                           bool bDynamicArrayMaster = false);
     void clearCell(const OUString& rCell);
     void insertNewSheet(const ScDocument& rDoc);
     void executeAutoSum();

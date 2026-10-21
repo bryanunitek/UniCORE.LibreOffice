@@ -36,9 +36,8 @@ class AccessibleGridControlTable final
                                          css::accessibility::XAccessibleSelection>
 {
 public:
-    AccessibleGridControlTable(
-        const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-            svt::table::TableControl& rTable);
+    AccessibleGridControlTable(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                               svt::table::TableControl& rTable);
 
 private:
     virtual ~AccessibleGridControlTable() override = default;
@@ -123,11 +122,6 @@ public:
 
     /** Removes the specified row/column from the selection. */
     virtual void SAL_CALL deselectAccessibleChild( sal_Int64 nSelectedChildIndex ) override;
-
-    // XServiceInfo
-
-    /** @return  The name of this class. */
-    virtual OUString SAL_CALL getImplementationName() override;
 
     // XComponent
     virtual void SAL_CALL dispose() override;

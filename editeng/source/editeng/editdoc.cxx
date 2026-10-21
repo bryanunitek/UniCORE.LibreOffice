@@ -111,6 +111,9 @@ sal_uInt16 GetScriptItemId( sal_uInt16 nItemId, SvtScriptType nScriptType )
             case EE_CHAR_ITALIC:
                 nId = ( nScriptType == SvtScriptType::ASIAN ) ? EE_CHAR_ITALIC_CJK : EE_CHAR_ITALIC_CTL;
             break;
+            case EE_CHAR_FONTVARIATIONS:
+                nId = ( nScriptType == SvtScriptType::ASIAN ) ? EE_CHAR_FONTVARIATIONS_CJK : EE_CHAR_FONTVARIATIONS_CTL;
+            break;
         }
     }
 
@@ -166,6 +169,15 @@ bool IsScriptItemValid( sal_uInt16 nItemId, short nScriptType )
             bValid = nScriptType == i18n::ScriptType::ASIAN;
         break;
         case EE_CHAR_ITALIC_CTL:
+            bValid = nScriptType == i18n::ScriptType::COMPLEX;
+        break;
+        case EE_CHAR_FONTVARIATIONS:
+            bValid = nScriptType == i18n::ScriptType::LATIN;
+        break;
+        case EE_CHAR_FONTVARIATIONS_CJK:
+            bValid = nScriptType == i18n::ScriptType::ASIAN;
+        break;
+        case EE_CHAR_FONTVARIATIONS_CTL:
             bValid = nScriptType == i18n::ScriptType::COMPLEX;
         break;
     }
@@ -329,6 +341,8 @@ EditCharAttrib* MakeCharAttrib( SfxItemPool& rPool, const SfxPoolItem& rAttr, sa
         }
         break;
         case EE_CHAR_FONTVARIATIONS:
+        case EE_CHAR_FONTVARIATIONS_CJK:
+        case EE_CHAR_FONTVARIATIONS_CTL:
         {
             return new EditCharAttribFontVariations(rPool, rAttr, nS, nE );
         }
@@ -585,20 +599,10 @@ ParaPortionList::DbgCheck(ParaPortionList const& rParas, EditDoc const& rDoc)
     {
         assert(rParas.SafeGetObject(i) != nullptr);
         assert(rParas.SafeGetObject(i)->GetNode() != nullptr);
-        assert(rParas.SafeGetObject(i)->GetNode() == rDoc.GetObject(i));
+        assert(rParas.SafeGetObject(i)->GetNode() == &rDoc.GetObject(i));
     }
 }
 #endif
-
-ContentAttribsInfo::ContentAttribsInfo( SfxItemSet aParaAttribs ) :
-        aPrevParaAttribs(std::move( aParaAttribs))
-{
-}
-
-void ContentAttribsInfo::AppendCharAttrib(EditCharAttrib* pNew)
-{
-    aPrevCharAttribs.push_back(std::unique_ptr<EditCharAttrib>(pNew));
-}
 
 void ConvertItem( std::unique_ptr<SfxPoolItem>& rPoolItem, MapUnit eSourceUnit, MapUnit eDestUnit )
 {
@@ -1244,11 +1248,16 @@ void YrsInsertAttribImplImpl(YrsWrite const& yw, SfxPoolItem const& rItm,
             break;
         }
         case EE_CHAR_FONTVARIATIONS:
+        case EE_CHAR_FONTVARIATIONS_CJK:
+        case EE_CHAR_FONTVARIATIONS_CTL:
         {
             SvxFontVariationsItem const& rItem{static_cast<SvxFontVariationsItem const&>(rItm)};
             OUString aStr = vcl::font::VariationsToString(rItem.GetVariations());
             attr = yinput_str(OUStringToOString(aStr, RTL_TEXTENCODING_UTF8));
-            attrName = "EE_CHAR_FONTVARIATIONS";
+            attrName = rItm.Which() == EE_CHAR_FONTVARIATIONS
+                ? "EE_CHAR_FONTVARIATIONS"
+                : rItm.Which() == EE_CHAR_FONTVARIATIONS_CJK ? "EE_CHAR_FONTVARIATIONS_CJK"
+                                                             : "EE_CHAR_FONTVARIATIONS_CTL";
             break;
         }
         default:
@@ -1277,7 +1286,7 @@ void YrsInsertFeature(IYrsTransactionSupplier *const pYrsSupplier, OString const
     uint32_t i{0};
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
     i += pAttr->GetStart();
     char const feature[]{ CH_FEATURE, '\0' };
@@ -1334,9 +1343,9 @@ void YrsAddPara(IYrsTransactionSupplier *const pYrsSupplier,
     // UTF-16 index should be equal to EditDoc one
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
-    ContentAttribs const& rParaAttribs{rDoc.GetObject(index)->GetContentAttribs()};
+    ContentAttribs const& rParaAttribs{rDoc.GetObject(index).GetContentAttribs()};
     auto const pStyle{rParaAttribs.GetStyleSheet()};
     if (pStyle)
     {
@@ -1370,10 +1379,10 @@ void YrsRemovePara(IYrsTransactionSupplier *const pYrsSupplier,
     {
         for (auto paras{index}; paras != 0; --paras)
         {
-            i += rDoc.GetObject(paras-1)->Len() + 1;
+            i += rDoc.GetObject(paras-1).Len() + 1;
         }
     }
-    uint32_t const len(rDoc.GetObject(index)->Len() + 1);
+    uint32_t const len(rDoc.GetObject(index).Len() + 1);
     ytext_remove_range(yw.pText, yw.pTxn, i, len);
 }
 
@@ -1401,10 +1410,10 @@ void YrsInsertParaBreak(IYrsTransactionSupplier *const pYrsSupplier, OString con
     uint32_t i{0};
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
     i += content;
-    ContentAttribs const& rParaAttribs{rDoc.GetObject(index)->GetContentAttribs()};
+    ContentAttribs const& rParaAttribs{rDoc.GetObject(index).GetContentAttribs()};
     OString const styleName{OUStringToOString(rParaAttribs.GetStyleSheet()->GetName(), RTL_TEXTENCODING_UTF8)};
     YInput const style{yinput_string(styleName.getStr())};
     YInput attrArray[]{ style };
@@ -1428,7 +1437,7 @@ void YrsInsertText(IYrsTransactionSupplier *const pYrsSupplier, OString const& r
     uint32_t i{0};
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
     i += content;
     OString const text{::rtl::OUStringToOString(rText, RTL_TEXTENCODING_UTF8)};
@@ -1446,7 +1455,7 @@ void YrsConnectPara(IYrsTransactionSupplier *const pYrsSupplier, OString const& 
     uint32_t i{0};
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
     i += pos;
     ytext_remove_range(yw.pText, yw.pTxn, i, 1);
@@ -1463,7 +1472,7 @@ void YrsRemoveChars(IYrsTransactionSupplier *const pYrsSupplier, OString const& 
     uint32_t i{0};
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
     i += content;
     ytext_remove_range(yw.pText, yw.pTxn, i, length);
@@ -1480,9 +1489,9 @@ void YrsSetStyle(IYrsTransactionSupplier *const pYrsSupplier, OString const& rCo
     uint32_t i{0};
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
-    i += rDoc.GetObject(index)->Len();
+    i += rDoc.GetObject(index).Len();
     OString const styleName{OUStringToOString(rStyle, RTL_TEXTENCODING_UTF8)};
     YInput const style{yinput_string(styleName.getStr())};
     YInput attrArray[]{ style };
@@ -1502,9 +1511,9 @@ void YrsSetParaAttr(IYrsTransactionSupplier *const pYrsSupplier, OString const& 
     uint32_t i{0};
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
-    i += rDoc.GetObject(index)->Len();
+    i += rDoc.GetObject(index).Len();
     YrsInsertAttribImplImpl(yw, rItem, i, 1);
 }
 
@@ -1611,6 +1620,10 @@ char const* YrsWhichToAttrName(sal_Int16 const nWhich)
             return "EE_CHAR_OPTICALSIZING";
         case EE_CHAR_FONTVARIATIONS:
             return "EE_CHAR_FONTVARIATIONS";
+        case EE_CHAR_FONTVARIATIONS_CJK:
+            return "EE_CHAR_FONTVARIATIONS_CJK";
+        case EE_CHAR_FONTVARIATIONS_CTL:
+            return "EE_CHAR_FONTVARIATIONS_CTL";
         default:
             assert(false);
             abort();
@@ -1628,7 +1641,7 @@ void YrsRemoveAttrib(IYrsTransactionSupplier *const pYrsSupplier, OString const&
     uint32_t i{0};
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
     YInput const attr{yinput_null()};
     char const*const attrName{YrsWhichToAttrName(nWhich)};
@@ -1646,7 +1659,7 @@ void YrsInsertAttrib(IYrsTransactionSupplier *const pYrsSupplier, OString const&
     uint32_t i{0};
     for (auto paras{index}; paras != 0; --paras)
     {
-        i += rDoc.GetObject(paras-1)->Len() + 1;
+        i += rDoc.GetObject(paras-1).Len() + 1;
     }
     YrsInsertAttribImpl(yw, i, pAttr);
 }
@@ -1860,6 +1873,14 @@ void YrsImplInsertAttr(SfxItemSet & rSet, ::std::vector<sal_uInt16> *const pRemo
     else if (strcmp(pKey, "EE_CHAR_FONTVARIATIONS") == 0)
     {
         nWhich = EE_CHAR_FONTVARIATIONS;
+    }
+    else if (strcmp(pKey, "EE_CHAR_FONTVARIATIONS_CJK") == 0)
+    {
+        nWhich = EE_CHAR_FONTVARIATIONS_CJK;
+    }
+    else if (strcmp(pKey, "EE_CHAR_FONTVARIATIONS_CTL") == 0)
+    {
+        nWhich = EE_CHAR_FONTVARIATIONS_CTL;
     }
     else if (pKey[0] == 'E' && pKey[1] == 'E' && pKey[2] == '_')
     {
@@ -2500,6 +2521,8 @@ void YrsImplInsertAttr(SfxItemSet & rSet, ::std::vector<sal_uInt16> *const pRemo
             break;
         }
         case EE_CHAR_FONTVARIATIONS:
+        case EE_CHAR_FONTVARIATIONS_CJK:
+        case EE_CHAR_FONTVARIATIONS_CTL:
         {
             yvalidate(rValue.tag == Y_JSON_STRING);
             OUString aStr = OStringToOUString(
@@ -2804,7 +2827,7 @@ bool EditDoc::YrsWriteEECursor(YTransaction *const pTxn, Branch const& rArray,
     uint32_t start{0};
     for (auto paras{GetPos(sel.Min().GetNode())}; paras != 0; --paras)
     {
-        start += GetObject(paras-1)->Len() + 1;
+        start += GetObject(paras-1).Len() + 1;
     }
     uint32_t end{start};
     start += sel.Min().GetIndex();
@@ -2814,7 +2837,7 @@ bool EditDoc::YrsWriteEECursor(YTransaction *const pTxn, Branch const& rArray,
         for (auto paras{GetPos(sel.Max().GetNode()) - nStartNode};
             paras != 0; --paras)
         {
-            end += GetObject(nStartNode + paras-1)->Len() + 1;
+            end += GetObject(nStartNode + paras-1).Len() + 1;
         }
         end += sel.Max().GetIndex();
     }
@@ -3278,11 +3301,13 @@ void CreateFont( SvxFont& rFont, const SfxItemSet& rSet, bool bSearchInParent, S
     sal_uInt16 nWhich_FontHeight = GetScriptItemId( EE_CHAR_FONTHEIGHT, nScriptType );
     sal_uInt16 nWhich_Weight = GetScriptItemId( EE_CHAR_WEIGHT, nScriptType );
     sal_uInt16 nWhich_Italic = GetScriptItemId( EE_CHAR_ITALIC, nScriptType );
+    sal_uInt16 nWhich_FontVariations = GetScriptItemId( EE_CHAR_FONTVARIATIONS, nScriptType );
 
     if ( bSearchInParent || ( rSet.GetItemState( nWhich_FontInfo ) == SfxItemState::SET ) )
     {
         const SvxFontItem& rFontItem = static_cast<const SvxFontItem&>(rSet.Get( nWhich_FontInfo ));
         rFont.SetFamilyName( rFontItem.GetFamilyName() );
+        rFont.SetStyleName( rFontItem.GetStyleName() );
         rFont.SetFamily( rFontItem.GetFamily() );
         rFont.SetPitch( rFontItem.GetPitch() );
         rFont.SetCharSet( rFontItem.GetCharSet() );
@@ -3337,8 +3362,8 @@ void CreateFont( SvxFont& rFont, const SfxItemSet& rSet, bool bSearchInParent, S
         rFont.SetRelief( rSet.Get( EE_CHAR_RELIEF ).GetValue() );
     if ( bSearchInParent || ( rSet.GetItemState( EE_CHAR_OPTICALSIZING ) == SfxItemState::SET ) )
         rFont.SetOpticalSizing( rSet.Get( EE_CHAR_OPTICALSIZING ).GetValue() );
-    if ( bSearchInParent || ( rSet.GetItemState( EE_CHAR_FONTVARIATIONS ) == SfxItemState::SET ) )
-        rFont.SetVariations( rSet.Get( EE_CHAR_FONTVARIATIONS ).GetVariations() );
+    if ( bSearchInParent || ( rSet.GetItemState( nWhich_FontVariations ) == SfxItemState::SET ) )
+        rFont.SetVariations( static_cast<const SvxFontVariationsItem&>(rSet.Get( nWhich_FontVariations )).GetVariations() );
 
     // Operator == compares the individual members of the font if the impl pointer is
     // not equal. If all members are the same, this assignment makes
@@ -3388,14 +3413,14 @@ sal_Int32 EditDoc::GetPos(const ContentNode* pContentNode) const
     return FastGetPos(maContents, pContentNode, mnLastCache);
 }
 
-const ContentNode* EditDoc::GetObject(sal_Int32 nPos) const
+const ContentNode& EditDoc::GetObject(sal_Int32 nPos) const
 {
-    return 0 <= nPos && o3tl::make_unsigned(nPos) < maContents.size() ? maContents[nPos].get() : nullptr;
+    return *maContents[nPos];
 }
 
-ContentNode* EditDoc::GetObject(sal_Int32 nPos)
+ContentNode& EditDoc::GetObject(sal_Int32 nPos)
 {
-    return 0 <= nPos && o3tl::make_unsigned(nPos) < maContents.size() ? maContents[nPos].get() : nullptr;
+    return *maContents[nPos];
 }
 
 void EditDoc::Insert(sal_Int32 nPos, std::unique_ptr<ContentNode> pNode)
@@ -3413,11 +3438,6 @@ void EditDoc::Insert(sal_Int32 nPos, std::unique_ptr<ContentNode> pNode)
 
 void EditDoc::Remove(sal_Int32 nPos)
 {
-    if (nPos < 0 || o3tl::make_unsigned(nPos) >= maContents.size())
-    {
-        SAL_WARN( "editeng", "EditDoc::Remove - out of bounds pos " << nPos);
-        return;
-    }
 #if ENABLE_YRS
     YrsRemovePara(m_pYrsSupplier, m_CommentId, *this, nPos);
 #endif
@@ -3426,12 +3446,6 @@ void EditDoc::Remove(sal_Int32 nPos)
 
 std::unique_ptr<ContentNode> EditDoc::Release(sal_Int32 nPos)
 {
-    if (nPos < 0 || o3tl::make_unsigned(nPos) >= maContents.size())
-    {
-        SAL_WARN( "editeng", "EditDoc::Release - out of bounds pos " << nPos);
-        return nullptr;
-    }
-
 #if ENABLE_YRS
     YrsRemovePara(m_pYrsSupplier, m_CommentId, *this, nPos);
 #endif
@@ -3478,7 +3492,7 @@ OUString EditDoc::GetText( LineEnd eEnd ) const
         {
             aBuffer.append(aSep);
         }
-        aBuffer.append(GetParaAsString( GetObject(nNode) ));
+        aBuffer.append(GetParaAsString( &GetObject(nNode) ));
     }
 
     return aBuffer.makeStringAndClear();
@@ -3486,7 +3500,7 @@ OUString EditDoc::GetText( LineEnd eEnd ) const
 
 OUString EditDoc::GetParaAsString( sal_Int32 nNode ) const
 {
-    return GetParaAsString( GetObject( nNode ) );
+    return GetParaAsString( &GetObject( nNode ) );
 }
 
 OUString EditDoc::GetParaAsString(
@@ -3497,14 +3511,14 @@ OUString EditDoc::GetParaAsString(
 
 EditPaM EditDoc::GetStartPaM() const
 {
-    ContentNode* p = const_cast<ContentNode*>(GetObject(0));
+    ContentNode& p = const_cast<ContentNode&>(GetObject(0));
     return EditPaM(p, 0);
 }
 
 EditPaM EditDoc::GetEndPaM() const
 {
-    ContentNode* pLastNode = const_cast<ContentNode*>(GetObject(Count()-1));
-    return EditPaM( pLastNode, pLastNode->Len() );
+    ContentNode& rLastNode = const_cast<ContentNode&>(GetObject(Count()-1));
+    return EditPaM( rLastNode, rLastNode.Len() );
 }
 
 sal_Int32 EditDoc::GetTextLen() const
@@ -3562,10 +3576,10 @@ void EditDoc::SetModified( bool b )
 EditPaM EditDoc::RemoveText()
 {
     // Keep the old ItemSet, to keep the chart Font.
-    ContentNode* pPrevFirstNode = GetObject(0);
-    SfxStyleSheet* pPrevStyle = pPrevFirstNode->GetStyleSheet();
-    SfxItemSet aPrevSet( pPrevFirstNode->GetContentAttribs().GetItems() );
-    vcl::Font aPrevFont( pPrevFirstNode->GetCharAttribs().GetDefFont() );
+    ContentNode& rPrevFirstNode = GetObject(0);
+    SfxStyleSheet* pPrevStyle = rPrevFirstNode.GetStyleSheet();
+    SfxItemSet aPrevSet( rPrevFirstNode.GetContentAttribs().GetItems() );
+    vcl::Font aPrevFont( rPrevFirstNode.GetCharAttribs().GetDefFont() );
 
     maContents.clear();
 

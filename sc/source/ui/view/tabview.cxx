@@ -30,6 +30,7 @@
 #include <o3tl/unit_conversion.hxx>
 
 #include <pagedata.hxx>
+#include <printfun.hxx>
 #include <tabview.hxx>
 #include <tabvwsh.hxx>
 #include <document.hxx>
@@ -139,6 +140,8 @@ void ScCornerButton::MouseButtonDown( const MouseEvent& rMEvt )
     {
         ScTabViewShell* pViewSh = rViewData.GetViewShell();
         pViewSh->SetActive();                                   // Appear and SetViewFrame
+        // tdf#84694 - deselect draw objects before selecting the entire sheet
+        pViewSh->DrawDeselectAll();
         pViewSh->ActiveGrabFocus();
 
         bool bControl = rMEvt.IsMod1();
@@ -352,8 +355,10 @@ void ScTabView::DoResize( const Point& rOffset, const Size& rSize, bool bInner )
 
 
     Size aFontSize = rStyleSettings.GetTabFont().GetFontSize();
+#ifndef MACOSX // already in pixels on macOS: a point conversion would inflate the tab bar
     MapMode aPtMapMode(MapUnit::MapPoint);
     aFontSize = pFrameWin->LogicToPixel(aFontSize, aPtMapMode);
+#endif
     sal_Int32 nTabHeight = aFontSize.Height() + TAB_HEIGHT_MARGIN;
 
     if ( aViewData.GetHSplitMode() != SC_SPLIT_NONE )
@@ -1588,15 +1593,14 @@ void ScTabView::UpdateHeaderWidth( const ScVSplitPos* pWhich, const SCROW* pPosY
         }
     }
 
-    tools::Long nSmall = pRowBar[SC_SPLIT_BOTTOM]->GetSmallWidth();
-    tools::Long nBig   = pRowBar[SC_SPLIT_BOTTOM]->GetBigWidth();
-    tools::Long nDiff  = nBig - nSmall;
-
-    if (nEndPos>10000)
-        nEndPos = 10000;
-    else if (nEndPos<1)     // avoid extra step at 0 (when only one row is visible)
-        nEndPos = 1;
-    tools::Long nWidth = nBig - ( 10000 - nEndPos ) * nDiff / 10000;
+    // tdf#148507 - update row header width only on digit changes
+    tools::Long nWidth = pRowBar[SC_SPLIT_BOTTOM]->GetSmallWidth();
+    if (nEndPos >= 999999)
+        nWidth = pRowBar[SC_SPLIT_BOTTOM]->GetBigWidth();
+    else if (nEndPos >= 99999)
+        nWidth = pRowBar[SC_SPLIT_BOTTOM]->GetLargeWidth();
+    else if (nEndPos >= 9999)
+        nWidth = pRowBar[SC_SPLIT_BOTTOM]->GetMedWidth();
 
     if (nWidth == pRowBar[SC_SPLIT_BOTTOM]->GetWidth() || bInUpdateHeader)
         return;
@@ -3273,5 +3277,64 @@ void ScTabView::extendTiledAreaIfNeeded()
         << "] MaxTiledCol = " << aViewData.GetMaxTiledCol()
         << " MaxTiledRow = " << aViewData.GetMaxTiledRow());
 }
+
+tools::Long ScTabView::GetCurrentPage() const
+{
+    std::unique_ptr<ScPageBreakData> pTempPageData;
+    const ScPageBreakData* pPageData = pPageBreakData.get();
+
+    if (!pPageData)
+    {
+        ScDocShell* pDocSh = aViewData.GetDocShell();
+        if (!pDocSh)
+            return 1;
+
+        ScDocument& rDoc = pDocSh->GetDocument();
+        SCTAB nTab = aViewData.CurrentTabForData();
+
+        sal_uInt16 nCount = rDoc.GetPrintRangeCount(nTab);
+        if (!nCount)
+            nCount = 1;
+
+        pTempPageData = std::make_unique<ScPageBreakData>(nCount);
+
+        ScPrintFunc aPrintFunc(
+            *pDocSh,
+            pDocSh->GetPrinter(),
+            nTab,
+            0, 0,
+            nullptr,
+            nullptr,
+            pTempPageData.get());
+
+        // ScPrintFunc fills the PageBreakData in ctor.
+        if (nCount > 1)
+        {
+            aPrintFunc.ResetBreaks(nTab);
+            pTempPageData->AddPages();
+        }
+
+        pPageData = pTempPageData.get();
+    }
+
+    const SCCOL nCurCol = aViewData.GetCurX();
+    const SCROW nCurRow = aViewData.GetCurY();
+
+    for (size_t nPos = 0; nPos < pPageData->GetCount(); ++nPos)
+    {
+        const ScPrintRangeData& rData = pPageData->GetData(nPos);
+        const ScRange& rRange = rData.GetPrintRange();
+
+        if (nCurCol < rRange.aStart.Col() || nCurCol > rRange.aEnd.Col()
+            || nCurRow < rRange.aStart.Row() || nCurRow > rRange.aEnd.Row())
+            continue;
+
+        return rData.GetPageNumber(nCurCol, nCurRow);
+    }
+
+    return 1;
+}
+
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

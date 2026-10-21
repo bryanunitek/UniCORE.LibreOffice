@@ -15,6 +15,7 @@
 #include <vector>
 #include <optional>
 
+#include <basegfx/units/Length.hxx>
 #include <com/sun/star/text/WrapTextMode.hpp>
 #include <com/sun/star/io/WrongFormatException.hpp>
 #include <oox/mathml/importutils.hxx>
@@ -85,6 +86,8 @@ enum class RTFBufferTypes
     /// Imports a shape.
     ResolveShape,
     EndShape,
+    /// Inserts an already built shape, see RTFDocumentImpl::bufferShapeInsertion().
+    InsertShape,
     ResolveSubstream,
     /// Restores RTFParserState::aPicture.
     Picture
@@ -197,13 +200,17 @@ public:
 
     std::vector<std::pair<OUString, OUString>>& getGroupProperties() { return m_aGroupProperties; }
 
-    void setLeft(sal_Int32 nLeft) { m_nLeft = nLeft; }
+    void setLeft(sal_Int32 nLeft) { m_nLeft = gfx::Length::hmm(nLeft); }
+    void setLeftTwip(sal_Int32 nTwip) { m_nLeft = gfx::Length::twip(nTwip); }
 
-    sal_Int32 getLeft() const { return m_nLeft; }
+    sal_Int32 getLeft() const { return std::round(m_nLeft.as_hmm()); }
+    gfx::Length getLeftLength() const { return m_nLeft; }
 
-    void setTop(sal_Int32 nTop) { m_nTop = nTop; }
+    void setTop(sal_Int32 nTop) { m_nTop = gfx::Length::hmm(nTop); }
+    void setTopTwip(sal_Int32 nTwip) { m_nTop = gfx::Length::twip(nTwip); }
 
-    sal_Int32 getTop() const { return m_nTop; }
+    sal_Int32 getTop() const { return std::round(m_nTop.as_hmm()); }
+    gfx::Length getTopLength() const { return m_nTop; }
 
     void setRight(sal_Int32 nRight) { m_nRight = nRight; }
 
@@ -265,8 +272,8 @@ private:
     std::vector<std::pair<OUString, OUString>> m_aProperties; ///< Properties of a single shape.
     std::vector<std::pair<OUString, OUString>>
         m_aGroupProperties; ///< Properties applied on the groupshape.
-    sal_Int32 m_nLeft = 0;
-    sal_Int32 m_nTop = 0;
+    gfx::Length m_nLeft;
+    gfx::Length m_nTop;
     sal_Int32 m_nRight = 0;
     sal_Int32 m_nBottom = 0;
     std::optional<sal_Int32> m_oZ; ///< Z-Order of the shape.
@@ -738,6 +745,13 @@ public:
     void setDestinationText(std::u16string_view rString);
     /// Resolve a picture: If not inline, then anchored.
     void resolvePict(bool bInline, css::uno::Reference<css::drawing::XShape> const& rShape);
+    /** tdf#167713 defer inserting a built shape into the text, if content is being buffered
+
+        Inside a table the cells only come into existence when the row buffer is replayed, so the
+        shape has to wait for the cell it belongs to. Returns false when nothing is being buffered
+        and the caller should insert the shape itself.
+    */
+    bool bufferShapeInsertion(css::uno::Reference<css::drawing::XShape> const& rShape, bool bClose);
 
     /// If this is the first run of the document, starts the initial paragraph.
     void checkFirstRun();
@@ -807,6 +821,11 @@ private:
     void replayRowBuffer(RTFBuffer_t& rBuffer, ::std::deque<RTFSprms>& rCellsSprms,
                          ::std::deque<RTFSprms>& rCellsAttributes, int nCells);
     void replayBuffer(RTFBuffer_t& rBuffer, RTFSprms* pSprms, RTFSprms const* pAttributes);
+    /// Sends one buffer entry to the dmapper.
+    void sendBufferEntry(Buf_t aTuple);
+    /// Appends the entry to the current buffer, or sends it to the dmapper when there is none.
+    void bufferOrSend(RTFBufferTypes eType,
+                      RTFValue::Pointer_t const& pValue = RTFValue::Pointer_t());
     /// If we have some unicode or hex characters to send.
     void checkUnicode(bool bUnicode, bool bHex);
     /// If we need a final section break at the end of the document.
@@ -879,6 +898,7 @@ private:
 
     std::shared_ptr<oox::GraphicHelper> m_pGraphicHelper;
 
+    /// table row definition, store state of table cells, see <tbldef>/<celldef>
     struct TableRowDef
     {
         /// cell props

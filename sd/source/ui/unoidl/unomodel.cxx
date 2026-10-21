@@ -115,6 +115,7 @@
 #include <svx/unoshape.hxx>
 #include <editeng/unonrule.hxx>
 #include <editeng/eeitem.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <unotools/datetime.hxx>
 #include <sax/tools/converter.hxx>
 #include <xmloff/autolayout.hxx>
@@ -197,6 +198,8 @@ using namespace ::cppu;
 using namespace ::com::sun::star;
 using namespace ::sd;
 
+namespace
+{
 const TranslateId aTypeResIds[SdLinkTargetType::Count] =
 {
     STR_SD_PAGE,            // SdLinkTargetType::Page
@@ -205,25 +208,34 @@ const TranslateId aTypeResIds[SdLinkTargetType::Count] =
     STR_MASTERPAGE_NAME,    // SdLinkTargetType::MasterPage
 };
 
+const TranslateId aClickActionResIds[] =
+{
+    STR_CLICK_ACTION_NONE,             // ClickAction_NONE
+    STR_CLICK_ACTION_PREVPAGE,         // ClickAction_PREVPAGE
+    STR_CLICK_ACTION_NEXTPAGE,         // ClickAction_NEXTPAGE
+    STR_CLICK_ACTION_FIRSTPAGE,        // ClickAction_FIRSTPAGE
+    STR_CLICK_ACTION_LASTPAGE,         // ClickAction_LASTPAGE
+    STR_CLICK_ACTION_BOOKMARK,         // ClickAction_BOOKMARK
+    STR_CLICK_ACTION_DOCUMENT,         // ClickAction_DOCUMENT
+    STR_CLICK_ACTION_INVISIBLE,        // ClickAction_INVISIBLE
+    STR_CLICK_ACTION_SOUND,            // ClickAction_SOUND
+    STR_CLICK_ACTION_VERB,             // ClickAction_VERB
+    STR_CLICK_ACTION_VANISH,           // ClickAction_VANISH
+    STR_CLICK_ACTION_PROGRAM,          // ClickAction_PROGRAM
+    STR_CLICK_ACTION_MACRO,            // ClickAction_MACRO
+    STR_CLICK_ACTION_STOPPRESENTATION, // ClickAction_STOPPRESENTATION
+};
+
+static_assert(SAL_N_ELEMENTS(aClickActionResIds)
+              == static_cast<size_t>(presentation::ClickAction_STOPPRESENTATION) + 1,
+              "aClickActionResIds is missing an entry for a presentation::ClickAction value");
+}
+
 TranslateId SdTPAction::GetClickActionSdResId( presentation::ClickAction eCA )
 {
-    switch( eCA )
-    {
-        case presentation::ClickAction_NONE:             return STR_CLICK_ACTION_NONE;
-        case presentation::ClickAction_PREVPAGE:         return STR_CLICK_ACTION_PREVPAGE;
-        case presentation::ClickAction_NEXTPAGE:         return STR_CLICK_ACTION_NEXTPAGE;
-        case presentation::ClickAction_FIRSTPAGE:        return STR_CLICK_ACTION_FIRSTPAGE;
-        case presentation::ClickAction_LASTPAGE:         return STR_CLICK_ACTION_LASTPAGE;
-        case presentation::ClickAction_BOOKMARK:         return STR_CLICK_ACTION_BOOKMARK;
-        case presentation::ClickAction_DOCUMENT:         return STR_CLICK_ACTION_DOCUMENT;
-        case presentation::ClickAction_PROGRAM:          return STR_CLICK_ACTION_PROGRAM;
-        case presentation::ClickAction_MACRO:            return STR_CLICK_ACTION_MACRO;
-        case presentation::ClickAction_SOUND:            return STR_CLICK_ACTION_SOUND;
-        case presentation::ClickAction_VERB:             return STR_CLICK_ACTION_VERB;
-        case presentation::ClickAction_STOPPRESENTATION: return STR_CLICK_ACTION_STOPPRESENTATION;
-        default: OSL_FAIL( "No StringResource for ClickAction available!" );
-    }
-    return {};
+    auto nIndex = static_cast<size_t>(eCA);
+    assert(nIndex < SAL_N_ELEMENTS(aClickActionResIds) && "ClickAction out of range");
+    return aClickActionResIds[nIndex];
 }
 
 class SdUnoForbiddenCharsTable : public SvxUnoForbiddenCharsTable,
@@ -425,7 +437,8 @@ constexpr auto constTransitionSubTypeToString = mapEnumToString<sal_Int16>({
     { animations::TransitionSubType::FANOUTHORIZONTAL, "FanOutHorizontal"},
     { animations::TransitionSubType::CORNERSIN, "CornersIn"},
     { animations::TransitionSubType::HEART, "Heart"},
-    { animations::TransitionSubType::ROTATEIN, "RotateIn"}
+    { animations::TransitionSubType::ROTATEIN, "RotateIn"},
+    { animations::TransitionSubType::AIRPLANE, "Airplane"}
 });
 
 constexpr auto constAnimationNodeTypeToString = mapEnumToString<sal_Int16>({
@@ -1797,6 +1810,7 @@ const sal_uInt16 WID_MODEL_INTEROPGRABBAG     = 14;
 const sal_uInt16 WID_MODEL_THEME = 15;
 const sal_uInt16 WID_MODEL_ALLOWLINKUPDATE    = 16;
 const sal_uInt16 WID_MODEL_SLIDESECTIONS      = 17;
+const sal_uInt16 WID_MODEL_ANIMATIONSOUNDLINK = 18;
 
 static const SvxItemPropertySet* ImplGetDrawModelPropertySet()
 {
@@ -1819,6 +1833,7 @@ static const SvxItemPropertySet* ImplGetDrawModelPropertySet()
         { u"Fonts"_ustr,                  WID_MODEL_FONTS,              cppu::UnoType<uno::Sequence<uno::Any>>::get(),                     beans::PropertyAttribute::READONLY, 0},
         { sUNO_Prop_InteropGrabBag,       WID_MODEL_INTEROPGRABBAG,     cppu::UnoType<uno::Sequence< beans::PropertyValue >>::get(),       0, 0},
         { u"SlideSections"_ustr,          WID_MODEL_SLIDESECTIONS,      cppu::UnoType<uno::Sequence< beans::PropertyValue >>::get(),       0, 0},
+        { u"HasExternalAnimationSoundLink"_ustr, WID_MODEL_ANIMATIONSOUNDLINK, cppu::UnoType<bool>::get(),       0, 0},
         { sUNO_Prop_Theme,                WID_MODEL_THEME,              cppu::UnoType<util::XTheme>::get(),       0, 0},
     };
     static SvxItemPropertySet aDrawModelPropertySet_Impl( aDrawModelPropertyMap_Impl, SdrObject::GetGlobalDrawObjectItemPool() );
@@ -2889,6 +2904,13 @@ void SAL_CALL SdXImpressDocument::setPropertyValue( const OUString& aPropertyNam
                 mpDoc->GetSectionManager().SetSectionsFromPropertyValues(aSections);
             break;
         }
+        case WID_MODEL_ANIMATIONSOUNDLINK:
+        {
+            bool bHasLink = false;
+            if (aValue >>= bHasLink)
+                mpDoc->SetMaybeHasAnimationSoundLinks(bHasLink);
+            break;
+        }
         case WID_MODEL_THEME:
             getSdrModelFromUnoModel().setTheme(model::Theme::FromAny(aValue));
             break;
@@ -3020,6 +3042,9 @@ uno::Any SAL_CALL SdXImpressDocument::getPropertyValue( const OUString& Property
             break;
         case WID_MODEL_SLIDESECTIONS:
             aAny <<= mpDoc->GetSectionManager().GetSectionsAsPropertyValues();
+            break;
+        case WID_MODEL_ANIMATIONSOUNDLINK:
+            aAny <<= mpDoc->MaybeHasAnimationSoundLinks();
             break;
         case WID_MODEL_THEME:
             if (auto const& pTheme = getSdrModelFromUnoModel().getTheme())
@@ -3527,7 +3552,8 @@ void SAL_CALL SdXImpressDocument::render( sal_Int32 nRenderer, const uno::Any& r
 
     if (pPDFExtOutDevData)
     {
-        css::lang::Locale const docLocale(Application::GetSettings().GetLanguageTag().getLocale());
+        css::lang::Locale const docLocale(
+            LanguageTag(mpDoc->GetLanguage(EE_CHAR_LANGUAGE)).getLocale());
         pPDFExtOutDevData->SetDocumentLocale(docLocale);
     }
 
@@ -4202,7 +4228,18 @@ Size SdXImpressDocument::getPartSize(int part)
         return Size(0,0);
 
     const sal_uInt16 nSlideIndex = static_cast<sal_uInt16>(part);
-    SdPage* pPage = mpDoc ? mpDoc->GetSdPage(nSlideIndex, PageKind::Standard) : nullptr;
+    SdPage* pPage = nullptr;
+    if (mpDoc)
+    {
+        if (isMasterViewMode())
+            pPage = mpDoc->GetMasterSdPage(nSlideIndex, PageKind::Standard);
+        else
+        {
+            DrawViewShell* pViewSh = GetViewShell();
+            PageKind ePageKind = pViewSh ? pViewSh->GetPageKind() : PageKind::Standard;
+            pPage = mpDoc->GetSdPage(nSlideIndex, ePageKind);
+        }
+    }
 
     if (pPage == nullptr)
         return Size(0,0);
@@ -4252,6 +4289,12 @@ void SdXImpressDocument::getPostIts(::tools::JsonWriter& rJsonWriter)
             aRectangle = o3tl::toTwips(aRectangle, o3tl::Length::mm100);
             OString sRectangle = aRectangle.toString();
             rJsonWriter.put("rectangle", sRectangle.getStr());
+            if (xAnnotation->IsThreaded())
+            {
+                rJsonWriter.put("threaded", "true");
+                rJsonWriter.put("resolved", xAnnotation->IsResolved() ? "true" : "false");
+                rJsonWriter.put("parentId", xAnnotation->GetParentId());
+            }
         }
     }
 }

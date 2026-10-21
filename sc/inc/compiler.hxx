@@ -138,7 +138,7 @@ public:
         } sharedstring;
         ScMatrix*    pMat;
         FormulaError nError;
-        short        nJump[ FORMULA_MAXPARAMS + 1 ];     // If/Choose/Let token
+        short        nJump[ FORMULA_MAXPARAMS + 1 ];     // If/Choose/Let/Lambda token
     };
     OUString   maExternalName; // depending on the opcode, this is either the external, or the external name, or the external table name
 
@@ -301,6 +301,8 @@ private:
     bool        mbRewind;                   // whether symbol is to be rewound to some step during lexical analysis
     bool        mbRefConventionChartOOXML;  // whether to use special ooxml chart syntax in case of OOXML reference convention,
                                             // when parsing a formula string. [0]!GlobalNamedRange, LocalSheet!LocalNamedRange
+    bool mbOptionalLocalName = false; // true when the local name just resolved was a LAMBDA optional
+                                      // parameter, written with the _xlop. prefix instead of _xlpm.
     std::vector<sal_uInt16> maExternalFiles;
 
     std::vector<OUString> maTabNames;                /// sheet names mangled for the current grammar for output
@@ -351,23 +353,22 @@ private:
 
     std::vector<Whitespace> NextSymbol(bool bInArray);
 
-    bool ParseValue( const OUString& );
+    bool ParseValue( const OUString&, bool bInArray = false );
     bool ParseOpCode( const OUString&, bool bInArray );
     bool ParseOpCode2( std::u16string_view );
-    bool ParseString();
+    bool ParseLiteralString();
     bool ParseReference( const OUString& rSymbol, const OUString* pErrRef = nullptr );
     bool ParseSingleReference( const OUString& rSymbol, const OUString* pErrRef = nullptr );
     bool ParseDoubleReference( const OUString& rSymbol, const OUString* pErrRef = nullptr );
     bool ParsePredetectedReference( const OUString& rSymbol );
     bool ParsePredetectedErrRefReference( const OUString& rName, const OUString* pErrRef );
-    bool ParseMacro( const OUString& );
+    bool ParseMacro( const OUString&, bool bParenFollows );
     bool ParseNamedRange( const OUString&, bool onlyCheck = false );
-    bool ParseLambdaFuncName( const OUString& );
+    bool ParseLocalName( const OUString& );
     bool ParseExternalNamedRange( const OUString& rSymbol, bool& rbInvalidExternalNameRange );
     bool ParseDBRange( const OUString& );
     bool ParseDPFieldName( const OUString& );
     bool ParseColRowName( const OUString& );
-    bool ParseBoolean( const OUString& );
     void AutoCorrectParsedSymbol();
     const ScRangeData* GetRangeData( SCTAB& rSheet, const OUString& rUpperName ) const;
 
@@ -522,6 +523,11 @@ public:
     /** TODO : Move this to somewhere appropriate. */
     static bool DoubleRefToPosSingleRefScalarCase(const ScRange& rRange, ScAddress& rAdr,
                                                   const ScAddress& rFormulaPos);
+
+    /** The same for a range in another document, where the shape of the range
+        decides and not whether the formula position lies within it. */
+    static bool ExternalDoubleRefToPosSingleRef(const ScRange& rRange, ScAddress& rAdr,
+                                                const ScAddress& rFormulaPos);
 
     bool HasUnhandledPossibleImplicitIntersections() const { return !mUnhandledPossibleImplicitIntersections.empty(); }
 

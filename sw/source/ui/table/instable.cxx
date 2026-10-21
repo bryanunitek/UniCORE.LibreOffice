@@ -65,7 +65,7 @@ IMPL_LINK(SwInsTableDlg, TextFilterHdl, OUString&, rTest, bool)
 SwInsTableDlg::SwInsTableDlg(SwView& rView)
     : SfxDialogController(rView.GetFrameWeld(), u"modules/swriter/ui/inserttable.ui"_ustr,
                           u"InsertTableDialog"_ustr)
-    , m_aTextFilter(u" .<>"_ustr)
+    , m_aTextFilter(u".<>"_ustr)
     , m_pShell(&rView.GetWrtShell())
     , m_nEnteredValRepeatHeaderNF(-1)
     , m_aWndPreview(rView.GetWrtShell().IsCursorInTable() ? rView.GetWrtShell().IsTableRightToLeft()
@@ -141,7 +141,7 @@ void SwInsTableDlg::InitAutoTableFormat()
         m_xLbFormat->append_text((*m_xTableTable)[i].GetName().toString());
     }
 
-    m_xLbFormat->select(0);
+    m_xLbFormat->select(-1); // Do NOT select a table style by default. They just don't work well.
 
     SelFormatHdl( *m_xLbFormat );
 }
@@ -150,41 +150,46 @@ IMPL_LINK_NOARG(SwInsTableDlg, SelFormatHdl, weld::ItemView&, void)
 {
     // Get index of selected item from the listbox
     int styleIdx = m_xLbFormat->get_selected_index();
-    assert(styleIdx != -1 && "nothing selected");
-    m_aWndPreview.NotifyChange(m_xTableTable->GetResolvedStyle(m_xTableTable->GetData(styleIdx)));
+    if (styleIdx == -1)
+    {
+        SwTableAutoFormat aNone(TableStyleName(SwViewShell::GetShellRes()->aStrNone));
+        aNone.DisableAll();
+        m_aWndPreview.NotifyChange(&aNone);
+    }
+    else
+        m_aWndPreview.NotifyChange(m_xTableTable->GetResolvedStyle(
+            m_xTableTable->GetData(styleIdx)));
 }
 
 IMPL_LINK_NOARG(SwInsTableDlg, OKHdl, weld::Button&, void)
 {
     int styleIdx = m_xLbFormat->get_selected_index();
-    assert(styleIdx != -1 && "nothing selected");
-    // The value 0 is used for the "None" style
-    if (styleIdx > 0)
-        m_pShell->SetTableStyle((*m_xTableTable)[styleIdx]);
-
-    if( m_xTAutoFormat )
-        *m_xTAutoFormat = (*m_xTableTable)[styleIdx];
-    else
-        m_xTAutoFormat.reset(new SwTableAutoFormat((*m_xTableTable)[styleIdx]));
+    if (styleIdx != -1)
+    {
+        if (m_xTAutoFormat)
+            *m_xTAutoFormat = (*m_xTableTable)[styleIdx];
+        else
+            m_xTAutoFormat.reset(new SwTableAutoFormat((*m_xTableTable)[styleIdx]));
+    }
 
     m_xDialog->response(RET_OK);
 }
 
-IMPL_LINK( SwInsTableDlg, ModifyName, weld::Entry&, rEdit, void )
+IMPL_LINK(SwInsTableDlg, ModifyName, weld::TextWidget&, rEdit, void)
 {
     OUString sTableName = rEdit.get_text();
     m_xInsertBtn->set_sensitive(m_pShell->GetTableStyle(UIName(sTableName)) == nullptr);
 }
 
 // We use weld::Entry's "changed" notification here, not weld::SpinButton's "value_changed", because
-// the latter only fires after the control looses focus; so the notification would not fire during
+// the latter only fires after the control loses focus; so the notification would not fire during
 // typing a big number, so that user typing it and immediately clicking "Insert" would not see the
 // warning.
 // Since the notification is called in weld::Entry context, we can only rely on what's available for
 // used weld::Entry's notification; specifically, we have to call spin buttons' get_text() instead
 // of get_value(), because the latter is not guaranteed to return an up-to-date value at this point
 // (depends on vcl plugin used).
-IMPL_LINK( SwInsTableDlg, ModifyRowCol, weld::Entry&, rEdit, void )
+IMPL_LINK(SwInsTableDlg, ModifyRowCol, weld::TextWidget&, rEdit, void)
 {
     sal_Int64 nRow = m_xRowSpinButton->get_text().toInt64();
     sal_Int64 nCol = m_xColSpinButton->get_text().toInt64();

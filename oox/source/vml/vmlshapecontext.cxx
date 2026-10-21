@@ -386,6 +386,7 @@ ShapeTypeContext::ShapeTypeContext(ContextHandler2Helper const & rParent,
         OUString hrpct = rAttribs.getString( O_TOKEN( hrpct ), u"1000"_ustr );
         if( hrpct != "0" )
             mrTypeModel.maWidthPercent = OUString::number( hrpct.toInt32() );
+        mrTypeModel.mbHorizontalRule = true;
         mrTypeModel.maWrapDistanceLeft = "0";
         mrTypeModel.maWrapDistanceRight = "0";
         mrTypeModel.maPositionHorizontal = rAttribs.getString( O_TOKEN( hralign ), u"left"_ustr );
@@ -621,7 +622,7 @@ ContextHandlerRef ShapeContext::onCreateContext( sal_Int32 nElement, const Attri
                             u"com.sun.star.drawing.TextShape"_ustr);
                 }
                 else
-                    // FIXME: without this we does not handle some properties like shadow
+                    // FIXME: without this we do not handle some properties like shadow
                     dynamic_cast<SimpleShape&>(mrShape).setService(u"com.sun.star.text.TextFrame"_ustr);
             }
             return new TextBoxContext( *this, mrShapeModel.createTextBox(mrShape.getTypeModel()), rAttribs,
@@ -807,6 +808,6 @@ ControlShapeContext::ControlShapeContext( ::oox::core::ContextHandler2Helper con
     rShapes.getDrawing().registerControl(aInfo);
 }
 
-} // namespace oox
+} // namespace oox::vml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

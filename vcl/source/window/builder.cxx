@@ -56,6 +56,7 @@
 #include <vcl/settings.hxx>
 #include <slider.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/MessageDialog.hxx>
 #include <vcl/weld/weldutils.hxx>
 #include <vcl/commandinfoprovider.hxx>
 #include <iconview.hxx>
@@ -199,8 +200,9 @@ std::unique_ptr<weld::Builder> Application::CreateInterimBuilder(vcl::Window* pP
                                               bAllowCycleFocusOut);
 }
 
-weld::MessageDialog* Application::CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType,
-                                                      VclButtonsType eButtonType, const OUString& rPrimaryMessage)
+std::unique_ptr<weld::MessageDialog>
+Application::CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType,
+                                 VclButtonsType eButtonType, const OUString& rPrimaryMessage)
 {
     return GetSalInstance()->CreateMessageDialog(pParent, eMessageType, eButtonType, rPrimaryMessage);
 }
@@ -984,15 +986,14 @@ void VclBuilderPreload()
 #else
 // find -name '*ui*' | xargs grep 'class=".*lo-' |
 //     sed 's/.*class="//' | sed 's/-.*$//' | sort | uniq
-    static const char* const aWidgetLibs[] = {
-        "sfxlo",  "svtlo"
+    static constexpr OUString aWidgetModules[] = {
+        u"" SVLIBRARY("sfx") ""_ustr, u"" SVLIBRARY("svt") ""_ustr
     };
-    for (const auto & lib : aWidgetLibs)
+    for (const OUString& rModule : aWidgetModules)
     {
         std::unique_ptr<NoAutoUnloadModule> pModule(new NoAutoUnloadModule);
-        OUString sModule = SAL_DLLPREFIX + OUString::createFromAscii(lib) + SAL_DLLEXTENSION;
-        if (pModule->loadRelative(&thisModule, sModule))
-            g_aModuleMap.insert(std::make_pair(sModule, std::move(pModule)));
+        if (pModule->loadRelative(&thisModule, rModule))
+            g_aModuleMap.insert(std::make_pair(rModule, std::move(pModule)));
     }
 #endif // ENABLE_MERGELIBS
 #endif // DISABLE_DYNLOADING
@@ -1360,9 +1361,8 @@ VclPtr<vcl::Window> VclBuilder::makeObject(vcl::Window *pParent, const OUString 
             xWindow = xListBox;
         }
     }
-    else if (name == "VclOptionalBox" || name == "sfxlo-OptionalBox")
+    else if (name == "VclOptionalBox")
     {
-        // tdf#135495 fallback sfxlo-OptionalBox to VclOptionalBox as a stopgap
         xWindow = VclPtr<OptionalBox>::Create(pParent);
     }
     else if (name == "svtlo-ManagedMenuButton")
@@ -1418,15 +1418,13 @@ VclPtr<vcl::Window> VclBuilder::makeObject(vcl::Window *pParent, const OUString 
         auto aColumnsIt = rMap.find(u"columns"_ustr);
         if (aColumnsIt != rMap.end())
             xBox->SetFixedColumnCount(aColumnsIt->second.toInt32());
+
+        auto aItemPaddingIt = rMap.find(u"item-padding"_ustr);
+        if (aItemPaddingIt != rMap.end())
+            xBox->SetSpacing(aItemPaddingIt->second.toInt32());
     }
     else if (name == "GtkTreeView")
     {
-        m_pVclParserState->m_nTreeViewRenderers = 0;
-        m_pVclParserState->m_nTreeViewExpanders = 0;
-        m_pVclParserState->m_nTreeViewColumnCount = 0;
-        m_pVclParserState->m_bTreeViewSeenTextInColumn = false;
-        m_pVclParserState->m_bTreeHasHeader = false;
-
         if (!isLegacy())
         {
             assert(rMap.contains(u"model"_ustr) && "GtkTreeView must have a model");
@@ -1459,8 +1457,7 @@ VclPtr<vcl::Window> VclBuilder::makeObject(vcl::Window *pParent, const OUString 
         else
         {
             VclPtr<SvTabListBox> xBox;
-            m_pVclParserState->m_bTreeHasHeader = extractHeadersVisible(rMap);
-            if (m_pVclParserState->m_bTreeHasHeader)
+            if (extractHeadersVisible(rMap))
             {
                 VclPtr<VclVBox> xContainer = VclPtr<VclVBox>::Create(pRealParent);
                 OUString containerid(id + "-container");
@@ -1497,9 +1494,6 @@ VclPtr<vcl::Window> VclBuilder::makeObject(vcl::Window *pParent, const OUString 
     }
     else if (name == "GtkTreeViewColumn")
     {
-        m_pVclParserState->m_nTreeViewColumnCount++;
-        m_pVclParserState->m_bTreeViewSeenTextInColumn = false;
-
         if (!isLegacy())
         {
             SvHeaderTabListBox* pTreeView = dynamic_cast<SvHeaderTabListBox*>(pParent);
@@ -1521,25 +1515,6 @@ VclPtr<vcl::Window> VclBuilder::makeObject(vcl::Window *pParent, const OUString 
                 OUString sTitle(extractTitle(rMap));
                 pHeaderBar->InsertItem(nItemId, sTitle, 100, nBits);
             }
-        }
-    }
-    // The somewhat convoluted GtkCellRenderer* rules here are intended to
-    // match those of the GtkInstanceTreeView so we can take advantage of the
-    // consistency of the .ui format to determine the role of a GtkTreeView in
-    // terms of tree/treegrid/grid/listbox
-    else if (name == "GtkCellRendererText")
-    {
-        m_pVclParserState->m_nTreeViewRenderers++;
-        m_pVclParserState->m_bTreeViewSeenTextInColumn = true;
-    }
-    else if (name == "GtkCellRendererPixbuf" || name == "GtkCellRendererToggle")
-    {
-        m_pVclParserState->m_nTreeViewRenderers++;
-        // leading non-text renderers in the first column are expander decorations
-        if (m_pVclParserState->m_nTreeViewColumnCount == 1
-            && !m_pVclParserState->m_bTreeViewSeenTextInColumn)
-        {
-            m_pVclParserState->m_nTreeViewExpanders++;
         }
     }
     else if (name == "GtkLabel")
@@ -2214,29 +2189,6 @@ void VclBuilder::tweakInsertedChild(vcl::Window *pParent, vcl::Window* pCurrentC
                                     std::string_view sType, std::string_view sInternalChild)
 {
     assert(pCurrentChild);
-
-    if (SvTabListBox* pTabListBox = dynamic_cast<SvTabListBox*>(pCurrentChild))
-    {
-        const bool bTree(pTabListBox->GetStyle() & (WB_HASBUTTONS | WB_HASBUTTONSATROOT));
-        const sal_uInt16 nRealColumns = m_pVclParserState->m_nTreeViewRenderers -
-                                        m_pVclParserState->m_nTreeViewExpanders;
-        const bool bHasHeader = m_pVclParserState->m_bTreeHasHeader;
-        const bool bMultiColumn = nRealColumns > 1;
-        if (bHasHeader || bMultiColumn)
-        {
-            if (bTree)
-                pTabListBox->SetRole(SvTabListBoxRole::TreeGrid);
-            else
-                pTabListBox->SetRole(SvTabListBoxRole::Grid);
-        }
-        else
-        {
-            if (bTree)
-                pTabListBox->SetRole(SvTabListBoxRole::Tree);
-            else
-                pTabListBox->SetRole(SvTabListBoxRole::ListBox);
-        }
-    }
 
     //Select the first page if it's a notebook
     if (pCurrentChild->GetType() == WindowType::TABCONTROL)
@@ -3225,6 +3177,8 @@ void BuilderBase::handleActionWidget(xmlreader::XmlReader &reader)
         case -11:
             nResponse = RET_HELP;
             break;
+        case RET_RESET:
+            break;
         default:
             assert(nResponse >= 100 && "keep non-canned responses in range 100+ to avoid collision with vcl RET_*");
             break;
@@ -3541,11 +3495,6 @@ void VclBuilder::mungeTextBuffer(VclMultiLineEdit &rTarget, const TextBuffer &rT
 VclBuilder::VclParserState::VclParserState()
     : m_nLastToolbarId(0)
     , m_nLastMenuItemId(0)
-    , m_nTreeViewRenderers(0)
-    , m_nTreeViewExpanders(0)
-    , m_nTreeViewColumnCount(0)
-    , m_bTreeViewSeenTextInColumn(false)
-    , m_bTreeHasHeader(false)
 {}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

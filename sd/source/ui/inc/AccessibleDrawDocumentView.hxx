@@ -22,6 +22,7 @@
 #include "AccessibleDocumentViewBase.hxx"
 
 #include <com/sun/star/accessibility/XAccessibleGroupPosition.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 
 namespace accessibility { class AccessiblePageShape; }
 namespace accessibility { class ChildrenManager; }
@@ -38,14 +39,13 @@ namespace accessibility {
 */
 class AccessibleDrawDocumentView final
     : public cppu::ImplInheritanceHelper<AccessibleDocumentViewBase,
-                                         css::accessibility::XAccessibleGroupPosition>
+                                         css::accessibility::XAccessibleGroupPosition,
+                                         css::lang::XServiceInfo>
 {
 public:
-
-    AccessibleDrawDocumentView (::sd::Window* pSdWindow,
-        ::sd::ViewShell* pViewShell,
-        const css::uno::Reference<css::frame::XController>& rxController,
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent);
+    AccessibleDrawDocumentView(::sd::Window* pSdWindow, ::sd::ViewShell* pViewShell,
+                               const css::uno::Reference<css::frame::XController>& rxController,
+                               const rtl::Reference<comphelper::OAccessible>& rpParent);
 
     virtual ~AccessibleDrawDocumentView() override;
 
@@ -79,9 +79,10 @@ public:
         propertyChange (const css::beans::PropertyChangeEvent& rEventObject) override;
 
     //=====  XAccessibleGroupPosition  =========================================
-    virtual css::uno::Sequence< sal_Int32 > SAL_CALL
-        getGroupPosition( const css::uno::Any& rAny ) override;
-    virtual OUString SAL_CALL getObjectLink( const css::uno::Any& accoject ) override;
+    virtual css::uno::Sequence<sal_Int32> SAL_CALL getGroupPosition(
+        const css::uno::Reference<css::accessibility::XAccessible>& rxAccessible) override;
+    virtual OUString SAL_CALL getObjectLink(
+        const css::uno::Reference<css::accessibility::XAccessible>& rxAccessible) override;
 
 private:
 
@@ -92,6 +93,8 @@ private:
 
     virtual css::uno::Sequence< OUString> SAL_CALL
         getSupportedServiceNames() override;
+
+    virtual sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override final;
 
     virtual bool
         implIsSelected( sal_Int64 nAccessibleChildIndex ) override;

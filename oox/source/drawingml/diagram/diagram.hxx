@@ -130,7 +130,7 @@ class SmartArtDiagram
 public:
     explicit SmartArtDiagram();
     explicit SmartArtDiagram(SmartArtDiagram const& rSource);
-    explicit SmartArtDiagram(const boost::property_tree::ptree& rDiagramModel);
+    explicit SmartArtDiagram(std::u16string_view rLayout, std::u16string_view rData, std::u16string_view rColors, std::u16string_view rQuickstyle);
     ~SmartArtDiagram();
     const OoxDiagramDataPtr& getData() const { return mpData; }
     const DiagramLayoutPtr& getLayout() const { return mpLayout; }
@@ -153,15 +153,13 @@ public:
 
     // helpers to write some specific DiagramDoms
     void writeDiagramOOXData(DrawingML& rOriginalDrawingML, css::uno::Reference<css::io::XOutputStream>& xOutputStream, std::u16string_view rDrawingRelId) const;
+    void writeDiagramReducedOOXData(css::uno::Reference<css::io::XOutputStream>& xOutputStream) const;
     void writeDiagramOOXDrawing(DrawingML& rOriginalDrawingML, css::uno::Reference<css::io::XOutputStream>& xOutputStream) const;
-
-    // write data to boost::property_tree
-    void addDiagramModelData(boost::property_tree::ptree& rTarget) const;
 
 private:
     // helpers
-    void addDomTreeToModelData(svx::diagram::DomMapFlag aId, std::u16string_view aName, boost::property_tree::ptree& rTarget) const;
     css::uno::Reference<css::xml::dom::XDocument> convertAndSet(std::u16string_view rDOM, svx::diagram::DomMapFlag aDomMapFlag);
+    css::uno::Reference<css::xml::dom::XDocument> convertAndSet(std::u16string_view rData, svx::diagram::DomMapFlag aDomMapFlag, bool bAdd);
 
     // This contains groups of shapes: automatic font size is the same in each group.
     oox::core::NamedShapePairs maDiagramFontHeights;

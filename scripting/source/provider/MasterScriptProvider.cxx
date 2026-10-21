@@ -51,15 +51,6 @@ using namespace ::sf_misc;
 namespace func_provider
 {
 
-static bool endsWith( std::u16string_view target, std::u16string_view item )
-{
-    size_t index = target.find( item );
-    return index != std::u16string_view::npos  &&
-           index == ( target.size() - item.size() );
-}
-
-/* should be available in some central location. */
-
 // XScriptProvider implementation
 
 
@@ -255,7 +246,7 @@ MasterScriptProvider::getScript( const OUString& scriptURI )
     OUString language = sfUri->getParameter( langKey );
     OUString location = sfUri->getParameter( locKey );
 
-    // if script us located in uno pkg
+    // if script is located in uno pkg
     sal_Int32 index = -1;
     OUString pkgTag(u":uno_packages"_ustr);
     // for languages other than basic,  scripts located in uno packages
@@ -279,14 +270,14 @@ MasterScriptProvider::getScript( const OUString& scriptURI )
     Reference< provider::XScript > xScript;
 
     // If the script location is in the same location context as this
-    // MSP then delete to the language provider controlled by this MSP
+    // MSP then delegate to the language provider controlled by this MSP
     // ** Special case is BASIC, all calls to getScript will be handled
     // by the language script provider in the current location context
     // even if it's different
     if  (   (   location == "document"
             &&  m_xModel.is()
             )
-            ||  ( endsWith( m_sCtxString, location ) )
+            ||  ( m_sCtxString == location )
             ||  ( language == "Basic" )
          )
     {
@@ -509,7 +500,7 @@ MasterScriptProvider::insertByName( const OUString& aName, const Any& aElement )
                                                       Reference < XInterface > (), 1 );
         }
         // TODO for library package parse the language, for the moment will try
-        // to get each provider to process the new Package, the first one the succeeds
+        // to get each provider to process the new Package, the first one that succeeds
         // will terminate processing
         const bool bSuccess = FindProviderAndApply(
             *providerCache(), [&aName, &aElement](Reference<container::XNameContainer>& xCont) {

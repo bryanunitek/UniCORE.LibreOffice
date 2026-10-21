@@ -281,6 +281,13 @@ void DrawingFragment::onEndElement()
             {
                 EmuRectangle aShapeRectEmu = mxAnchor->calcAnchorRectEmu( getDrawPageSize() );
 
+                // In these two ranges of angles the anchor rectangle describes the bounding
+                // box of the rotated shape, so its width and height are exchanged
+                const sal_Int32 nRotation = mxShape->getRotation();
+                const bool bQuarterTurn
+                    = ((nRotation >= 45 * PER_DEGREE && nRotation < 135 * PER_DEGREE)
+                       || (nRotation >= 225 * PER_DEGREE && nRotation < 315 * PER_DEGREE));
+
                 // For twoCellAnchor we should set the size and anchor based on the `editAs` attribute (ISO-IEC-29500-1 2016 [20.5.3.2])
                 if (mxAnchor->getAnchorType() == ShapeAnchor::ANCHOR_TWOCELL
                     && (mxAnchor->getEditAs() == ShapeAnchor::ANCHOR_ONECELL
@@ -289,16 +296,14 @@ void DrawingFragment::onEndElement()
                     const css::awt::Size& rShapeSize = mxShape->getSize();
                     if (rShapeSize.Width > 0 && rShapeSize.Height > 0)
                     {
-                        aShapeRectEmu.Width = rShapeSize.Width;
-                        aShapeRectEmu.Height = rShapeSize.Height;
+                        aShapeRectEmu.Width = bQuarterTurn ? rShapeSize.Height : rShapeSize.Width;
+                        aShapeRectEmu.Height = bQuarterTurn ? rShapeSize.Width : rShapeSize.Height;
                     }
                 }
                 const bool bIsShapeVisible = mxAnchor->isAnchorValid();
                 if( (aShapeRectEmu.X >= 0) && (aShapeRectEmu.Y >= 0) && (aShapeRectEmu.Width >= 0) && (aShapeRectEmu.Height >= 0) )
                 {
-                    const sal_Int32 aRotation = mxShape->getRotation();
-                    if ((aRotation >= 45  * PER_DEGREE && aRotation < 135 * PER_DEGREE)
-                     || (aRotation >= 225 * PER_DEGREE && aRotation < 315 * PER_DEGREE))
+                    if (bQuarterTurn)
                     {
                         // When rotating any shape in MSO Excel within the range of degrees given above,
                         // Excel changes the cells in which the shape is anchored. The new position of
@@ -347,7 +352,7 @@ void DrawingFragment::onEndElement()
                     // diagram shapes at all. Here the size has been determined from the anchor and
                     // thus repeating the import of diagram.xml gives the diagram shapes.
                     //
-                    // I have checked that mpDiagramHelper at mxShape is *not* resetted here
+                    // I have checked that mpDiagramHelper at mxShape is *not* reset here
                     // which is crucial to keep that stuff working. Also added a isDiagram
                     // method to avoid indirect test for Diagram using former getDiagramDoms()
                     if (nullptr != mxShape->getDiagramHelper()
@@ -360,7 +365,7 @@ void DrawingFragment::onEndElement()
                         OUString sFragmentPath(
                             getFragmentPathFromRelId(mxShape->getExtDrawings()[0]));
 
-                        // Don't know why importFragment looses shape name and id. Rescue them.
+                        // Don't know why importFragment loses shape name and id. Rescue them.
                         const OUString sBackupName(mxShape->getName());
                         const OUString sBackupId(mxShape->getId());
 
@@ -899,9 +904,20 @@ void VmlDrawing::convertControlFontData( AxFontData& rAxFontData, sal_uInt32& rn
     setFlag( rAxFontData.mnFontEffects, AxFontFlags::Bold, rFontModel.mobBold.value_or( false ) );
     setFlag( rAxFontData.mnFontEffects, AxFontFlags::Italic, rFontModel.mobItalic.value_or( false ) );
     setFlag( rAxFontData.mnFontEffects, AxFontFlags::Strikeout, rFontModel.mobStrikeout.value_or( false ) );
-    sal_Int32 nUnderline = rFontModel.monUnderline.value_or( XML_none );
-    setFlag( rAxFontData.mnFontEffects, AxFontFlags::Underline, nUnderline != XML_none );
-    rAxFontData.mbDblUnderline = nUnderline == XML_double;
+    setFlag( rAxFontData.mnFontEffects, AxFontFlags::Underline, rFontModel.mobUnderline.value_or( false ) );
+    // A bare <u> element cannot say "double", so Excel names the workbook font record that carries
+    // the style - the class is a reference, not a style of its own.
+    rAxFontData.mbDblUnderline = false;
+    if ((rAxFontData.mnFontEffects & AxFontFlags::Underline) && rFontModel.moUnderlineClass)
+    {
+        if (OUString aFontId; rFontModel.moUnderlineClass.value().startsWith(u"font", &aFontId))
+        {
+            if (FontRef rxFont = getStyles().getFont(aFontId.toInt32()))
+                rAxFontData.mbDblUnderline
+                    = (rxFont->getModel().mnUnderline == XML_double)
+                      || (rxFont->getModel().mnUnderline == XML_doubleAccounting);
+        }
+    }
 
     // font color
     rnOleTextColor = convertControlTextColor( rFontModel.moColor.value_or( OUString() ) );

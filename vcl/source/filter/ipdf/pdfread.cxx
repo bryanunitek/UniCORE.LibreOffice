@@ -190,6 +190,28 @@ findAnnotations(const std::unique_ptr<vcl::pdf::PDFiumPage>& pPage, basegfx::B2D
                 rPDFGraphicAnnotation.maDateTime = aDateTime;
                 rPDFGraphicAnnotation.meSubType = eSubtype;
                 rPDFGraphicAnnotation.maColor = aColor;
+                rPDFGraphicAnnotation.mnFlags = pAnnotation->getFlags();
+                rPDFGraphicAnnotation.mnPdfiumIndex = nAnnotation;
+
+                if (pAnnotation->hasKey(vcl::pdf::constDictionaryKey_InReplyTo))
+                {
+                    // PDF spec requires /IRT parent and child to live on the same page, so we
+                    // only query the current page here. A malformed cross-page /IRT returns -1.
+                    auto pParent = pAnnotation->getLinked(vcl::pdf::constDictionaryKey_InReplyTo);
+                    if (pParent)
+                        rPDFGraphicAnnotation.mnParentPdfiumIndex
+                            = pPage->getAnnotationIndex(pParent);
+                }
+
+                if (pAnnotation->hasKey(vcl::pdf::constDictionaryKey_ReplyType))
+                    rPDFGraphicAnnotation.maReplyType
+                        = pAnnotation->getString(vcl::pdf::constDictionaryKey_ReplyType);
+                if (pAnnotation->hasKey(vcl::pdf::constDictionaryKey_State))
+                    rPDFGraphicAnnotation.maState
+                        = pAnnotation->getString(vcl::pdf::constDictionaryKey_State);
+                if (pAnnotation->hasKey(vcl::pdf::constDictionaryKey_StateModel))
+                    rPDFGraphicAnnotation.maStateModel
+                        = pAnnotation->getString(vcl::pdf::constDictionaryKey_StateModel);
 
                 if (eSubtype == vcl::pdf::PDFAnnotationSubType::Polygon)
                 {
@@ -370,12 +392,16 @@ findLinks(const std::unique_ptr<vcl::pdf::PDFiumPage>& pPage,
 
 } // end anonymous namespace
 
-size_t ImportPDFUnloaded(SvStream& rStream, std::vector<PDFGraphicResult>& rGraphics)
+size_t
+ImportPDFUnloaded(SvStream& rStream, std::vector<PDFGraphicResult>& rGraphics,
+                  const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler,
+                  const OUString& rPassword)
 {
     bool bEncrypted;
 
     // Save the original PDF stream for later use.
-    BinaryDataContainer aDataContainer = vcl::pdf::createBinaryDataContainer(rStream, bEncrypted);
+    BinaryDataContainer aDataContainer
+        = vcl::pdf::createBinaryDataContainer(rStream, bEncrypted, xInteractionHandler, rPassword);
     if (aDataContainer.isEmpty())
         return 0;
 
@@ -399,28 +425,38 @@ size_t ImportPDFUnloaded(SvStream& rStream, std::vector<PDFGraphicResult>& rGrap
     if (nPageCount <= 0)
         return 0;
 
+    // A page pdfium cannot read still gets an entry, so the result keeps one page per page the
+    // pdf declares and every entry knows its own page number. Such a page takes the size of the
+    // last page that did come through, starting at A4 in 1/100 mm.
+    Size aLastGoodSize(21000, 29700);
+
     for (int nPageIndex = 0; nPageIndex < nPageCount; ++nPageIndex)
     {
-        basegfx::B2DSize aPageSize = pPdfDocument->getPageSize(nPageIndex);
-        if (aPageSize.getWidth() <= 0.0 || aPageSize.getHeight() <= 0.0)
-            continue;
-
         // Returned unit is points
+        basegfx::B2DSize aPageSize = pPdfDocument->getPageSize(nPageIndex);
+
+        std::unique_ptr<vcl::pdf::PDFiumPage> pPage;
+        if (aPageSize.getWidth() > 0.0 && aPageSize.getHeight() > 0.0)
+            pPage = pPdfDocument->openPage(nPageIndex);
+
+        if (!pPage)
+        {
+            SAL_WARN("vcl.filter",
+                     "ImportPDF: page " << nPageIndex << " is unreadable, importing it blank");
+            rGraphics.emplace_back(Graphic(pGfxLink, nPageIndex), aLastGoodSize,
+                                   std::vector<PDFGraphicAnnotation>(),
+                                   std::vector<std::pair<basegfx::B2DRectangle, OUString>>());
+            continue;
+        }
 
         tools::Long nPageWidth = std::round(convertPointToMm100(aPageSize.getWidth()));
         tools::Long nPageHeight = std::round(convertPointToMm100(aPageSize.getHeight()));
+        aLastGoodSize = Size(nPageWidth, nPageHeight);
 
         // Create the Graphic with the VectorGraphicDataPtr and link the original PDF stream.
         // We swap out this Graphic as soon as possible, and a later swap in
         // actually renders the correct Bitmap on demand.
         Graphic aGraphic(pGfxLink, nPageIndex);
-
-        auto pPage = pPdfDocument->openPage(nPageIndex);
-        if (!pPage)
-        {
-            SAL_WARN("vcl.filter", "ImportPDF: unable to open page: " << nPageIndex);
-            continue;
-        }
 
         std::vector<PDFGraphicAnnotation> aPDFGraphicAnnotations
             = findAnnotations(pPage, aPageSize);
@@ -428,18 +464,21 @@ size_t ImportPDFUnloaded(SvStream& rStream, std::vector<PDFGraphicResult>& rGrap
         std::vector<std::pair<basegfx::B2DRectangle, OUString>> aPDFLinksInfo
             = findLinks(pPage, pPdfDocument, aPageSize);
 
-        rGraphics.emplace_back(std::move(aGraphic), Size(nPageWidth, nPageHeight),
-                               aPDFGraphicAnnotations, aPDFLinksInfo);
+        rGraphics.emplace_back(std::move(aGraphic), aLastGoodSize, aPDFGraphicAnnotations,
+                               aPDFLinksInfo);
     }
 
     return rGraphics.size();
 }
 
-size_t ImportPDFUnloaded(const OUString& rURL, std::vector<PDFGraphicResult>& rGraphics)
+size_t
+ImportPDFUnloaded(const OUString& rURL, std::vector<PDFGraphicResult>& rGraphics,
+                  const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler,
+                  const OUString& rPassword)
 {
     std::unique_ptr<SvStream> xStream(
         ::utl::UcbStreamHelper::CreateStream(rURL, StreamMode::READ | StreamMode::SHARE_DENYNONE));
-    return ImportPDFUnloaded(*xStream, rGraphics);
+    return ImportPDFUnloaded(*xStream, rGraphics, xInteractionHandler, rPassword);
 }
 }
 

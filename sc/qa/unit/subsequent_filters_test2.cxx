@@ -11,6 +11,7 @@
 
 #include <osl/thread.h>
 #include <svl/numformat.hxx>
+#include <drwlayer.hxx>
 #include <svl/zformat.hxx>
 #include <svx/svdograf.hxx>
 
@@ -641,6 +642,35 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testExternalRefCacheXLSX)
     CPPUNIT_ASSERT_EQUAL(u"Charlie"_ustr, pDoc->GetString(ScAddress(0, 3, 0)));
 }
 
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testExternalRefWholeColumnXLOOKUP)
+{
+    createScDoc("xlsx/external-ref-wholecol-xlookup.xlsx");
+    ScDocument* pDoc = getScDoc();
+
+    // Excel's cached results are applied on import, recalculate to run the formulas.
+    pDoc->CalcAll();
+
+    // Entire external columns, the search value takes an implicit intersection.
+    for (SCROW nRow = 1; nRow <= 5; ++nRow)
+        CPPUNIT_ASSERT_EQUAL(9.0 + nRow, pDoc->GetValue(ScAddress(1, nRow, 0)));
+
+    // Array formula over an entire column right of the cached ones.
+    CPPUNIT_ASSERT_EQUAL(u"#N/A"_ustr, pDoc->GetString(ScAddress(1, 9, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testExternalRefWholeColumnResult)
+{
+    createScDoc("xlsx/external-ref-wholecol-xlookup.xlsx");
+    ScDocument* pDoc = getScDoc();
+
+    // Excel's cached results are applied on import, recalculate to run the formulas.
+    pDoc->CalcAll();
+
+    // D2:D6 are @ on an entire external column, each row takes its own.
+    for (SCROW nRow = 1; nRow <= 5; ++nRow)
+        CPPUNIT_ASSERT_EQUAL(9.0 + nRow, pDoc->GetValue(ScAddress(3, nRow, 0)));
+}
+
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testExternalRefCacheODS)
 {
     createScDoc("ods/external-ref-cache.ods");
@@ -779,6 +809,24 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf145054)
     ScDBData* pDBData
         = pDoc->GetDBCollection()->getNamedDBs().findByName(u"__Anonymous_Sheet_DB__1"_ustr);
     CPPUNIT_ASSERT(pDBData);
+}
+
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf99913TableFilteredRows)
+{
+    // Table1 is A1:C11 with a colour filter on column B, which hides rows 5-11
+    createScDoc("xlsx/tdf145054.xlsx");
+    ScDocument* pDoc = getScDoc();
+
+    // XLSX does not tell filtered and manually hidden rows apart, so the rows hidden in a table
+    // with an autofilter must be flagged as filtered, like the rows of a sheet autofilter.
+    CPPUNIT_ASSERT(!pDoc->RowHidden(3, 0));
+    CPPUNIT_ASSERT(!pDoc->RowFiltered(3, 0));
+    for (SCROW nRow = 4; nRow <= 10; ++nRow)
+    {
+        CPPUNIT_ASSERT(pDoc->RowHidden(nRow, 0));
+        CPPUNIT_ASSERT_MESSAGE(OString("row " + OString::number(nRow + 1)).getStr(),
+                               pDoc->RowFiltered(nRow, 0));
+    }
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf84762)
@@ -1507,9 +1555,9 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testNamedExpressionsXLSXML_Global)
     CPPUNIT_ASSERT_EQUAL(u"=SUM(MyRange2)"_ustr,
                          pDoc->GetFormula(aPos.Col(), aPos.Row(), aPos.Tab()));
 
-    const ScRangeData* pRD = pDoc->GetRangeName()->findByUpperName(u"MYRANGE"_ustr);
+    const ScRangeData* pRD = pDoc->GetRangeName().findByUpperName(u"MYRANGE"_ustr);
     CPPUNIT_ASSERT(pRD);
-    pRD = pDoc->GetRangeName()->findByUpperName(u"MYRANGE2"_ustr);
+    pRD = pDoc->GetRangeName().findByUpperName(u"MYRANGE2"_ustr);
     CPPUNIT_ASSERT(pRD);
 }
 
@@ -1673,6 +1721,61 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testNamedTableRef)
     }
 }
 
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTableRefColumnLineBreak)
+{
+    createScDoc("xlsx/tableref-column-linebreak.xlsx");
+    ScDocument* pDoc = getScDoc();
+
+    // The imported table column name keeps its real line break: the _x000a_
+    // escape in the tableColumn "name" attribute is decoded on import.
+    const ScDBData* pData
+        = pDoc->GetDBCollection()->getNamedDBs().findByUpperName(u"TABLEWITHBREAK"_ustr);
+    CPPUNIT_ASSERT(pData);
+    CPPUNIT_ASSERT(!pData->GetTableColumnNames().empty());
+    CPPUNIT_ASSERT_EQUAL(u"Also LONG\nBUT TWO LINES"_ustr, pData->GetTableColumnNames()[0]);
+
+    // The structured reference keeps the real line break in its string form
+    // (like Excel's two-paragraph display), not an _x000a_ escape.
+    const OUString aTotalFormula = pDoc->GetFormula(5, 5, 0); // totals row F6
+    CPPUNIT_ASSERT(aTotalFormula.indexOf(u"_x000a_") < 0);
+    CPPUNIT_ASSERT(aTotalFormula.indexOf('\n') >= 0);
+
+    // Both defined names resolve to their column's 4 data cells. Without the fix
+    // LongNameWithBreak fails to resolve and COUNTA yields #NAME?.
+    pDoc->SetString(ScAddress(7, 0, 0), u"=COUNTA(LongNameNormal)"_ustr);
+    pDoc->SetString(ScAddress(7, 1, 0), u"=COUNTA(LongNameWithBreak)"_ustr);
+    pDoc->CalcAll();
+    ScFormulaCell* pNormal = pDoc->GetFormulaCell(ScAddress(7, 0, 0));
+    ScFormulaCell* pBreak = pDoc->GetFormulaCell(ScAddress(7, 1, 0));
+    CPPUNIT_ASSERT(pNormal);
+    CPPUNIT_ASSERT(pBreak);
+    CPPUNIT_ASSERT_EQUAL(FormulaError::NONE, pNormal->GetErrCode());
+    CPPUNIT_ASSERT_EQUAL(FormulaError::NONE, pBreak->GetErrCode());
+    CPPUNIT_ASSERT_EQUAL(4.0, pDoc->GetValue(ScAddress(7, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(4.0, pDoc->GetValue(ScAddress(7, 1, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTableRefColumnLineBreakExport)
+{
+    createScDoc("xlsx/tableref-column-linebreak.xlsx");
+    saveAndReload(TestFilter::XLSX);
+    ScDocument* pDoc = getScDoc();
+
+    const ScDBData* pData
+        = pDoc->GetDBCollection()->getNamedDBs().findByUpperName(u"TABLEWITHBREAK"_ustr);
+    CPPUNIT_ASSERT(pData);
+    CPPUNIT_ASSERT(!pData->GetTableColumnNames().empty());
+    CPPUNIT_ASSERT_EQUAL(u"Also LONG\nBUT TWO LINES"_ustr, pData->GetTableColumnNames()[0]);
+
+    // The defined name still resolves to its column's 4 data cells after export.
+    pDoc->SetString(ScAddress(7, 1, 0), u"=COUNTA(LongNameWithBreak)"_ustr);
+    pDoc->CalcAll();
+    ScFormulaCell* pBreak = pDoc->GetFormulaCell(ScAddress(7, 1, 0));
+    CPPUNIT_ASSERT(pBreak);
+    CPPUNIT_ASSERT_EQUAL(FormulaError::NONE, pBreak->GetErrCode());
+    CPPUNIT_ASSERT_EQUAL(4.0, pDoc->GetValue(ScAddress(7, 1, 0)));
+}
+
 namespace
 {
 void testCells(const ScDocument* pDoc)
@@ -1753,10 +1856,36 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf66377)
     CPPUNIT_ASSERT(pAttr);
     const SvxBrushItem* pExplicitBackground = pAttr->GetItemSet().GetItemIfSet(ATTR_BACKGROUND);
     CPPUNIT_ASSERT(!pExplicitBackground);
-    // Without the fix in place it would not have fail and
+    // Without the fix in place it would not have failed and
     // we would have a transparent white color set
     /*const Color& rColor = pExplicitBackground->GetColor();
     CPPUNIT_ASSERT_EQUAL(Color(COL_TRANSPARENT), rColor);*/
+}
+
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf122945TabColorProtectedSheet)
+{
+    createScDoc("xlsx/tdf122945_TabColorProtectedSheet.xlsx");
+
+    ScDocument* pDoc = getScDoc();
+    CPPUNIT_ASSERT(pDoc->IsTabProtected(0));
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: rgba[ff0000ff] (RED)
+    // - Actual  : rgba[ffffff00] (COL_AUTO)
+    // i.e. the sheet protection prevented the import of the tab color
+    CPPUNIT_ASSERT_EQUAL(Color(0xFF0000), pDoc->GetTabBgColor(0));
+
+    saveAndReload(TestFilter::XLSX);
+
+    // check that the tab color was exported correctly
+    xmlDocUniquePtr pSheet = parseExport(u"xl/worksheets/sheet1.xml"_ustr);
+    CPPUNIT_ASSERT(pSheet);
+    assertXPath(pSheet, "/x:worksheet/x:sheetPr/x:tabColor", "rgb", u"FFFF0000");
+
+    // check that sheet protection and tab color are still present after save and reload
+    pDoc = getScDoc();
+    CPPUNIT_ASSERT(pDoc->IsTabProtected(0));
+    CPPUNIT_ASSERT_EQUAL(Color(0xFF0000), pDoc->GetTabBgColor(0));
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

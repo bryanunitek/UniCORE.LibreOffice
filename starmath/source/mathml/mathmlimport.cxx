@@ -1469,8 +1469,7 @@ bool lcl_CountBlanks(const MathMLAttributeLengthValue& rLV, sal_Int32* pWide, sa
         return false;
     }
     sal_Int32 nWide = aWide;
-    const double fPointFive = 0.5;
-    sal_Int32 nNarrow = (rLV.fNumber - nWide * 2.0) / fPointFive;
+    sal_Int32 nNarrow = (rLV.fNumber - nWide * 2.0) * 2.0; // 0, 1, 2, or 3
     *pWide = nWide;
     *pNarrow = nNarrow;
     return true;
@@ -2629,7 +2628,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportMML(SvStream& rStream)
     SmGlobals::ensure();
 
     SfxObjectShellLock xDocSh(new SmDocShell(SfxModelFlags::EMBEDDED_OBJECT));
-    xDocSh->DoInitNew();
+    xDocSh->DoInitNew(SfxNewDocumentMacros::Disallow);
     uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
 
     uno::Reference<beans::XPropertySet> xInfoSet;

@@ -1804,8 +1804,7 @@ SwAccessibleMap::GetContextImpl(const SdrObject* pObj, SwAccessibleContext* pPar
             ::accessibility::ShapeTypeHandler& rShapeTypeHandler =
                         ::accessibility::ShapeTypeHandler::Instance();
 
-            ::accessibility::AccessibleShapeInfo aShapeInfo(
-                    xShape, uno::Reference<XAccessible>(pParentImpl), this );
+            ::accessibility::AccessibleShapeInfo aShapeInfo(xShape, pParentImpl, this);
 
             xAcc = rShapeTypeHandler.CreateAccessibleObject(
                         aShapeInfo, mpShapeMap->GetInfo() );
@@ -2725,7 +2724,11 @@ void SwAccessibleMap::FireEvents()
 
 tools::Rectangle SwAccessibleMap::GetVisibleArea() const
 {
-    return o3tl::convert( GetVisArea().SVRect(), o3tl::Length::twip, o3tl::Length::mm100 );
+    const SwRect& rVisArea = GetVisArea();
+    return tools::Rectangle( rVisArea.getLeft().as_hmm<sal_Int32>(),
+                             rVisArea.getTop().as_hmm<sal_Int32>(),
+                             rVisArea.getRight().as_hmm<sal_Int32>(),
+                             rVisArea.getBottom().as_hmm<sal_Int32>() );
 }
 
 // Convert a MM100 value relative to the document root into a pixel value
@@ -2786,7 +2789,7 @@ bool SwAccessibleMap::ReplaceChild (
                                                             // we might be the only one that
                                                             // holds it.
     // Also get keep parent.
-    uno::Reference < XAccessible > xParent( pCurrentChild->getAccessibleParent() );
+    rtl::Reference<comphelper::OAccessible> pParent = pCurrentChild->implGetAccessibleParent();
     pCurrentChild = nullptr;  // will be released by dispose
     A11yDispose( nullptr, pObj, nullptr );
 
@@ -2796,8 +2799,7 @@ bool SwAccessibleMap::ReplaceChild (
     // create the new child
     ::accessibility::ShapeTypeHandler& rShapeTypeHandler =
                     ::accessibility::ShapeTypeHandler::Instance();
-    ::accessibility::AccessibleShapeInfo aShapeInfo(
-                                        xShape, xParent, this );
+    ::accessibility::AccessibleShapeInfo aShapeInfo(xShape, pParent, this);
     rtl::Reference< ::accessibility::AccessibleShape> pReplacement(
         rShapeTypeHandler.CreateAccessibleObject (
             aShapeInfo, mpShapeMap->GetInfo() ));

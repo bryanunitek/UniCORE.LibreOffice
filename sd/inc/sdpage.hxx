@@ -30,9 +30,11 @@
 #include <editeng/flditem.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/fmpage.hxx>
+#include <vcl/checksum.hxx>
 #include <xmloff/autolayout.hxx>
 #include "diadef.h"
 #include "pres.hxx"
+#include "SdSoundLink.hxx"
 #include "shapelist.hxx"
 #include "misc/scopelock.hxx"
 #include "sddllapi.h"
@@ -48,7 +50,6 @@ class SdrOutliner;
 class SdrTextObj;
 class SdPageLink;
 class SfxItemSet;
-class Paragraph;
 class Outliner;
 class SdStyleSheet;
 class Graphic;
@@ -112,7 +113,7 @@ friend class sd::UndoAttrObject;
     bool    mbSoundOn;                ///< with / without sound.
     bool    mbExcluded;               ///< will (not) be displayed during show.
     OUString    maLayoutName;             ///< Name of the layout
-    OUString    maSoundFile;              ///< Path to sound file (MS-DOS notation).
+    SdSoundLink maSoundLink;              ///< transition sound source
     bool        mbLoopSound;
     bool        mbStopSound;
     OUString    maCreatedPageName;        ///< generated page name by GetPageName.
@@ -123,7 +124,7 @@ friend class sd::UndoAttrObject;
     sal_uInt16  mnPaperBin;               ///< PaperBin
     SdPageLink* mpPageLink;               ///< Page link (at left sides only)
     bool    mbIsCanvasPage;               ///< whether the page is a canvas page
-    bool    mbIsCanvasMasterPage;         ///< whether it is the master page of canvas page
+    bool    mbIsCanvasMasterPage;         ///< whether it is the master page of the canvas page
 
     // PDF link annotations for read-only pdfium
     std::vector<std::pair<basegfx::B2DRectangle, OUString>> maLinkAnnotations;
@@ -180,6 +181,7 @@ public:
     void            GetPageInfo(::tools::JsonWriter& jsonWriter);
     void            NotifyPagePropertyChanges();
     bool            RestoreDefaultText( SdrObject* pObj, const OUString& rStr ) override;
+    void            onEmptyPresObjFilled(SdrObject& rObj) override;
 
     /** @return true if the given SdrObject is inside the presentation object list */
     bool            IsPresObj(const SdrObject* pObj);
@@ -189,6 +191,25 @@ public:
 
     /** inserts the given SdrObject into the presentation object list */
     void            InsertPresObj(SdrObject* pObj, PresObjKind eKind );
+
+    /** The checksum of the art a picture placeholder is created holding. Loading and decoding it
+        is what answers for the theme in force, so a walk over many objects asks once. */
+    static BitmapChecksum GetPlaceholderStandInChecksum();
+
+    /** Whether the object shows nothing but the art that stands in for what a placeholder waits
+        for. A picture placeholder is created holding that art, so holding a graphic does not mean
+        the author put a picture there. */
+    static bool HoldsPlaceholderStandIn(const SdrObject& rObj, BitmapChecksum nStandIn);
+
+    /** What represents a placeholder that holds text: an outliner object, the way a graphic object
+        represents one holding a picture. It carries the placeholder's identity but belongs to no
+        page yet, so the caller decides how it takes the old object's place. */
+    rtl::Reference<SdrObject> MakePresObjText(SdrObject& rObj);
+
+    /** The reverse: what represents the given placeholder once its text is gone - for a picture one
+        the icon standing in for the image it waits for. It carries the placeholder's identity but
+        belongs to no page yet, so the caller decides how it takes the old object's place. */
+    rtl::Reference<SdrObject> MakePresObjPlaceholder(SdrObject& rObj);
 
     SD_DLLPUBLIC void SetAutoLayout(AutoLayout eLayout, bool bInit=false, bool bCreate=false);
     AutoLayout      GetAutoLayout() const { return meAutoLayout; }
@@ -200,7 +221,7 @@ public:
     virtual rtl::Reference<SdrObject> RemoveObject(size_t nObjNum) override;
 
     /** Also override ReplaceObject methods to realize when
-    objects are removed with this mechanism instead of RemoveObject*/
+    objects are removed with this mechanism instead of RemoveObject */
     virtual rtl::Reference<SdrObject> ReplaceObject(SdrObject* pNewObj, size_t nObjNum) override;
 
     void        SetObjText(SdrTextObj* pObj, SdrOutliner* pOutliner, PresObjKind eObjKind, std::u16string_view rStr );
@@ -228,8 +249,10 @@ public:
 
     bool        IsScaleObjects() const              { return mbScaleObjects; }
 
-    void        SetSoundFile(const OUString& rStr)    { maSoundFile = rStr; }
-    const OUString& GetSoundFile() const                { return maSoundFile; }
+    void        SetSoundFile(const OUString& rStr, bool bAllowed = false);
+    const OUString& GetSoundFile() const                { return maSoundLink.getURL(); }
+    const SdSoundLink& GetSoundLink() const             { return maSoundLink; }
+    void        SetSoundAllowed(bool bAllowed)          { maSoundLink.setAllowed(bAllowed); }
 
     void        SetLoopSound( bool bLoopSound ) { mbLoopSound = bLoopSound; }
     bool        IsLoopSound() const                 { return mbLoopSound; }
@@ -248,6 +271,8 @@ public:
 
     sal_Int32   getTransitionFadeColor() const { return mnTransitionFadeColor;}
     void        setTransitionFadeColor( sal_Int32 nTransitionFadeColor );
+
+    static constexpr double DEFAULT_TRANSITION_DURATION = 2.0;
 
     double      getTransitionDuration() const { return mfTransitionDuration;}
     void        setTransitionDuration( double fTransitionDuration );
@@ -301,7 +326,7 @@ public:
     void setAnimationNode( css::uno::Reference< css::animations::XAnimationNode > const & xNode );
 
     /// @return a helper class to manipulate effects inside the main sequence
-    std::shared_ptr< sd::MainSequence > const & getMainSequence();
+    SD_DLLPUBLIC std::shared_ptr< sd::MainSequence > const & getMainSequence();
 
     /** quick check if this slide has an animation node.
         This can be used to have a cost free check if there are no animations ad this slide.
@@ -315,7 +340,7 @@ public:
     /** removes all custom animations for the given shape */
     void removeAnimations( const SdrObject* pObj );
 
-    /** Notify that the object has been renamed and the animation effects has to update. */
+    /** Notify that the object has been renamed and the animation effects have to be updated. */
     void notifyObjectRenamed(const SdrObject* pObj);
 
     /** Set the name of the page and broadcast a model change.
@@ -338,16 +363,16 @@ public:
         bool bEdit ) override;
 
     /** callback from the sd::View when a new paragraph for one object on this page is created */
-    void onParagraphInserted( const ::Outliner* pOutliner, Paragraph const * pPara, SdrObject* pObj );
+    void onParagraphInserted( sal_Int32 nParaPos, SdrObject* pObj );
 
     /** callback from the sd::View when a paragraph from one object on this page is removed */
-    void onParagraphRemoving( const ::Outliner* pOutliner, Paragraph const * pPara, SdrObject* pObj );
+    void onParagraphRemoving( const ::Outliner* pOutliner, sal_Int32 nParaPos, SdrObject* pObj );
 
     /** callback from the sd::View when an object just left text edit mode */
     void onEndTextEdit( SdrObject* pObj );
 
     /** @return the presentation style with the given helpid from this masterpage or this
-        slides masterpage */
+        slide's masterpage */
     SD_DLLPUBLIC SdStyleSheet* getPresentationStyle( sal_uInt32 nHelpId ) const;
 
     /** removes all empty presentation objects from this slide */

@@ -10,6 +10,7 @@
 #include <editeng/borderline.hxx>
 #include <sal/config.h>
 #include <helper/qahelper.hxx>
+#include <drwlayer.hxx>
 #include <sal/log.hxx>
 #include <svx/svdpage.hxx>
 #include <comphelper/processfactory.hxx>
@@ -19,9 +20,12 @@
 
 #include <conditio.hxx>
 #include <document.hxx>
+#include <formulacell.hxx>
 #include <scitems.hxx>
 
+#include <algorithm>
 #include <chrono>
+#include <vector>
 
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
 #include <com/sun/star/sheet/XCellRangeMovement.hpp>
@@ -29,9 +33,17 @@
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/table/XColumnRowRange.hpp>
 
-#include <com/sun/star/script/XLibraryContainerPassword.hpp>
+#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/document/MacroExecMode.hpp>
+#include <com/sun/star/document/XEmbeddedScripts.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
+#include <com/sun/star/script/XLibraryContainer.hpp>
+#include <com/sun/star/script/XLibraryContainerPassword.hpp>
 #include <editeng/brushitem.hxx>
+#include <basic/sbmod.hxx>
+#include <basic/sbstar.hxx>
+#include <formula/errorcodes.hxx>
+#include <sfx2/app.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -48,7 +60,7 @@ public:
 // I suppose you could say this test doesn't really belong here, OTOH
 // we need a full document to run the test ( it related originally to an
 // imported Excel VBA macro ) It's convenient and fast to unit test
-// this the problem this way. Perhaps in the future there will be some sort
+// the problem this way. Perhaps in the future there will be some sort
 // of slowcheck tests ( requiring a full document environment in the scripting
 // module, we could move the test there then ) - relates to fdo#67547
 CPPUNIT_TEST_FIXTURE(ScMacrosTest, testMSP)
@@ -465,6 +477,46 @@ CPPUNIT_TEST_FIXTURE(ScMacrosTest, testTdf128218)
     CPPUNIT_ASSERT_EQUAL(u"Double"_ustr, aReturnValue);
 }
 
+CPPUNIT_TEST_FIXTURE(ScMacrosTest, testTdf102381_missing_optional_parameter)
+{
+    createScDoc("tdf102381_missing_optional_parameter.ods");
+    ScDocument* pDoc = getScDoc();
+
+    // Function TestOptionalParameter(a, Optional b, Optional c) As String
+    // returns the concatenated parameters
+    pDoc->SetFormula(ScAddress(0, 0, 0), u"=TestOptionalParameter(1;2;3)"_ustr,
+                     formula::FormulaGrammar::GRAM_NATIVE);
+    pDoc->SetFormula(ScAddress(0, 1, 0), u"=TestOptionalParameter(1;;3)"_ustr,
+                     formula::FormulaGrammar::GRAM_NATIVE);
+    pDoc->SetFormula(ScAddress(0, 2, 0), u"=TestOptionalParameter(1;2)"_ustr,
+                     formula::FormulaGrammar::GRAM_NATIVE);
+    pDoc->SetFormula(ScAddress(0, 3, 0), u"=TestOptionalParameter(1;;)"_ustr,
+                     formula::FormulaGrammar::GRAM_NATIVE);
+
+    CPPUNIT_ASSERT_EQUAL(u"123"_ustr, pDoc->GetString(0, 0, 0));
+    // Without the fix in place, this test would have failed with:
+    // - Expected: 13
+    // - Actual  : Err:504
+    // i.e. an omitted parameter did not reach the Basic function as a missing one
+    CPPUNIT_ASSERT_EQUAL(u"13"_ustr, pDoc->GetString(0, 1, 0));
+    CPPUNIT_ASSERT_EQUAL(u"12"_ustr, pDoc->GetString(0, 2, 0));
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, pDoc->GetString(0, 3, 0));
+
+    // Function TestOptionalDefault(a, Optional b As String = "def") As String
+    // returns the concatenated parameters
+    pDoc->SetFormula(ScAddress(0, 4, 0), u"=TestOptionalDefault(1;)"_ustr,
+                     formula::FormulaGrammar::GRAM_NATIVE);
+    pDoc->SetFormula(ScAddress(0, 5, 0), u"=TestOptionalDefault(1)"_ustr,
+                     formula::FormulaGrammar::GRAM_NATIVE);
+
+    // Without the fix in place, this test would have failed with:
+    // - Expected: 1def
+    // - Actual  : Err:504
+    // i.e. the default value of an omitted parameter was not applied
+    CPPUNIT_ASSERT_EQUAL(u"1def"_ustr, pDoc->GetString(0, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(u"1def"_ustr, pDoc->GetString(0, 5, 0));
+}
+
 CPPUNIT_TEST_FIXTURE(ScMacrosTest, testTdf71271)
 {
     createScDoc();
@@ -731,7 +783,7 @@ CPPUNIT_TEST_FIXTURE(ScMacrosTest, testTdf107572)
     SCCOL startCol = 0, endCol = 4;
     SCROW startRow = 0, endRow = 12;
 
-    // Check autoformat has benn applied
+    // Check autoformat has been applied
     for (SCCOL col = startCol; col <= endCol; ++col)
     {
         for (SCROW row = startRow; row <= endRow; ++row)
@@ -743,6 +795,40 @@ CPPUNIT_TEST_FIXTURE(ScMacrosTest, testTdf107572)
             CPPUNIT_ASSERT_EQUAL(COL_BLACK, rBorder.GetLeft()->GetColor());
         }
     }
+}
+
+CPPUNIT_TEST_FIXTURE(ScMacrosTest, testCool15956)
+{
+    // A Basic library enumerates its modules in insertion order, and that order must survive a
+    // save/reload unchanged: it determines the on-disk byte layout of the library index and module
+    // streams, which macro signatures sign over (cool#15956).
+    createScDoc();
+
+    // Deliberately non-sorted insertion order.
+    const OUString order[]{ u"Gamma"_ustr, u"Alpha"_ustr, u"Delta"_ustr, u"Beta"_ustr };
+
+    auto checkOrder = [&order](const uno::Sequence<OUString>& names) {
+        CPPUNIT_ASSERT(std::equal(names.begin(), names.end(), std::begin(order), std::end(order)));
+    };
+
+    auto xDocScr = mxComponent.queryThrow<document::XEmbeddedScripts>();
+    auto xLibs = xDocScr->getBasicLibraries().queryThrow<script::XLibraryContainer>();
+    auto xLibrary = xLibs->createLibrary(u"TestLibrary"_ustr);
+    for (const OUString& rName : order)
+        xLibrary->insertByName(rName, uno::Any(u"Sub "_ustr + rName + u"\nEnd Sub\n"_ustr));
+
+    // In memory, getElementNames() must reflect insertion order.
+    checkOrder(xLibrary->getElementNames());
+
+    saveAndReload(TestFilter::ODS);
+
+    // After the store/reload, the reloaded library keeps the same module order;
+    // without insertion-order preservation it came back permuted.
+    xDocScr = mxComponent.queryThrow<document::XEmbeddedScripts>();
+    xLibs = xDocScr->getBasicLibraries().queryThrow<script::XLibraryContainer>();
+    xLibs->loadLibrary(u"TestLibrary"_ustr);
+    auto xReloaded = xLibs->getByName(u"TestLibrary"_ustr).queryThrow<container::XNameAccess>();
+    checkOrder(xReloaded->getElementNames());
 }
 
 CPPUNIT_TEST_FIXTURE(ScMacrosTest, testShapeLayerId)
@@ -998,7 +1084,7 @@ CPPUNIT_TEST_FIXTURE(ScMacrosTest, testTdf47479)
 CPPUNIT_TEST_FIXTURE(ScMacrosTest, testTdf161948NaturalSortAPI)
 {
     // Since LO 26.2 the feature natural sort is available in the API.
-    // Here we test, that is can be used in Basic macros.
+    // Here we test, that it can be used in Basic macros.
     createScDoc("tdf161948_NaturalSort.ods");
     ScDocument* pDoc = getScDoc();
     // The source has "K3", "K10", "K104", "K23", "K2" in Range A2:A6 and label in A1.
@@ -1146,6 +1232,34 @@ CPPUNIT_TEST_FIXTURE(ScMacrosTest, testMissingCallFunctionArgument)
     // The call to REGEX should return the matched string because the “replacement” parameter is
     // missing
     CPPUNIT_ASSERT_EQUAL(Any(u"d§"_ustr), aRet);
+}
+
+CPPUNIT_TEST_FIXTURE(ScMacrosTest, testFormulaCallingApplicationBasicIsMacroUse)
+{
+    // a function the user keeps in application Basic
+    StarBASIC* pAppBasic = SfxApplication::GetBasic();
+    CPPUNIT_ASSERT(pAppBasic);
+    SbModule* pModule = pAppBasic->MakeModule(u"ScMacrosTestModule"_ustr,
+                                              u"Function SCMACROSTESTAPPFUNCTION()\n"
+                                              "    SCMACROSTESTAPPFUNCTION = 42\n"
+                                              "End Function\n"_ustr);
+    CPPUNIT_ASSERT(pModule);
+    CPPUNIT_ASSERT(pModule->Compile());
+
+    // a document with no Basic of its own calls it from a formula, opened at the default macro
+    // security level, where unsigned macros are refused
+    mxComponent = mxDesktop->loadComponentFromURL(
+        createFileURL(u"application-basic-function.fods"), u"_default"_ustr, 0,
+        { comphelper::makePropertyValue(u"MacroExecutionMode"_ustr,
+                                        document::MacroExecMode::FROM_LIST_AND_SIGNED_WARN) });
+    CPPUNIT_ASSERT(mxComponent.is());
+
+    // the formula counts as macro use, so the document got the macro decision on load and the
+    // call is refused the way a document macro would be
+    CPPUNIT_ASSERT(getScDocShell()->GetMacroCallsSeenWhileLoading());
+    ScFormulaCell* pCell = getScDoc()->GetFormulaCell(ScAddress(0, 0, 0));
+    CPPUNIT_ASSERT(pCell);
+    CPPUNIT_ASSERT_EQUAL(int(FormulaError::NoMacro), int(pCell->GetErrCode()));
 }
 
 ScMacrosTest::ScMacrosTest()

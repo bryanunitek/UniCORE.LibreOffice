@@ -19,8 +19,11 @@
 
 #include <config_features.h>
 
+#include <cstdlib>
+
 #include <tools/debug.hxx>
 #include <tools/inetmsg.hxx>
+#include <comphelper/configuration.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <svl/eitem.hxx>
 #include <svl/stritem.hxx>
@@ -43,6 +46,7 @@
 #include <com/sun/star/script/provider/XScript.hpp>
 #include <com/sun/star/script/provider/XScriptProvider.hpp>
 #include <com/sun/star/script/provider/XScriptProviderSupplier.hpp>
+#include <com/sun/star/script/vba/XVBACompatibility.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <com/sun/star/uri/XVndSunStarScriptUrl.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
@@ -70,6 +74,7 @@
 #include <basic/sbx.hxx>
 #include <svtools/sfxecode.hxx>
 
+#include <unotools/securityoptions.hxx>
 #include <unotools/ucbhelper.hxx>
 #include <tools/urlobj.hxx>
 #include <svl/sharecontrolfile.hxx>
@@ -77,12 +82,18 @@
 #include <vcl/svapp.hxx>
 #include <framework/interaction.hxx>
 #include <framework/documentundoguard.hxx>
+#include <framework/documentmacrocalls.hxx>
+#include <com/sun/star/ui/UIConfigurationManager.hpp>
 #include <comphelper/interaction.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <comphelper/documentconstants.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <ucbhelper/simpleinteractionrequest.hxx>
 #include <officecfg/Office/Common.hxx>
+
+#include <unicode/errorcode.h>
+#include <unicode/regex.h>
+#include <unicode/unistr.h>
 
 #include <sfx2/brokenpackageint.hxx>
 #include <sfx2/signaturestate.hxx>
@@ -148,15 +159,6 @@ public:
 };
 
 }
-
-sal_uInt16 const aTitleMap_Impl[3][2] =
-{
-                                //  local               remote
-    /*  SFX_TITLE_CAPTION   */  {   SFX_TITLE_FILENAME, SFX_TITLE_TITLE },
-    /*  SFX_TITLE_PICKLIST  */  {   32,                 SFX_TITLE_FULLNAME },
-    /*  SFX_TITLE_HISTORY   */  {   32,                 SFX_TITLE_FULLNAME }
-};
-
 
 bool SfxObjectShell::IsAbortingImport() const
 {
@@ -651,6 +653,14 @@ bool SfxObjectShell::HasSharedXMLFlagSet() const
 
 #endif
 
+bool SfxObjectShell::IsTrustedLocationForUpdatingLinks() const
+{
+    if (GetCreateMode() == SfxObjectCreateMode::EMBEDDED)
+        return SvtSecurityOptions::GetMacroSecurityLevel() == 0;
+    return SvtSecurityOptions::isTrustedLocationUriForUpdatingLinks(
+        pMedium == nullptr ? OUString() : pMedium->GetName());
+}
+
 bool SfxObjectShell::IsDocShared() const
 {
 #if HAVE_FEATURE_MULTIUSER_ENVIRONMENT
@@ -804,16 +814,6 @@ OUString SfxObjectShell::GetTitle( sal_uInt16  nMaxLength ) const
     assert(pMed);
 
     const INetURLObject aURL( IsDocShared() ? GetSharedFileURL() : GetMedium()->GetName() );
-    if ( nMaxLength > SFX_TITLE_CAPTION && nMaxLength <= SFX_TITLE_HISTORY )
-    {
-        sal_uInt16 nRemote;
-        if (aURL.GetProtocol() == INetProtocol::File)
-            nRemote = 0;
-        else
-            nRemote = 1;
-        nMaxLength = aTitleMap_Impl[nMaxLength-SFX_TITLE_CAPTION][nRemote];
-    }
-
     // Local file?
     if ( aURL.GetProtocol() == INetProtocol::File )
     {
@@ -839,7 +839,7 @@ OUString SfxObjectShell::GetTitle( sal_uInt16  nMaxLength ) const
             const OUString aName = INetURLObject::decode( aURL.GetBase(), INetURLObject::DecodeMechanism::WithCharset );
             return aName.isEmpty() ? aURL.GetURLNoPass() : aName;
         }
-        if ( nMaxLength == SFX_TITLE_FULLNAME )
+        if (nMaxLength == SFX_TITLE_FULLNAME || nMaxLength == SFX_TITLE_PICKLIST || nMaxLength == SFX_TITLE_HISTORY)
             return aURL.GetMainURL( INetURLObject::DecodeMechanism::ToIUri );
 
         // Generate Title from file name if possible
@@ -966,6 +966,31 @@ void SfxObjectShell::BreakMacroSign_Impl( bool bBreakMacroSign )
 }
 
 
+bool SfxObjectShell::DocumentUIConfigurationHasMacroCalls_Impl()
+{
+    try
+    {
+        uno::Reference<embed::XStorage> xStorage = GetStorage();
+        if (!xStorage.is() || !xStorage->hasByName(u"Configurations2"_ustr))
+            return false;
+        uno::Reference<embed::XStorage> xConfigStorage
+            = xStorage->openStorageElement(u"Configurations2"_ustr, embed::ElementModes::READ);
+        // A separate manager reads the folder, so the model's own manager is still created when
+        // the view first asks for it.
+        uno::Reference<ui::XUIConfigurationManager2> xConfiguration
+            = ui::UIConfigurationManager::create(comphelper::getProcessComponentContext());
+        xConfiguration->setStorage(xConfigStorage);
+        const bool bHasMacroCalls = framework::documentConfigurationHasMacroCalls(xConfiguration);
+        xConfiguration->dispose();
+        return bHasMacroCalls;
+    }
+    catch (const uno::Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("sfx.doc", "");
+    }
+    return false;
+}
+
 void SfxObjectShell::CheckSecurityOnLoading_Impl()
 {
     if (GetErrorCode() == ERRCODE_IO_BROKENPACKAGE)
@@ -987,10 +1012,27 @@ void SfxObjectShell::CheckSecurityOnLoading_Impl()
     CheckEncryption_Impl( xInteraction );
 
     // check macro security
+    if (!GetMacroCallsSeenWhileLoading() && DocumentUIConfigurationHasMacroCalls_Impl())
+        SetMacroCallsSeenWhileLoading();
     const bool bHasValidContentSignature = HasValidSignatures();
     const bool bHasMacros = pImpl->aMacroMode.hasMacros();
-    pImpl->aMacroMode.checkMacrosOnLoading( xInteraction, bHasValidContentSignature, bHasMacros );
+    const bool bMacrosAllowed = pImpl->aMacroMode.checkMacrosOnLoading(
+        xInteraction, bHasValidContentSignature, bHasMacros);
     pImpl->m_bHadCheckedMacrosOnLoad = bHasMacros;
+    pImpl->m_bMacroCallsAllowed = bMacrosAllowed;
+    if (pImpl->pBaseModel.is())
+        pImpl->pBaseModel->SetUIConfigurationMacroCallsAllowed_Impl(bMacrosAllowed);
+
+    // A document in VBA compatibility mode gets its Basic project loaded once macros are allowed.
+    // Import records that mode on the document's own Basic container, so only one that already
+    // exists can hold it.
+    if (bMacrosAllowed)
+    {
+        uno::Reference<script::vba::XVBACompatibility> xVBACompat(pImpl->xBasicLibraries,
+                                                                  uno::UNO_QUERY);
+        if (xVBACompat.is() && xVBACompat->getVBACompatibilityMode())
+            xVBACompat->setVBACompatibilityMode(true);
+    }
 }
 
 bool SfxObjectShell::GetHadCheckedMacrosOnLoad() const
@@ -1458,6 +1500,31 @@ ErrCode SfxObjectShell::CallBasic( std::u16string_view rMacro,
     return nRet;
 }
 
+bool SfxObjectShell::isScriptURLAllowed(const OUString& rScriptURL)
+{
+    std::optional<uno::Sequence<OUString>> allowedEvents(
+        officecfg::Office::Common::Security::Scripting::AllowedDocumentEventURLs::get());
+    // When AllowedDocumentEventURLs is empty, all event URLs are allowed
+    if (!allowedEvents)
+        return true;
+
+    icu::ErrorCode status;
+    const uint32_t rMatcherFlags = UREGEX_CASE_INSENSITIVE;
+    icu::UnicodeString usInput(rScriptURL.getStr());
+    const uno::Sequence<OUString>& rAllowedEvents = *allowedEvents;
+    for (auto const& allowedEvent : rAllowedEvents)
+    {
+        icu::UnicodeString usRegex(allowedEvent.getStr());
+        icu::RegexMatcher rmatch1(usRegex, usInput, rMatcherFlags, status);
+        if (rScriptURL.startsWith(allowedEvent) || rmatch1.matches(status))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool SfxObjectShell::isScriptAccessAllowed( const Reference< XInterface >& _rxScriptContext )
 {
     try
@@ -1481,7 +1548,7 @@ bool SfxObjectShell::isScriptAccessAllowed( const Reference< XInterface >& _rxSc
 // don't allow LibreLogo to be used with our mouseover/etc dom-alike events
 bool SfxObjectShell::UnTrustedScript(const OUString& rScriptURL)
 {
-    if (!rScriptURL.startsWith("vnd.sun.star.script:"))
+    if (!rScriptURL.startsWithIgnoreAsciiCase("vnd.sun.star.script:"))
         return false;
 
     // ensure URL Escape Codes are decoded
@@ -1520,7 +1587,7 @@ ErrCode SfxObjectShell::CallXScript( const Reference< XInterface >& _rxScriptCon
     Any aException;
     try
     {
-        if (!isScriptAccessAllowed(_rxScriptContext))
+        if (_rxScriptContext.is() && !isScriptAccessAllowed(_rxScriptContext))
             return ERRCODE_IO_ACCESSDENIED;
 
         if ( UnTrustedScript(_rScriptURL) )
@@ -1553,6 +1620,8 @@ ErrCode SfxObjectShell::CallXScript( const Reference< XInterface >& _rxScriptCon
                 xProps->setPropertyValue(u"Caller"_ustr, uno::Any( aArgs ) );
             }
         }
+        if (comphelper::IsFuzzing())
+            std::abort();
         aRet = xScript->invoke( aParams, aOutParamIndex, aOutParam );
     }
     catch ( const uno::Exception& )
@@ -1732,6 +1801,11 @@ bool SfxObjectShell::AdjustMacroMode()
     return pImpl->aMacroMode.adjustMacroMode( xInteraction );
 }
 
+bool SfxObjectShell::IsMacroExecutionAllowed() const
+{
+    return pImpl->getCurrentMacroExecMode() == MacroExecMode::ALWAYS_EXECUTE_NO_WARN;
+}
+
 css::uno::Reference<css::awt::XWindow> SfxObjectShell::GetDialogParent( SfxMedium const * pLoadingMedium )
 {
     css::uno::Reference<css::awt::XWindow> xWindow;
@@ -1873,11 +1947,6 @@ OUString SfxObjectShell_Impl::getDocumentLocation() const
     if ( pMedium )
     {
         sLocation = pMedium->GetName();
-        if ( sLocation.isEmpty() )
-        {
-            // for documents made from a template: get the name of the template
-            sLocation = rDocShell.getDocProperties()->getTemplateURL();
-        }
 
         // tdf#128006 take document base url as location
         if (sLocation.isEmpty())

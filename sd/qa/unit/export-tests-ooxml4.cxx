@@ -9,34 +9,30 @@
 
 #include "sdmodeltestbase.hxx"
 #include <tools/color.hxx>
-#include <com/sun/star/document/UpdateDocMode.hpp>
-#include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/editobj.hxx>
 #include <editeng/numitem.hxx>
 #include <docmodel/uno/UnoGradientTools.hxx>
-#include <officecfg/Office/Common.hxx>
-#include <test/commontesttools.hxx>
 
 #include <svx/xlineit0.hxx>
 #include <svx/xlndsit.hxx>
+#include <svx/svdograf.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdotable.hxx>
-#include <xmloff/autolayout.hxx>
+#include <svx/unoapi.hxx>
+#include <unotools/tempfile.hxx>
 
+#include <com/sun/star/animations/TransitionSubType.hpp>
+#include <com/sun/star/animations/TransitionType.hpp>
 #include <com/sun/star/awt/FontUnderline.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeParameterPair.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
-#include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/style/ParagraphAdjust.hpp>
-#include <com/sun/star/text/GraphicCrop.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
 
 #include <sdpage.hxx>
-#include <SlideSectionManager.hxx>
 #include <unomodel.hxx>
 
 class SdOOXMLExportTest4 : public SdModelTestBase
@@ -86,6 +82,63 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testMasterBackgroundColor)
     xmlDocUniquePtr pLayout1 = parseExport(u"ppt/slideLayouts/slideLayout1.xml"_ustr);
     assertXPath(pLayout1, "/p:sldLayout/p:cSld/p:spTree/p:sp/p:spPr/a:solidFill/a:schemeClr", "val",
                 u"bg1");
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testGraphicPlaceholderHiddenAsMaster)
+{
+    // A layout's picture placeholder is imported onto a master page, where it is a template for
+    // the instances the slides carry themselves. It must not paint on them, or a slide shows two
+    // placeholders - the slide's own, movable one, and the layout's immovable one behind it.
+    createSdImpressDoc("pptx/picture-placeholder-custom-prompt.pptx");
+
+    SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pXImpressDocument);
+    SdDrawDocument* pDoc = pXImpressDocument->GetDoc();
+    CPPUNIT_ASSERT_MESSAGE("no document", pDoc != nullptr);
+
+    // Only title, outline and notes placeholders used to be hidden this way. A layout's
+    // <p:ph type="pic"/> became an outline shape once, which is why it behaved before.
+    bool bFoundGraphicPresObj = false;
+    for (sal_uInt16 nMaster = 0; nMaster < pDoc->GetMasterSdPageCount(PageKind::Standard);
+         ++nMaster)
+    {
+        SdPage* pMasterPage = pDoc->GetMasterSdPage(nMaster, PageKind::Standard);
+        for (size_t nObj = 0; nObj < pMasterPage->GetObjCount(); ++nObj)
+        {
+            // A picture placeholder is an empty SdrGrafObj; a graphic the document actually
+            // contains is not an empty presentation object.
+            SdrObject* pObj = pMasterPage->GetObj(nObj);
+            if (dynamic_cast<SdrGrafObj*>(pObj) == nullptr || !pObj->IsEmptyPresObj())
+                continue;
+
+            bFoundGraphicPresObj = true;
+            CPPUNIT_ASSERT_MESSAGE("a master's picture placeholder would paint onto the slides",
+                                   pObj->IsNotVisibleAsMaster());
+        }
+    }
+    CPPUNIT_ASSERT_MESSAGE("no picture placeholder on any master page", bFoundGraphicPresObj);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testLayoutClrMapOvr)
+{
+    // Test that slide layout color map override (clrMapOvr) is preserved on round-trip
+    createSdImpressDoc("pptx/layout-clrmap-override.pptx");
+    save(TestFilter::PPTX);
+
+    // Verify the slide layout has clrMapOvr with overrideClrMapping
+    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slideLayouts/slideLayout1.xml"_ustr);
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "bg1", u"dk1");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "tx1", u"lt1");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "bg2", u"dk2");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "tx2", u"lt2");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "accent1", u"accent1");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "accent2", u"accent2");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "accent3", u"accent3");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "accent4", u"accent4");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "accent5", u"accent5");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "accent6", u"accent6");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "hlink", u"hlink");
+    assertXPath(pXmlDoc, "/p:sldLayout/p:clrMapOvr/a:overrideClrMapping", "folHlink", u"folHlink");
 }
 
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testSmartArtPreserve)
@@ -874,24 +927,24 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf140912_PicturePlaceholder)
             >>= isEmptyPresentationObject;
         CPPUNIT_ASSERT(isEmptyPresentationObject);
 
-        // If we supported custom prompt text, here we would also test "String" property,
-        // which would be equal to "Insert Image". See first tests: testCustomPromptTexts
+        // The slide-side shape does not carry the layout's prompt; only the layout placeholder
+        // does. See testPicturePlaceholderCustomPromptText for the prompt itself.
 
         auto xShape = xShapeProps.queryThrow<drawing::XShape>();
         aSizeBefore = xShape->getSize();
         aPosBefore = xShape->getPosition();
     }
 
-    // The picture placeholder must round-trip with its size and position (inherited from the layout
-    // via an empty <p:spPr/>), and must remain visible.
+    // The picture placeholder must round-trip with its size and position, and must remain visible.
     saveAndReload(TestFilter::PPTX);
 
     {
-        // After reload, the saved markup should be <p:sp> with <p:ph type="pic"/>
-        // and an empty <p:spPr/>.
+        // After reload, the saved markup should be <p:sp> with <p:ph type="pic"/> and its own
+        // geometry. Relying on the layout to supply the geometry instead left the placeholder
+        // 0x0 whenever the slide's layout placeholder could not be resolved on reimport.
         xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
         assertXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:sp/p:nvSpPr/p:nvPr/p:ph", "type", u"pic");
-        assertXPathChildren(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:sp/p:spPr", 0);
+        assertXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:sp/p:spPr/a:xfrm/a:ext", "cx", u"6635520");
 
         uno::Reference<beans::XPropertySet> xShapeProps(getShapeFromPage(0, 0));
         bool bEmpty = false;
@@ -909,6 +962,131 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf140912_PicturePlaceholder)
         CPPUNIT_ASSERT_DOUBLES_EQUAL(aPosBefore.X, aPosAfter.X, 1);
         CPPUNIT_ASSERT_DOUBLES_EQUAL(aPosBefore.Y, aPosAfter.Y, 1);
     }
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testNoPicPlaceholderOnSlideMaster)
+{
+    // Given a deck whose only layout carries a picture placeholder, so on import the placeholder
+    // lands on the Impress master page:
+    createSdImpressDoc("pptx/tdfpictureplaceholder.pptx");
+    save(TestFilter::PPTX);
+
+    // A slide master takes only title, body, dt, ftr and sldNum placeholders. Without the
+    // accompanying fix the master carried <p:ph type="pic"/> and PowerPoint refused to open the
+    // saved file at all, reporting it as corrupted and unreadable.
+    xmlDocUniquePtr pMaster = parseExport(u"ppt/slideMasters/slideMaster1.xml"_ustr);
+    assertXPath(pMaster, "/p:sldMaster/p:cSld/p:spTree/p:sp/p:nvSpPr/p:nvPr/p:ph[@type='pic']", 0);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testPicPlaceholderMovedToLayout)
+{
+    // Given a deck of one master and one layout, so the master page's own shapes go into the
+    // p:sldMaster part and the layout gets none of them:
+    createSdImpressDoc("pptx/picture-placeholder-one-layout.pptx");
+    save(TestFilter::PPTX);
+
+    // The picture placeholder still goes on the layout, which is where a slide resolves what it
+    // inherits. Without the accompanying fix it had nowhere to go but the slide master, which may
+    // not carry one, and PowerPoint refused to open the file.
+    xmlDocUniquePtr pLayout = parseExportedLayoutNamed(u"Picture placeholder");
+    assertXPath(pLayout, "/p:sldLayout/p:cSld/p:spTree/p:sp/p:nvSpPr/p:nvPr/p:ph[@type='pic']", 1);
+
+    xmlDocUniquePtr pMaster2 = parseExport(u"ppt/slideMasters/slideMaster1.xml"_ustr);
+    assertXPath(pMaster2, "/p:sldMaster/p:cSld/p:spTree/p:sp/p:nvSpPr/p:nvPr/p:ph[@type='pic']", 0);
+
+    xmlDocUniquePtr pSlide = parseExport(u"ppt/slides/slide1.xml"_ustr);
+    assertXPath(pSlide, "/p:sld/p:cSld/p:spTree/p:sp/p:nvSpPr/p:nvPr/p:ph[@type='pic']", 1);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testSlideShowsMasterCustomPrompt)
+{
+    // Given a layout whose picture placeholder authored a prompt:
+    createSdImpressDoc("pptx/picture-placeholder-custom-prompt.pptx");
+
+    // The slide's own placeholder shows it too. PlaceholderText is what the user reads on the
+    // slide; without the accompanying fix the slide ignored the layout and showed Impress's own
+    // resource string instead, so the layout and the slide disagreed about the same placeholder.
+    // The placeholder is looked up by what it is, not by where it sits: which shape comes first on
+    // the slide is not what this test is about.
+    SdPage* pPage = getSdDocShell()->GetDoc()->GetSdPage(0, PageKind::Standard);
+    SdrObject* pPlaceholder = pPage->GetPresObj(PresObjKind::Graphic);
+    CPPUNIT_ASSERT_MESSAGE("no picture placeholder on the slide", pPlaceholder);
+    auto xShapeProps = GetXShapeForSdrObject(pPlaceholder).queryThrow<beans::XPropertySet>();
+
+    OUString aPlaceholderText;
+    CPPUNIT_ASSERT(xShapeProps->getPropertyValue(u"PlaceholderText"_ustr) >>= aPlaceholderText);
+    CPPUNIT_ASSERT_EQUAL(u"Custom prompt to insert an image"_ustr, aPlaceholderText);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testMediaPlaceholder)
+{
+    // Given a deck with an empty media placeholder on a slide, inheriting from its layout:
+    createSdImpressDoc("pptx/media-placeholder.pptx");
+    save(TestFilter::PPTX);
+
+    // It keeps its placeholder identity on both levels. Without the accompanying fix the layout
+    // one degraded to <p:ph type="body"/>, and the slide one was written as a real media object,
+    // a <p:pic> with the internal placeholder icon embedded as its <a:blipFill>. The layout
+    // carries the header and footer placeholders too, so select the media one.
+    xmlDocUniquePtr pLayout = parseExportedLayoutNamed(u"Media placeholder");
+    assertXPath(pLayout, "/p:sldLayout/p:cSld/p:spTree/p:sp[p:nvSpPr/p:nvPr/p:ph/@type='media']",
+                1);
+
+    xmlDocUniquePtr pSlide = parseExport(u"ppt/slides/slide1.xml"_ustr);
+    assertXPath(pSlide, "/p:sld/p:cSld/p:spTree/p:sp[p:nvSpPr/p:nvPr/p:ph/@type='media']", 1);
+    assertXPath(pSlide, "/p:sld/p:cSld/p:spTree/p:pic", 0);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testPicturePlaceholderCustomPromptText)
+{
+    // Given one layout whose picture placeholder authored a prompt, and another whose
+    // picture placeholder authored none:
+    createSdImpressDoc("pptx/picture-placeholder-custom-prompt.pptx");
+    save(TestFilter::PPTX);
+
+    static constexpr OString aPicPlaceholder(
+        "/p:sldLayout/p:cSld/p:spTree/p:sp[p:nvSpPr/p:nvPr/p:ph/@type='pic']"_ostr);
+
+    // The authored prompt survives. Without the accompanying fix it was replaced by Impress's
+    // own localized resource, since a slide layout arrives as a master page and the shown text
+    // was only ever set off a master.
+    xmlDocUniquePtr pAuthored = parseExportedLayoutNamed(u"Picture placeholder, custom prompt");
+    assertXPath(pAuthored, aPicPlaceholder + "/p:nvSpPr/p:nvPr/p:ph", "hasCustomPrompt", u"1");
+    assertXPathContent(pAuthored, aPicPlaceholder + "/p:txBody/a:p/a:r/a:t",
+                       u"Custom prompt to insert an image");
+
+    // The one with no authored prompt writes no text, rather than that same resource string
+    // written out as if the document had contained it. Its body properties stay: a reader needs
+    // the insets and the anchor whether or not there is anything in the box yet.
+    xmlDocUniquePtr pDefault = parseExportedLayoutNamed(u"Picture with Caption");
+    assertXPath(pDefault, aPicPlaceholder, 1);
+    assertXPath(pDefault, aPicPlaceholder + "/p:txBody/a:bodyPr", 1);
+    assertXPath(pDefault, aPicPlaceholder + "/p:txBody/a:p", 1);
+    assertXPath(pDefault, aPicPlaceholder + "/p:txBody/a:p/a:r", 0);
+    // The paragraph still states what text put there would look like
+    assertXPath(pDefault, aPicPlaceholder + "/p:txBody/a:p/a:endParaRPr", 1);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testEmptyTitlePlaceholderFormatting)
+{
+    // Given a slide holding a title placeholder nothing was typed into, which its layout formats
+    // 22pt in the light scheme colour, not bold, indented:
+    createSdImpressDoc("pptx/empty-title-placeholder.pptx");
+    save(TestFilter::PPTX);
+
+    static constexpr OString aTitle(
+        "/p:sld/p:cSld/p:spTree/p:sp[p:nvSpPr/p:nvPr/p:ph/@type='title']/p:txBody/a:p"_ostr);
+    xmlDocUniquePtr pSlide = parseExport(u"ppt/slides/slide1.xml"_ustr);
+
+    // Without the fix the paragraph was written bare, and PowerPoint showed the title
+    // bold black at 17pt, not white at 22pt
+    assertXPath(pSlide, aTitle + "/a:pPr", "marL", u"717480");
+    assertXPath(pSlide, aTitle + "/a:endParaRPr", "sz", u"2200");
+    assertXPath(pSlide, aTitle + "/a:endParaRPr", "b", u"0");
+    assertXPath(pSlide, aTitle + "/a:endParaRPr/a:solidFill/a:schemeClr", "val", u"lt1");
+
+    // The prompt shown in it is Impress's own, and stays out of the file
+    assertXPath(pSlide, aTitle + "/a:r", 0);
 }
 
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testEnhancedPathViewBox)
@@ -1164,1098 +1342,90 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testAutofittedTextboxIndent)
                 u"1080000");
 }
 
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf151622_oleIcon)
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testAirplaneTransition)
 {
-    createSdImpressDoc("odp/ole_icon.odp");
+    // Given a document with an airplane slide transition:
+    createSdImpressDoc("pptx/airplane-transition.pptx");
 
-    save(TestFilter::PPTX);
+    // When importing that document:
+    uno::Reference<beans::XPropertySet> xPage(getPage(0), uno::UNO_QUERY);
 
-    xmlDocUniquePtr pXml = parseExport(u"ppt/slides/slide1.xml"_ustr);
-
+    // Then make sure the transition is not lost:
     // Without the accompanying fix in place, this test would have failed with:
-    // - Expression: prop
-    // - In ..., XPath '//p:oleObj' no attribute 'showAsIcon' exist
-    // i.e. show as icon option wasn't exported.
-    assertXPath(pXml, "//p:oleObj", "showAsIcon", u"1");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf152436)
-{
-    createSdImpressDoc("pptx/ole-emf_min.pptx");
-    saveAndReload(TestFilter::PPTX);
-
-    // Check number of shapes after export.
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), getPage(0)->getCount());
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testLinkedOLE)
-{
-    // The linked OLE object needs its link completed during load so it can
-    // be exported. Use FULL_UPDATE since the default test mode defers links.
-    uno::Sequence<beans::PropertyValue> aParams = {
-        comphelper::makePropertyValue(u"UpdateDocMode"_ustr,
-                                      sal_Int16(css::document::UpdateDocMode::FULL_UPDATE)),
-    };
-    loadFromFile(u"odp/linked_ole.odp", aParams);
-
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXml = parseExport(u"ppt/slides/slide1.xml"_ustr);
-
-    // Without the accompanying fix in place, this test would have failed with:
-    // - Expected: 1
+    // - Expected: 21 (MISCSHAPEWIPE)
     // - Actual  : 0
-    // - In<>, XPath '//p:oleObj' number of nodes is incorrect
-    // i.e. the linked ole object wasn't exported.
-    assertXPath(pXml, "//p:oleObj", 1);
-}
+    // i.e. only the fallOver preset transition was imported.
+    CPPUNIT_ASSERT_EQUAL(animations::TransitionType::MISCSHAPEWIPE,
+                         xPage->getPropertyValue(u"TransitionType"_ustr).get<sal_Int16>());
+    CPPUNIT_ASSERT_EQUAL(animations::TransitionSubType::AIRPLANE,
+                         xPage->getPropertyValue(u"TransitionSubtype"_ustr).get<sal_Int16>());
 
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf102261_testParaTabStopDefaultDistance)
-{
-    createSdImpressDoc("pptx/tdf102261_testParaTabStopDefaultDistance.pptx");
-    saveAndReload(TestFilter::PPTX);
-
-    uno::Reference<beans::XPropertySet> xShape(getShapeFromPage(0, 0));
-    {
-        uno::Reference<beans::XPropertySet> xPropSet(getParagraphFromShape(0, xShape),
-                                                     uno::UNO_QUERY_THROW);
-        CPPUNIT_ASSERT_EQUAL(
-            sal_Int32{ 1270 },
-            xPropSet->getPropertyValue(u"ParaTabStopDefaultDistance"_ustr).get<sal_Int32>());
-    }
-    {
-        uno::Reference<beans::XPropertySet> xPropSet(getParagraphFromShape(1, xShape),
-                                                     uno::UNO_QUERY_THROW);
-        CPPUNIT_ASSERT_EQUAL(
-            sal_Int32{ 2540 },
-            xPropSet->getPropertyValue(u"ParaTabStopDefaultDistance"_ustr).get<sal_Int32>());
-    }
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testNotesAuthorDate)
-{
-    createSdImpressDoc("pptx/pres-with-notes.pptx");
-
-    using ScriptingCfg = officecfg::Office::Common::Security::Scripting;
-    ScopedConfigValue<ScriptingCfg::RemovePersonalInfoOnSaving> aCfg1(true);
-    {
-        // 1. Remove all personal info, but keep note info
-        ScopedConfigValue<ScriptingCfg::KeepNoteAuthorDateInfoOnSaving> aCfg2(true);
-
-        saveAndReload(TestFilter::PPTX);
-
-        xmlDocUniquePtr pXml = parseExport(u"ppt/commentAuthors.xml"_ustr);
-        assertXPath(pXml, "/p:cmAuthorLst/p:cmAuthor[@id=0]", "name", u"Hans Wurst");
-        assertXPath(pXml, "/p:cmAuthorLst/p:cmAuthor[@id=1]", "name", u"Max Muster");
-
-        pXml = parseExport(u"ppt/comments/comment1.xml"_ustr);
-        assertXPath(pXml, "/p:cmLst/p:cm", "dt", u"2024-06-13T12:03:08.000000000");
-    }
-
-    {
-        // 2. Remove all personal info
-        ScopedConfigValue<ScriptingCfg::KeepNoteAuthorDateInfoOnSaving> aCfg2(false);
-        saveAndReload(TestFilter::PPTX);
-
-        xmlDocUniquePtr pXml = parseExport(u"ppt/commentAuthors.xml"_ustr);
-        assertXPath(pXml, "/p:cmAuthorLst/p:cmAuthor[@id=0]", "name", u"Author1");
-        assertXPath(pXml, "/p:cmAuthorLst/p:cmAuthor[@id=1]", "name", u"Author2");
-
-        pXml = parseExport(u"ppt/comments/comment1.xml"_ustr);
-        assertXPathNoAttribute(pXml, "/p:cmLst/p:cm", "dt");
-    }
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTableCellVerticalPropertyRoundtrip)
-{
-    createSdImpressDoc("pptx/tcPr-vert-roundtrip.pptx");
-    saveAndReload(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXml = parseExport(u"ppt/slides/slide1.xml"_ustr);
-
-    assertXPath(pXml, "(//a:tcPr)[1]", "vert", u"vert");
-    assertXPath(pXml, "(//a:tcPr)[2]", "vert", u"vert270");
-    assertXPath(pXml, "(//a:tcPr)[3]", "vert", u"wordArtVert");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf157740_slideMasters)
-{
-    createSdImpressDoc("pptx/tdf157740.pptx");
-    saveAndReload(TestFilter::PPTX);
-
-    // The original file has 1 slide master and 7 slide layouts in that master
-    xmlDocUniquePtr pXmlDocContent = parseExport(u"ppt/presentation.xml"_ustr);
-    assertXPath(pXmlDocContent, "/p:presentation/p:sldMasterIdLst/p:sldMasterId", 1);
-
-    pXmlDocContent = parseExport(u"ppt/slideMasters/slideMaster1.xml"_ustr);
-    assertXPath(pXmlDocContent, "/p:sldMaster/p:sldLayoutIdLst/p:sldLayoutId", 7);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf159931_slideLayouts)
-{
-    createSdImpressDoc("odp/repeatBitmapMode.odp");
+    // And when exporting that document back to PPTX:
     save(TestFilter::PPTX);
 
-    xmlDocUniquePtr pXmlDocRels1 = parseExport(u"ppt/slides/_rels/slide1.xml.rels"_ustr);
-    xmlDocUniquePtr pXmlDocRels2 = parseExport(u"ppt/slides/_rels/slide2.xml.rels"_ustr);
-
-    assertXPath(pXmlDocRels1, "(/rels:Relationships/rels:Relationship[@Type='http://"
-                              "schemas.openxmlformats.org/officeDocument/2006/relationships/"
-                              "slideLayout'])");
-
-    // the relative target e.g. "../slideLayouts/slideLayout2.xml"
-    OUString sRelativeLayoutPath1
-        = getXPathContent(pXmlDocRels1, "(/rels:Relationships/rels:Relationship[@Type='http://"
-                                        "schemas.openxmlformats.org/officeDocument/2006/"
-                                        "relationships/slideLayout'])/@Target");
-
-    assertXPath(pXmlDocRels2, "(/rels:Relationships/rels:Relationship[@Type='http://"
-                              "schemas.openxmlformats.org/officeDocument/2006/relationships/"
-                              "slideLayout'])");
-
-    // the relative target e.g. "../slideLayouts/slideLayout1.xml"
-    OUString sRelativeLayoutPath2
-        = getXPathContent(pXmlDocRels2, "(/rels:Relationships/rels:Relationship[@Type='http://"
-                                        "schemas.openxmlformats.org/officeDocument/2006/"
-                                        "relationships/slideLayout'])/@Target");
-
-    uno::Reference<packages::zip::XZipFileAccess2> xNameAccess
-        = packages::zip::ZipFileAccess::createWithURL(comphelper::getComponentContext(m_xSFactory),
-                                                      maTempFile.GetURL());
-
-    // Check that the referenced slideLayout files exist
-    // Without the accompanying fix in place, this test would have failed with:
-    // equality assertion failed
-    // - Expected: 1
-    // - Actual  : 0
-    // i.e. the referenced slideLayout file was missing on export.
-    OUString sSlideLayoutName1 = sRelativeLayoutPath1.getToken(2, '/');
-    OUString sSlideLayoutName2 = sRelativeLayoutPath2.getToken(2, '/');
-
-    CPPUNIT_ASSERT_EQUAL(true,
-                         bool(xNameAccess->hasByName("ppt/slideLayouts/" + sSlideLayoutName1)));
-    CPPUNIT_ASSERT_EQUAL(true,
-                         bool(xNameAccess->hasByName("ppt/slideLayouts/" + sSlideLayoutName2)));
+    // Then make sure the transition is written back:
+    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
+    assertXPath(pXmlDoc, "//mc:AlternateContent/mc:Choice/p:transition/p15:prstTrans", "prst",
+                u"airplane");
+    // Also make sure that the choice requires p15, even if p14:dur is written, too:
+    assertXPath(pXmlDoc, "//mc:AlternateContent/mc:Choice", "Requires", u"p15");
 }
 
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf163483_export_math_fallback)
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testShapeReflectionEffect)
 {
-    createSdImpressDoc("odp/formula.fodp");
-
-    // Before export-and-reload, there is a formula on page.
-    {
-        auto xProps = getShapeFromPage(0, 0);
-        auto xInfo = xProps->getPropertyValue(u"Model"_ustr).queryThrow<css::lang::XServiceInfo>();
-        CPPUNIT_ASSERT(xInfo->supportsService(u"com.sun.star.formula.FormulaProperties"_ustr));
-
-        // tdf#164101: check that the size is imported correctly
-        css::awt::Size formulaSize = xProps.queryThrow<css::drawing::XShape>()->getSize();
-        CPPUNIT_ASSERT_EQUAL(sal_Int32(1553), formulaSize.Width);
-        CPPUNIT_ASSERT_EQUAL(sal_Int32(528), formulaSize.Height);
-
-        CPPUNIT_ASSERT_THROW(getShapeFromPage(0, 1),
-                             css::lang::IndexOutOfBoundsException); // Only one shape on page
-    }
-
-    saveAndReload(TestFilter::PPTX);
-
-    // After save-and-reload, there must still be a single shape; now it's a fallback image.
-    // When we start to import formulas from PPTX, that will be formula.
-    {
-        // Without the fix, this threw IndexOutOfBoundsException, because there was no fallback,
-        // and no shape got imported.
-        auto xInfo = getShapeFromPage(0, 0).queryThrow<css::lang::XServiceInfo>();
-        CPPUNIT_ASSERT(xInfo->supportsService(u"com.sun.star.drawing.CustomShape"_ustr));
-
-        css::awt::Size formulaSize = xInfo.queryThrow<css::drawing::XShape>()->getSize();
-        // The fallback image size after the roundtrip may be a bit different - allow some tolerance
-        CPPUNIT_ASSERT_DOUBLES_EQUAL(sal_Int32(1553), formulaSize.Width, 1);
-        CPPUNIT_ASSERT_DOUBLES_EQUAL(sal_Int32(528), formulaSize.Height, 1);
-
-        CPPUNIT_ASSERT_THROW(getShapeFromPage(0, 1),
-                             css::lang::IndexOutOfBoundsException); // Only one shape on page
-    }
-
+    createSdImpressDoc("pptx/shape-reflection-effect.pptx");
+    save(TestFilter::PPTX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
 
-    const OUString cNvPr_id = getXPath(
-        pXmlDoc, "/p:sld/p:cSld/p:spTree/mc:AlternateContent/mc:Choice/p:sp/p:nvSpPr/p:cNvPr",
-        "id");
+    // An unchanged reflection is written back with the values it was read with, including the
+    // ones that have no shape property.
+    static constexpr OString sTight
+        = "/p:sld/p:cSld/p:spTree/p:sp[1]/p:spPr/a:effectLst/a:reflection"_ostr;
+    assertXPath(pXmlDoc, sTight, "blurRad", u"6350");
+    assertXPath(pXmlDoc, sTight, "stA", u"50000");
+    assertXPath(pXmlDoc, sTight, "endA", u"300");
+    assertXPath(pXmlDoc, sTight, "endPos", u"35000");
+    assertXPath(pXmlDoc, sTight, "dir", u"5400000");
+    assertXPath(pXmlDoc, sTight, "sy", u"-100000");
+    assertXPath(pXmlDoc, sTight, "algn", u"bl");
+    assertXPathNoAttribute(pXmlDoc, sTight, "dist");
+    assertXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:sp[2]/p:spPr/a:effectLst/a:reflection", "dist",
+                u"50800");
+    assertXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:sp[4]/p:spPr/a:effectLst/a:reflection", 0);
 
-    // Check that the alternate content is exported
-    assertXPath(
-        pXmlDoc,
-        "/p:sld/p:cSld/p:spTree/mc:AlternateContent/mc:Fallback/p:sp/p:spPr/a:blipFill/a:blip",
-        "embed", u"rId1");
-
-    // Its cNvPr_id must be the same
-    assertXPath(pXmlDoc,
-                "/p:sld/p:cSld/p:spTree/mc:AlternateContent/mc:Fallback/p:sp/p:nvSpPr/p:cNvPr",
-                "id", cNvPr_id);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf169979_missing_ppic)
-{
-    createSdImpressDoc("odp/tdf169979.odp");
-
+    // Edit the reflections: turn off the first, fade the second out further down, and give the
+    // shape without a reflection one that stands off from it.
+    getShapeFromPage(0, 0)->setPropertyValue(u"ReflectionEffect"_ustr, uno::Any(false));
+    getShapeFromPage(1, 0)->setPropertyValue(u"ReflectionEffectEndPosition"_ustr,
+                                             uno::Any(sal_Int16(70)));
+    uno::Reference<beans::XPropertySet> xNew(getShapeFromPage(3, 0));
+    xNew->setPropertyValue(u"ReflectionEffect"_ustr, uno::Any(true));
+    xNew->setPropertyValue(u"ReflectionEffectDistance"_ustr, uno::Any(sal_Int32(500)));
+    xNew->setPropertyValue(u"ReflectionEffectStartTransparency"_ustr, uno::Any(sal_Int16(40)));
     save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXml2 = parseExport(u"ppt/slides/slide2.xml"_ustr);
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 1
-    // - Actual  : 0
-    // - In <>, XPath '/p:sld/p:cSld/p:spTree/p:graphicFrame/a:graphic/a:graphicData/p:oleObj/p:pic/p:nvPicPr/p:cNvPr' number of nodes is incorrect
-    assertXPath(pXml2,
-                "/p:sld/p:cSld/p:spTree/p:graphicFrame/a:graphic/"
-                "a:graphicData/p:oleObj/p:pic/p:nvPicPr/p:cNvPr",
-                "name", u"");
-
-    assertXPath(pXml2,
-                "/p:sld/p:cSld/p:spTree/p:graphicFrame/a:graphic/"
-                "a:graphicData/p:oleObj/p:pic/p:nvPicPr/p:cNvPr",
-                "descr", u"");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testEmptyChildTnLstElement)
-{
-    createSdImpressDoc("odp/emptyChildTnLstElement.odp");
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 4
-    // - validation error in OOXML export: Errors: 4
-    saveAndReload(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
-
-    // tdf#170202: Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 1
-    CPPUNIT_ASSERT_EQUAL(0, countXPathNodes(pXmlDoc, "//p:sld/p:timing"));
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf169941_internal_link_to_shapes)
-{
-    createSdImpressDoc("odp/tdf169941.odp");
-
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pRelsDoc2 = parseExport(u"ppt/slides/_rels/slide2.xml.rels"_ustr);
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: slide1.xml
-    // - Actual  :
-    assertXPath(pRelsDoc2, "/rels:Relationships/rels:Relationship[@Id='rId1']", "Target",
-                u"slide1.xml");
-
-    xmlDocUniquePtr pRelsDoc3 = parseExport(u"ppt/slides/_rels/slide3.xml.rels"_ustr);
-    assertXPath(pRelsDoc3, "/rels:Relationships/rels:Relationship[@Id='rId1']", "Target",
-                u"slide1.xml");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testEmptyAttrNameElement)
-{
-    createSdImpressDoc("odp/emptyChildTnLstElement.odp");
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 2
-    // - validation error in OOXML export: Errors: 2
-    saveAndReload(TestFilter::PPTX);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testPlaceHolderFitHeightToText)
-{
-    createSdImpressDoc("pptx/tdf160487.pptx");
-    saveAndReload(TestFilter::PPTX);
-    uno::Reference<beans::XPropertySet> xShape(getShapeFromPage(1, 0));
-    bool bTextAutoGrowHeight = false;
-    xShape->getPropertyValue(u"TextAutoGrowHeight"_ustr) >>= bTextAutoGrowHeight;
-    CPPUNIT_ASSERT_MESSAGE("PlaceHolder Fit height to text should be true.", bTextAutoGrowHeight);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testDeduplicateMasters)
-{
-    createSdImpressDoc("pptx/onemaster-twolayouts.pptx");
-    saveAndReload(TestFilter::PPTX);
-
-    // Check that the document still has one master and two layouts
-    xmlDocUniquePtr pXmlDocContent = parseExport("ppt/presentation.xml");
-    assertXPath(pXmlDocContent, "/p:presentation/p:sldMasterIdLst/p:sldMasterId"_ostr, 1);
-    pXmlDocContent = parseExport("ppt/slideMasters/slideMaster1.xml");
-    assertXPath(pXmlDocContent, "/p:sldMaster/p:sldLayoutIdLst/p:sldLayoutId"_ostr, 2);
-
-    // Check that both background colors have been preserved
-    uno::Reference<drawing::XMasterPagesSupplier> xDoc(mxComponent, uno::UNO_QUERY);
-    CPPUNIT_ASSERT(xDoc.is());
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), xDoc->getMasterPages()->getCount());
-
-    uno::Reference<drawing::XDrawPage> xPage(xDoc->getMasterPages()->getByIndex(0),
-                                             uno::UNO_QUERY_THROW);
-    uno::Reference<beans::XPropertySet> xPropSet(xPage, uno::UNO_QUERY);
-    uno::Any aAny = xPropSet->getPropertyValue("Background");
-    CPPUNIT_ASSERT(aAny.hasValue());
-    uno::Reference<beans::XPropertySet> aXBackgroundPropSet;
-    aAny >>= aXBackgroundPropSet;
-    Color nColor;
-    CPPUNIT_ASSERT(aXBackgroundPropSet->getPropertyValue("FillColor") >>= nColor);
-    CPPUNIT_ASSERT_EQUAL(Color(0x0E2841), nColor);
-
-    uno::Reference<drawing::XDrawPage> xPage1(xDoc->getMasterPages()->getByIndex(1),
-                                              uno::UNO_QUERY_THROW);
-    uno::Reference<beans::XPropertySet> xPropSet1(xPage1, uno::UNO_QUERY);
-    aAny = xPropSet1->getPropertyValue("Background");
-    CPPUNIT_ASSERT(aAny.hasValue());
-    aAny >>= aXBackgroundPropSet;
-    CPPUNIT_ASSERT(aXBackgroundPropSet->getPropertyValue("FillColor") >>= nColor);
-    CPPUNIT_ASSERT_EQUAL(Color(0x000000), nColor);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testInvalidAttributeValuesInSrcRect)
-{
-    createSdImpressDoc("odp/invalidAttributeValuesInSrcRect.odp");
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 24
-    // - validation error in OOXML export: Errors: 24
-    saveAndReload(TestFilter::PPTX);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testInvalidBuAutoNumEnumValue)
-{
-    createSdImpressDoc("odp/invalidBuAutoNumEnumValue.odp");
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 4
-    // - validation error in OOXML export: Errors: 4
-    saveAndReload(TestFilter::PPTX);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testInvalidCxAndCyAttribute)
-{
-    createSdImpressDoc("odp/invalidCxAndCyAttribute.odp");
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 4
-    // - validation error in OOXML export: Errors: 4
-    saveAndReload(TestFilter::PPTX);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testBadPercentageValue)
-{
-    createSdImpressDoc("odp/badPercentageValue.odp");
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 4
-    // - validation error in OOXML export: Errors: 4
-    saveAndReload(TestFilter::PPTX);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testInvalidAudio)
-{
-    createSdImpressDoc("odp/invalidAudio.odp");
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 1
-    // - validation error in OOXML export: Errors: 1
-    saveAndReload(TestFilter::PPTX);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testInvalidPrstDashEnumValue)
-{
-    createSdImpressDoc("odp/invalidPrstDashEnumValue.odp");
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 113
-    // - validation error in OOXML export: Errors: 113
-    saveAndReload(TestFilter::PPTX);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testInvalidXmlBy)
-{
-    createSdImpressDoc("odp/invalidXmlBy.odp");
-
-    // Without the fix in place, this test would have failed with
-    // - Expected: 0
-    // - Actual  : 15
-    // - validation error in OOXML export: Errors: 15
-    saveAndReload(TestFilter::PPTX);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testConvertWithMasterDeduplication)
-{
-    createSdImpressDoc("odp/dupmastermultlayouts.odp");
-    saveAndReload(TestFilter::PPTX);
-
-    uno::Reference<packages::zip::XZipFileAccess2> xNameAccess
-        = packages::zip::ZipFileAccess::createWithURL(comphelper::getComponentContext(m_xSFactory),
-                                                      maTempFile.GetURL());
-
-    // For each slide check that it's layout exists
-    for (int i = 1; i <= 4; ++i)
-    {
-        xmlDocUniquePtr pXmlDocRels
-            = parseExport("ppt/slides/_rels/slide" + OUString::number(i) + ".xml.rels");
-
-        assertXPath(
-            pXmlDocRels,
-            "(/rels:Relationships/rels:Relationship[@Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout'])"_ostr);
-        // the relative target e.g. "../slideLayouts/slideLayout2.xml"
-        OUString sRelativeLayoutPath = getXPathContent(
-            pXmlDocRels,
-            "(/rels:Relationships/rels:Relationship[@Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout'])/@Target"_ostr);
-
-        // Check that the referenced slideLayout files exist
-        // Without the accompanying fix in place, this test would have failed with:
-        // equality assertion failed
-        // - Expected: 1
-        // - Actual  : 0
-        // i.e. the referenced slideLayout file was missing on export.
-        OUString sSlideLayoutName = sRelativeLayoutPath.getToken(2, '/');
-        CPPUNIT_ASSERT_EQUAL(true,
-                             bool(xNameAccess->hasByName("ppt/slideLayouts/" + sSlideLayoutName)));
-    }
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf162571HorzAnchor)
-{
-    createSdImpressDoc("pptx/tdf165261.pptx");
-    saveAndReload(TestFilter::PPTX);
-
-    uno::Reference<drawing::XShape> xShape(getShapeFromPage(1, 0), uno::UNO_QUERY);
-    uno::Reference<beans::XPropertySet> xProp(xShape, uno::UNO_QUERY);
-
-    drawing::TextHorizontalAdjust eHori;
-    CPPUNIT_ASSERT(xProp->getPropertyValue(u"TextHorizontalAdjust"_ustr) >>= eHori);
-    CPPUNIT_ASSERT_EQUAL(drawing::TextHorizontalAdjust::TextHorizontalAdjust_LEFT, eHori);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf165261HorzAnchor)
-{
-    createSdImpressDoc("pptx/tdf165261.pptx");
-    saveAndReload(TestFilter::PPTX);
-
-    uno::Reference<drawing::XShapes> xGroupShape(getShapeFromPage(0, 0), uno::UNO_QUERY);
-    uno::Reference<drawing::XShape> xShape(xGroupShape->getByIndex(0), uno::UNO_QUERY);
-
-    uno::Reference<beans::XPropertySet> xProp(xShape, uno::UNO_QUERY);
-    drawing::TextHorizontalAdjust eHori;
-    CPPUNIT_ASSERT(xProp->getPropertyValue(u"TextHorizontalAdjust"_ustr) >>= eHori);
-    CPPUNIT_ASSERT_EQUAL(drawing::TextHorizontalAdjust::TextHorizontalAdjust_CENTER, eHori);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testCustomPromptTexts)
-{
-    createSdImpressDoc("pptx/tdf163239.pptx");
-    saveAndReload(TestFilter::PPTX);
-
-    const SdrPage* pPage1 = GetPage(1);
-    {
-        // subtitle placeholder text
-        SdrTextObj* pTxtObj = DynCastSdrTextObj(pPage1->GetObj(0));
-        CPPUNIT_ASSERT_MESSAGE("no text object", pTxtObj != nullptr);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong object type!", SdrObjKind::Text,
-                                     pTxtObj->GetObjIdentifier());
-        const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
-        OUString aText = aEdit.GetText(0);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong placeholder text!", aText, u"Click to add Text"_ustr);
-        /* TODO: handle subtitle shape: see tdf#112557 workaround
-            - Expected: Click to edit customized Master Subtitle style
-            - Actual : Click to add Text
-            - Wrong placeholder text!
-        */
-
-        auto xShapeProps(getShapeFromPage(0, 0));
-        CPPUNIT_ASSERT(xShapeProps->getPropertyValue(u"CustomPromptText"_ustr) >>= aText);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong placeholder text was set!", aText, u""_ustr);
-        /* TODO: handle subtitle shape: see tdf#112557 workaround
-            - Expected: Click to edit customized Master Subtitle style
-            - Actual :
-            - Wrong placeholder text was set!
-        */
-    }
-
-    {
-        SdrTextObj* pTxtObj = DynCastSdrTextObj(pPage1->GetObj(1));
-        CPPUNIT_ASSERT_MESSAGE("no text object", pTxtObj != nullptr);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong object type!", SdrObjKind::TitleText,
-                                     pTxtObj->GetObjIdentifier());
-        const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
-        OUString aText = aEdit.GetText(0);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong placeholder text!", aText, u"Custom Title 1"_ustr);
-
-        auto xShapeProps(getShapeFromPage(1, 0));
-        CPPUNIT_ASSERT(xShapeProps->getPropertyValue(u"CustomPromptText"_ustr) >>= aText);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong placeholder text was set!", aText,
-                                     u"Custom Title 1"_ustr);
-    }
-
-    const SdrPage* pPage2 = GetPage(3);
-    {
-        // body placeholder text
-        SdrTextObj* pTxtObj = DynCastSdrTextObj(pPage2->GetObj(0));
-        CPPUNIT_ASSERT_MESSAGE("no text object", pTxtObj != nullptr);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong object type!", SdrObjKind::OutlineText,
-                                     pTxtObj->GetObjIdentifier());
-        const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
-        OUString aText = aEdit.GetText(0);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong placeholder text!", aText, u"Text placeholder"_ustr);
-
-        auto xShapeProps(getShapeFromPage(0, 1));
-        CPPUNIT_ASSERT(xShapeProps->getPropertyValue(u"CustomPromptText"_ustr) >>= aText);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong placeholder text was set!", aText,
-                                     u"Text placeholder"_ustr);
-    }
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testPresObjTextStyles)
-{
-    createSdImpressDoc("pptx/tdf163239_v2.pptx");
-    saveAndReload(TestFilter::PPTX);
-
-    uno::Reference<style::XStyleFamiliesSupplier> xStyleFamiliesSupplier(mxComponent,
-                                                                         uno::UNO_QUERY);
-    uno::Reference<container::XNameAccess> xStyleFamilies
-        = xStyleFamiliesSupplier->getStyleFamilies();
-    // 1st slide
-    uno::Reference<container::XNameAccess> xStyleFamily(
-        xStyleFamilies->getByName(u"Title Slide"_ustr), uno::UNO_QUERY);
-    {
-        // Title style
-        uno::Reference<style::XStyle> xStyle(xStyleFamily->getByName(u"title"_ustr),
-                                             uno::UNO_QUERY);
-        uno::Reference<beans::XPropertySet> xPropSet(xStyle, uno::UNO_QUERY);
-        CPPUNIT_ASSERT_EQUAL(60.0f, xPropSet->getPropertyValue(u"CharHeight"_ustr).get<float>());
-        CPPUNIT_ASSERT_EQUAL(sal_Int16(style::ParagraphAdjust_CENTER),
-                             xPropSet->getPropertyValue(u"ParaAdjust"_ustr).get<sal_Int16>());
-        CPPUNIT_ASSERT_EQUAL(u"Marianne"_ustr,
-                             xPropSet->getPropertyValue(u"CharFontName"_ustr).get<OUString>());
-    }
-    // 2nd slide
-    xStyleFamily.set(xStyleFamilies->getByName(u"Title and Content"_ustr), uno::UNO_QUERY);
-    {
-        // Title style
-        uno::Reference<style::XStyle> xStyle(xStyleFamily->getByName(u"title"_ustr),
-                                             uno::UNO_QUERY);
-        uno::Reference<beans::XPropertySet> xPropSet(xStyle, uno::UNO_QUERY);
-        CPPUNIT_ASSERT_EQUAL(44.0f, xPropSet->getPropertyValue(u"CharHeight"_ustr).get<float>());
-        CPPUNIT_ASSERT_EQUAL(sal_Int16(style::ParagraphAdjust_LEFT),
-                             xPropSet->getPropertyValue(u"ParaAdjust"_ustr).get<sal_Int16>());
-        CPPUNIT_ASSERT_EQUAL(u"Marianne"_ustr,
-                             xPropSet->getPropertyValue(u"CharFontName"_ustr).get<OUString>());
-
-        // outline1 style
-        xStyle.set(xStyleFamily->getByName(u"outline1"_ustr), uno::UNO_QUERY);
-        xPropSet.set(xStyle, uno::UNO_QUERY);
-        CPPUNIT_ASSERT_EQUAL(28.0f, xPropSet->getPropertyValue(u"CharHeight"_ustr).get<float>());
-        CPPUNIT_ASSERT_EQUAL(sal_Int16(style::ParagraphAdjust_LEFT),
-                             xPropSet->getPropertyValue(u"ParaAdjust"_ustr).get<sal_Int16>());
-        CPPUNIT_ASSERT_EQUAL(u"Marianne"_ustr,
-                             xPropSet->getPropertyValue(u"CharFontName"_ustr).get<OUString>());
-
-        // outline2 style
-        xStyle.set(xStyleFamily->getByName(u"outline2"_ustr), uno::UNO_QUERY);
-        xPropSet.set(xStyle, uno::UNO_QUERY);
-        CPPUNIT_ASSERT_EQUAL(24.0f, xPropSet->getPropertyValue(u"CharHeight"_ustr).get<float>());
-        CPPUNIT_ASSERT_EQUAL(sal_Int16(style::ParagraphAdjust_LEFT),
-                             xPropSet->getPropertyValue(u"ParaAdjust"_ustr).get<sal_Int16>());
-        CPPUNIT_ASSERT_EQUAL(u"Marianne"_ustr,
-                             xPropSet->getPropertyValue(u"CharFontName"_ustr).get<OUString>());
-
-        // outline5 style
-        xStyle.set(xStyleFamily->getByName(u"outline5"_ustr), uno::UNO_QUERY);
-        xPropSet.set(xStyle, uno::UNO_QUERY);
-        CPPUNIT_ASSERT_EQUAL(18.0f, xPropSet->getPropertyValue(u"CharHeight"_ustr).get<float>());
-        CPPUNIT_ASSERT_EQUAL(sal_Int16(style::ParagraphAdjust_LEFT),
-                             xPropSet->getPropertyValue(u"ParaAdjust"_ustr).get<sal_Int16>());
-        CPPUNIT_ASSERT_EQUAL(u"Marianne"_ustr,
-                             xPropSet->getPropertyValue(u"CharFontName"_ustr).get<OUString>());
-    }
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTextStylesXML)
-{
-    createSdImpressDoc("pptx/tdf163239_v2.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDocRels = parseExport(u"ppt/slideLayouts/slideLayout1.xml"_ustr);
-
-    assertXPath(pXmlDocRels, "/p:sldLayout/p:cSld/p:spTree/p:sp[1]/p:txBody/a:lstStyle/a:lvl1pPr",
-                "algn", u"ctr");
-    assertXPath(pXmlDocRels,
-                "/p:sldLayout/p:cSld/p:spTree/p:sp[1]/p:txBody/a:lstStyle/a:lvl1pPr/a:defRPr", "sz",
-                u"6000");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTextAlignLeft)
-{
-    createSdImpressDoc("pptx/presLeftAlign.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDocRels = parseExport(u"ppt/slides/slide1.xml"_ustr);
-
-    assertXPath(pXmlDocRels, "/p:sld/p:cSld/p:spTree/p:sp[2]/p:txBody/a:p/a:pPr", "algn", u"l");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testSubtitleNoBullets)
-{
-    createSdImpressDoc("odp/tdf170166.odp");
-    saveAndReload(TestFilter::PPTX);
-
-    const SdrPage* pPage1 = GetPage(1);
-    {
-        // subtitle placeholder object
-        SdrTextObj* pTxtObj = DynCastSdrTextObj(pPage1->GetObj(0));
-        CPPUNIT_ASSERT_MESSAGE("no text object", pTxtObj != nullptr);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong object type!", SdrObjKind::Text,
-                                     pTxtObj->GetObjIdentifier());
-        const EditTextObject& aEdit = pTxtObj->GetOutlinerParaObject()->GetTextObject();
-        const SvxNumBulletItem* pNumFmt = aEdit.GetParaAttribs(0).GetItem(EE_PARA_NUMBULLET);
-        // Without a fix, it will fail with numbering type: SVX_NUM_CHAR_SPECIAL
-        CPPUNIT_ASSERT(pNumFmt);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Bullet's numbering type is wrong!", SVX_NUM_NUMBER_NONE,
-                                     pNumFmt->GetNumRule().GetLevel(0).GetNumberingType());
-    }
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testOLEObjectAnimationTarget)
-{
-    createSdImpressDoc("pptx/tdf169088.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
-
-    const OUString sOleId = getXPath(
-        pXmlDoc, "/p:sld/p:cSld/p:spTree/p:graphicFrame/p:nvGraphicFramePr/p:cNvPr", "id");
-    const OUString sPicId = getXPath(pXmlDoc,
-                                     "/p:sld/p:cSld/p:spTree/p:graphicFrame/a:graphic/"
-                                     "a:graphicData/p:oleObj/p:pic/p:nvPicPr/p:cNvPr",
-                                     "id");
-
-    // Check OLE id is different from pic id
-    CPPUNIT_ASSERT_MESSAGE("OLE id is same as pic id", sOleId != sPicId);
-
-    // Check animation target spid matches OLE object id
-    assertXPath(pXmlDoc,
-                "/p:sld/p:timing/p:tnLst/p:par/p:cTn/p:childTnLst/p:seq/p:cTn/p:childTnLst/p:par/"
-                "p:cTn/p:childTnLst/p:par/p:cTn/p:childTnLst/p:par/p:cTn/p:childTnLst/p:set/"
-                "p:cBhvr/p:tgtEl/p:spTgt",
-                "spid", sOleId);
-
-    assertXPath(pXmlDoc,
-                "/p:sld/p:timing/p:tnLst/p:par/p:cTn/p:childTnLst/p:seq/p:cTn/p:childTnLst/p:par/"
-                "p:cTn/p:childTnLst/p:par/p:cTn/p:childTnLst/p:par/p:cTn/p:childTnLst/p:animEffect/"
-                "p:cBhvr/p:tgtEl/p:spTgt",
-                "spid", sOleId);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testtdf169496_hidden_graphic)
-{
-    createSdImpressDoc("pptx/tdf169496_hidden_graphic.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
-
-    // Graphic 5 is hidden and Graphic 4 is visible, but their order might change in the XML
-    // Without the fix the hidden attribute wasn't exported
-    OUString sName1
-        = getXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:pic[1]/p:nvPicPr/p:cNvPr", "name");
-    OUString sName2
-        = getXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:pic[2]/p:nvPicPr/p:cNvPr", "name");
-    if (sName1 == "Graphic 5" && sName2 == "Graphic 4")
-    {
-        OUString aHidden
-            = getXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:pic[1]/p:nvPicPr/p:cNvPr", "hidden");
-        bool bHidden = aHidden == u"true"_ustr || aHidden == u"1";
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Graphic 3 is supposed to be hidden", true, bHidden);
-
-        assertXPathNoAttribute(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:pic[2]/p:nvPicPr/p:cNvPr",
-                               "hidden");
-    }
-    else if (sName1 == "Graphic 4" && sName2 == "Graphic 5")
-    {
-        assertXPathNoAttribute(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:pic[1]/p:nvPicPr/p:cNvPr",
-                               "hidden");
-
-        OUString aHidden
-            = getXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:pic[2]/p:nvPicPr/p:cNvPr", "hidden");
-        bool bHidden = aHidden == u"true"_ustr || aHidden == u"1";
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Graphic 4 is supposed to be hidden", true, bHidden);
-    }
-    else
-        CPPUNIT_FAIL("Names of graphics is incorrect");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testHiddenGroupShape)
-{
-    createSdImpressDoc("pptx/hidden_group_shape.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
-    assertXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:grpSp/p:nvGrpSpPr/p:cNvPr", "hidden", u"1");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testtdf169825_vertical_layouts)
-{
-    createSdImpressDoc("pptx/tdf169825_vertical_layouts.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDocRels = parseExport(u"ppt/slides/_rels/slide1.xml.rels"_ustr);
-    CPPUNIT_ASSERT(pXmlDocRels);
-    // find layout XML for the slide from the relationship file
-    OUString sLayoutRelRelative
-        = getXPath(pXmlDocRels, "/rels:Relationships/rels:Relationship", "Target");
-    OUString sLayoutRelAbs = sLayoutRelRelative.replaceFirst("..", "ppt");
-    xmlDocUniquePtr pXmlDocLayout = parseExport(sLayoutRelAbs);
-    CPPUNIT_ASSERT(pXmlDocLayout);
-
-    // without the SlidePersist::getLayoutFromValueToken() part of the patch,
-    // this and the next layout types would both be exported as blank
-    assertXPath(pXmlDocLayout, "/p:sldLayout", "type", u"vertTitleAndTx");
-
-    pXmlDocRels = parseExport(u"ppt/slides/_rels/slide2.xml.rels"_ustr);
-    CPPUNIT_ASSERT(pXmlDocRels);
-    sLayoutRelRelative = getXPath(pXmlDocRels, "/rels:Relationships/rels:Relationship", "Target");
-    sLayoutRelAbs = sLayoutRelRelative.replaceFirst("..", "ppt");
-    pXmlDocLayout = parseExport(sLayoutRelAbs);
-    CPPUNIT_ASSERT(pXmlDocLayout);
-
-    assertXPath(pXmlDocLayout, "/p:sldLayout", "type", u"vertTx");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testtdf169825_vertical_layouts_from_scratch)
-{
-    createSdImpressDoc();
-
-    uno::Reference<drawing::XDrawPagesSupplier> xDoc(mxComponent, uno::UNO_QUERY_THROW);
-    uno::Reference<drawing::XDrawPages> xPages = xDoc->getDrawPages();
-    uno::Reference<drawing::XDrawPage> xPage(xPages->getByIndex(0), uno::UNO_QUERY);
-    uno::Reference<beans::XPropertySet> xPageSet(xPage, uno::UNO_QUERY_THROW);
-    xPageSet->setPropertyValue(
-        "Layout",
-        uno::Any(static_cast<sal_Int32>(AutoLayout::AUTOLAYOUT_VTITLE_VCONTENT_OVER_VCONTENT)));
-
-    uno::Reference<drawing::XDrawPage> xPage2(xPages->insertNewByIndex(1), uno::UNO_SET_THROW);
-    uno::Reference<beans::XPropertySet> xPageSet2(xPage2, uno::UNO_QUERY_THROW);
-    xPageSet2->setPropertyValue(
-        "Layout", uno::Any(static_cast<sal_Int32>(AutoLayout::AUTOLAYOUT_VTITLE_VCONTENT)));
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDocRels = parseExport(u"ppt/slides/_rels/slide1.xml.rels"_ustr);
-    CPPUNIT_ASSERT(pXmlDocRels);
-    // find layout XML for the slide from the relationship file
-    OUString sLayoutRelRelative
-        = getXPath(pXmlDocRels, "/rels:Relationships/rels:Relationship", "Target");
-    OUString sLayoutRelAbs = sLayoutRelRelative.replaceFirst("..", "ppt");
-    xmlDocUniquePtr pXmlDocLayout = parseExport(sLayoutRelAbs);
-    CPPUNIT_ASSERT(pXmlDocLayout);
-
-    // without the fix in place this would be exported as "objTx"
-    assertXPath(pXmlDocLayout, "/p:sldLayout", "type", u"vertTitleAndTxOverChart");
-
-    pXmlDocRels = parseExport(u"ppt/slides/_rels/slide2.xml.rels"_ustr);
-    CPPUNIT_ASSERT(pXmlDocRels);
-    sLayoutRelRelative = getXPath(pXmlDocRels, "/rels:Relationships/rels:Relationship", "Target");
-    sLayoutRelAbs = sLayoutRelRelative.replaceFirst("..", "ppt");
-    pXmlDocLayout = parseExport(sLayoutRelAbs);
-    CPPUNIT_ASSERT(pXmlDocLayout);
-
-    // without the fix in place this would be exported as "picTx"
-    assertXPath(pXmlDocLayout, "/p:sldLayout", "type", u"vertTitleAndTx");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testtdf169825_layout_type)
-{
-    createSdImpressDoc("odp/tdf169825_layout_type.odp");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDocRels = parseExport(u"ppt/slides/_rels/slide1.xml.rels"_ustr);
-    CPPUNIT_ASSERT(pXmlDocRels);
-    // find layout XML for the slide from the relationship file
-    OUString sLayoutRelRelative
-        = getXPath(pXmlDocRels, "/rels:Relationships/rels:Relationship", "Target");
-    OUString sLayoutRelAbs = sLayoutRelRelative.replaceFirst("..", "ppt");
-    xmlDocUniquePtr pXmlDocLayout = parseExport(sLayoutRelAbs);
-    CPPUNIT_ASSERT(pXmlDocLayout);
-
-    // without the fix in place this would be exported as "vertTitleAndTxOverChart"
-    // while in the original ODP this was - still possibly bogus - notes layout
-    assertXPath(pXmlDocLayout, "/p:sldLayout", "type", u"blank");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testtdf170102_layout_type)
-{
-    createSdImpressDoc("odp/tdf170102_layout_type.odp");
-    saveAndReload(TestFilter::PPTX);
-
-    uno::Reference<drawing::XMasterPagesSupplier> xDoc(mxComponent, uno::UNO_QUERY);
-    CPPUNIT_ASSERT(xDoc.is());
-    sal_Int32 nMPCount = xDoc->getMasterPages()->getCount();
-    // test roughly the same thing in document and in XML: no drawing object in master page/layout
-    for (sal_Int32 i = 0; i < nMPCount; i++)
-    {
-        uno::Reference<drawing::XDrawPage> xPage(xDoc->getMasterPages()->getByIndex(i),
-                                                 uno::UNO_QUERY_THROW);
-        sal_Int32 nObjCount = xPage->getCount();
-        for (sal_Int32 j = 0; j < nObjCount; j++)
-        {
-            uno::Reference<lang::XServiceInfo> xShapeInfo(xPage->getByIndex(j),
-                                                          uno::UNO_QUERY_THROW);
-            // without the fix in place there would be a graphic shape placeholder
-            CPPUNIT_ASSERT_MESSAGE(
-                "Unexpected graphic object shape in exported master page",
-                !xShapeInfo->supportsService(u"com.sun.star.drawing.GraphicObjectShape"_ustr));
-        }
-
-        xmlDocUniquePtr pXmlDocLayout = parseExport(u"ppt/slideLayouts/slideLayout"_ustr
-                                                    + OUString::number(i + 1) + u".xml"_ustr);
-        CPPUNIT_ASSERT(pXmlDocLayout);
-        // without the fix in place there would be a pic layout element for the placeholder
-        CPPUNIT_ASSERT_EQUAL_MESSAGE(
-            "Unexpected \"pic\" element in exported PPTX slide layout", 0,
-            countXPathNodes(pXmlDocLayout, "/p:sldLayout/p:cSld/p:spTree/p:pic"));
-    }
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testFooterIdxConsistency)
-{
-    createSdImpressDoc("pptx/multiplelayoutfooter.pptx");
-    save(TestFilter::PPTX);
-
-    // slide1 points to slideLayout2
-    xmlDocUniquePtr pRelsDoc = parseExport(u"ppt/slides/_rels/slide1.xml.rels"_ustr);
-    assertXPath(pRelsDoc,
-                "/rels:Relationships/rels:Relationship[@Type='http://"
-                "schemas.openxmlformats.org/officeDocument/2006/"
-                "relationships/slideLayout']",
-                "Target", u"../slideLayouts/slideLayout2.xml");
-
-    // And they agree on the idx of the footer:
-    xmlDocUniquePtr pSlide = parseExport(u"ppt/slides/slide1.xml"_ustr);
-    OUString aFtrIdx = getXPath(pSlide, "//p:sp/p:nvSpPr/p:nvPr/p:ph", "idx");
-    xmlDocUniquePtr pLayout = parseExport(u"ppt/slideLayouts/slideLayout2.xml"_ustr);
-    assertXPath(pLayout, "//p:sp/p:nvSpPr/p:nvPr/p:ph", "idx", aFtrIdx);
-    // Without the fix it fails with:
-    // - Expected: 1
-    // - Actual  : 2
-    // - In <>, attribute 'idx' of '//p:sp/p:nvSpPr/p:nvPr/p:ph' incorrect value.
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testOmitCanvasSlideExport)
-{
-    createSdImpressDoc("odp/canvas-slide.odp");
-
-    SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pXImpressDocument);
-    SdDrawDocument* pDoc = pXImpressDocument->GetDoc();
-    CPPUNIT_ASSERT_MESSAGE("no document", pDoc != nullptr);
-
-    // the document has 2 pages - one canvas page, and one normal page
-    CPPUNIT_ASSERT_EQUAL(sal_uInt16(2), pDoc->GetSdPageCount(PageKind::Standard));
-    CPPUNIT_ASSERT(pDoc->HasCanvasPage());
-
-    save(TestFilter::PPTX);
-
-    // Verify that the canvas slide was omitted from the export
-    // It should have one master slide, and one slide
-    xmlDocUniquePtr pXmlDocContent = parseExport(u"ppt/presentation.xml"_ustr);
-    assertXPath(pXmlDocContent, "/p:presentation/p:sldMasterIdLst/p:sldMasterId", 1);
-    assertXPath(pXmlDocContent, "/p:presentation/p:sldIdLst/p:sldId", 1);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testParaAlignStartEnd)
-{
-    createSdImpressDoc("odp/para-align-start-end.fodp");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
-
-    // PresentationML doesn't support start and end paragraph alignment.
-    // Paragraphs should be exported as left/right alignment, depending on para direction.
-    assertXPath(pDoc, "/p:sld/p:cSld/p:spTree/p:sp[2]/p:txBody/a:p[1]/a:pPr[@algn='l']", 1);
-    assertXPath(pDoc, "/p:sld/p:cSld/p:spTree/p:sp[2]/p:txBody/a:p[2]/a:pPr[@algn='r']", 1);
-    assertXPath(pDoc, "/p:sld/p:cSld/p:spTree/p:sp[2]/p:txBody/a:p[3]/a:pPr[@algn='r']", 1);
-    assertXPath(pDoc, "/p:sld/p:cSld/p:spTree/p:sp[2]/p:txBody/a:p[4]/a:pPr[@algn='l']", 1);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf169559)
-{
-    createSdImpressDoc("pptx/tdf169524.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slideMasters/slideMaster1.xml"_ustr);
-    assertXPath(
-        pXmlDoc,
-        "/p:sldMaster/p:cSld/p:spTree/p:sp[2]/p:txBody/a:lstStyle/a:lvl1pPr/a:spcAft/a:spcPts",
-        "val", u"1701");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf114443_PPSX)
-{
-    createSdImpressDoc("ppsx/tdf114443-6.ppsx");
-    save(TestFilter::PPSX);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"[Content_Types].xml"_ustr);
-
-    // Without the fix, this would have been:
-    //   application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml
-    // which means the file loses its slideshow/autoplay nature and PowerPoint rejects it.
-    assertXPath(pXmlDoc,
-                "/ContentType:Types/ContentType:Override[@PartName='/ppt/presentation.xml']",
-                "ContentType",
-                u"application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml");
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testConnectorShapeAnimationTarget)
-{
-    createSdImpressDoc("pptx/connector-shape-animations.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
-
-    const OUString sConnectorId = getXPath(
-        pXmlDoc, "/p:sld/p:cSld/p:spTree/p:cxnSp/p:nvCxnSpPr/p:cNvCxnSpPr/a:stCxn", "id");
-
-    const OUString sShapeId = getXPath(
-        pXmlDoc, "/p:sld/p:cSld/p:spTree/p:graphicFrame/p:nvGraphicFramePr/p:cNvPr", "id");
-
-    // Check connector and shape both have the same ID
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Connector and the shape doesn't have the same ID", sConnectorId,
-                                 sShapeId);
-
-    // Check animation spid matches ShapeId
-    assertXPath(pXmlDoc,
-                "/p:sld/p:timing/p:tnLst/p:par/p:cTn/p:childTnLst/p:seq/p:cTn/p:childTnLst/p:par/"
-                "p:cTn/p:childTnLst/p:par/p:cTn/p:childTnLst/p:par[2]/p:cTn/p:childTnLst/p:set/"
-                "p:cBhvr/p:tgtEl/p:spTgt",
-                "spid", sShapeId);
-}
-
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testChartExExport)
-{
-    createSdImpressDoc("pptx/forum-mso-de-138303.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
-    CPPUNIT_ASSERT(pDoc);
-
-    const OString sPath1 = "/p:sld/p:cSld/p:spTree/mc:AlternateContent/mc:Fallback"_ostr;
-    assertXPath(pDoc, sPath1 + "/xdr:sp"_ostr, 0);
-    assertXPath(pDoc, sPath1 + "/p:sp"_ostr, 1);
-    assertXPath(pDoc, sPath1 + "/p:sp/p:nvSpPr/p:nvPr"_ostr, 1);
-
-    pDoc = parseExport(u"ppt/charts/chartEx1.xml"_ustr);
-    CPPUNIT_ASSERT(pDoc);
-
-    assertXPath(pDoc, "/cx:chartSpace/c:date1904", 0);
-}
-
-// 1. Open PPTX with sections, re-export to PPTX, verify sections preserved
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testSlideSectionsPPTXImport)
-{
-    createSdImpressDoc("pptx/slide-section-test.pptx");
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/presentation.xml"_ustr);
-
-    static constexpr OString sPath = "/p:presentation/p:extLst/p:ext/p14:sectionLst"_ostr;
-    assertXPath(pXmlDoc, sPath + "/p14:section", 3);
-    assertXPath(pXmlDoc, sPath + "/p14:section[1]", "name", u"Section-1");
-    assertXPath(pXmlDoc, sPath + "/p14:section[2]", "name", u"Section-2");
-    assertXPath(pXmlDoc, sPath + "/p14:section[3]", "name", u"Section-3");
-    assertXPath(pXmlDoc, sPath + "/p14:section[1]/p14:sldIdLst/p14:sldId", 4);
-    assertXPath(pXmlDoc, sPath + "/p14:section[2]/p14:sldIdLst/p14:sldId", 7);
-    assertXPath(pXmlDoc, sPath + "/p14:section[3]/p14:sldIdLst/p14:sldId", 2);
-
-    // GUIDs preserved
-    for (sal_Int32 i = 1; i <= 3; ++i)
-    {
-        OUString sId = getXPath(pXmlDoc, sPath + "/p14:section[" + OString::number(i) + "]", "id");
-        CPPUNIT_ASSERT(!sId.isEmpty());
-        CPPUNIT_ASSERT(sId.startsWith("{"));
-    }
-
-    // Slide IDs non-zero
-    OUString sSldId = getXPath(pXmlDoc, sPath + "/p14:section[1]/p14:sldIdLst/p14:sldId[1]", "id");
-    CPPUNIT_ASSERT(sSldId.toInt32() > 0);
-}
-
-// 2. Export PPTX with sections to ODP
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testSlideSectionsPPTXToODP)
-{
-    createSdImpressDoc("pptx/slide-section-test.pptx");
-    skipValidation();
-    save(TestFilter::ODP);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"content.xml"_ustr);
-
-    static constexpr OString sPath
-        = "/office:document-content/office:body/office:presentation/loext:section-list"_ostr;
-    assertXPath(pXmlDoc, sPath + "/loext:section", 3);
-    assertXPath(pXmlDoc, sPath + "/loext:section[1]", "name", u"Section-1");
-    assertXPath(pXmlDoc, sPath + "/loext:section[2]", "name", u"Section-2");
-    assertXPath(pXmlDoc, sPath + "/loext:section[3]", "name", u"Section-3");
-    assertXPath(pXmlDoc, sPath + "/loext:section[1]/loext:section-slide", 4);
-    assertXPath(pXmlDoc, sPath + "/loext:section[2]/loext:section-slide", 7);
-    assertXPath(pXmlDoc, sPath + "/loext:section[3]/loext:section-slide", 2);
-}
-
-// 3. Open ODP with sections (PPTX -> ODP -> reload ODP)
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testSlideSectionsODPImport)
-{
-    createSdImpressDoc("pptx/slide-section-test.pptx");
-    skipValidation();
-    saveAndReload(TestFilter::ODP);
-
-    // Verify the in-memory model loaded from ODP
-    auto* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pXImpressDocument);
-    SdDrawDocument* pDoc = pXImpressDocument->GetDoc();
-    CPPUNIT_ASSERT(pDoc);
-
-    sd::SlideSectionManager& rMgr = pDoc->GetSectionManager();
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(3), rMgr.GetSectionCount());
-    CPPUNIT_ASSERT_EQUAL(u"Section-1"_ustr, rMgr.GetSection(0).maName);
-    CPPUNIT_ASSERT_EQUAL(u"Section-2"_ustr, rMgr.GetSection(1).maName);
-    CPPUNIT_ASSERT_EQUAL(u"Section-3"_ustr, rMgr.GetSection(2).maName);
-}
-
-// 4. Export ODP with sections to PPTX
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testSlideSectionsODPToPPTX)
-{
-    createSdImpressDoc("pptx/slide-section-test.pptx");
-    skipValidation();
-    saveAndReload(TestFilter::ODP);
-    save(TestFilter::PPTX);
-
-    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/presentation.xml"_ustr);
-
-    static constexpr OString sPath = "/p:presentation/p:extLst/p:ext/p14:sectionLst"_ostr;
-    assertXPath(pXmlDoc, sPath + "/p14:section", 3);
-    assertXPath(pXmlDoc, sPath + "/p14:section[1]", "name", u"Section-1");
-    assertXPath(pXmlDoc, sPath + "/p14:section[2]", "name", u"Section-2");
-    assertXPath(pXmlDoc, sPath + "/p14:section[3]", "name", u"Section-3");
-    assertXPath(pXmlDoc, sPath + "/p14:section[1]/p14:sldIdLst/p14:sldId", 4);
-    assertXPath(pXmlDoc, sPath + "/p14:section[2]/p14:sldIdLst/p14:sldId", 7);
-    assertXPath(pXmlDoc, sPath + "/p14:section[3]/p14:sldIdLst/p14:sldId", 2);
-
-    // Slide IDs non-zero after ODP round-trip
-    OUString sSldId = getXPath(pXmlDoc, sPath + "/p14:section[1]/p14:sldIdLst/p14:sldId[1]", "id");
-    CPPUNIT_ASSERT(sSldId.toInt32() > 0);
-
-    // GUIDs survive ODP round-trip (generated if missing)
-    for (sal_Int32 i = 1; i <= 3; ++i)
-    {
-        OUString sId = getXPath(pXmlDoc, sPath + "/p14:section[" + OString::number(i) + "]", "id");
-        CPPUNIT_ASSERT(!sId.isEmpty());
-    }
+    pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
+
+    assertXPath(pXmlDoc, sTight, 0);
+
+    // The changed value is written, and the stored scale stays.
+    static constexpr OString sHalf
+        = "/p:sld/p:cSld/p:spTree/p:sp[2]/p:spPr/a:effectLst/a:reflection"_ostr;
+    assertXPath(pXmlDoc, sHalf, "endPos", u"70000");
+    assertXPath(pXmlDoc, sHalf, "sy", u"-100000");
+
+    // A new reflection is mirrored straight down, and values that equal the schema defaults are
+    // left out.
+    static constexpr OString sNew
+        = "/p:sld/p:cSld/p:spTree/p:sp[4]/p:spPr/a:effectLst/a:reflection"_ostr;
+    assertXPath(pXmlDoc, sNew, "dist", u"180000");
+    assertXPath(pXmlDoc, sNew, "stA", u"60000");
+    assertXPath(pXmlDoc, sNew, "dir", u"5400000");
+    assertXPath(pXmlDoc, sNew, "sy", u"-100000");
+    assertXPath(pXmlDoc, sNew, "algn", u"bl");
+    assertXPath(pXmlDoc, sNew, "rotWithShape", u"0");
+    assertXPathNoAttribute(pXmlDoc, sNew, "endA");
+    assertXPathNoAttribute(pXmlDoc, sNew, "endPos");
+    assertXPathNoAttribute(pXmlDoc, sNew, "blurRad");
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

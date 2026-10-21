@@ -51,6 +51,7 @@
 #include "GraphicImport.hxx"
 #include "OLEHandler.hxx"
 #include "FFDataHandler.hxx"
+#include "SdtHelper.hxx"
 #include "SmartTagHandler.hxx"
 #include "FormControlHelper.hxx"
 #include <unoidx.hxx>
@@ -245,6 +246,13 @@ struct SubstreamContext
     bool bIsPreviousParagraphFramed = false;
     /// Current paragraph had at least one inline object in it.
     bool bParaWithInlineObject = false;
+    /// Formulas appended to the current paragraph. Their text mode (inline, i.e.
+    /// reduced fractions/limits, vs display, i.e. full size) is decided from the
+    /// paragraph's content once it is finished: a formula that is the paragraph's
+    /// only content is a display equation, otherwise it is inline.
+    std::vector<std::pair<rtl::Reference<SwXTextEmbeddedObject>,
+                          css::uno::Reference<css::uno::XInterface>>>
+        aParagraphFormulas;
     /// This is a continuation of already finished paragraph - e.g., first in an index section
     bool bRemoveThisParagraph = false;
     bool bIsFirstParaInShape = false;
@@ -265,12 +273,14 @@ struct SubstreamContext
     /// If the current paragraph is inside a structured document element.
     bool bSdt = false;
     css::uno::Reference<css::text::XTextRange> xSdtEntryStart;
+    SdtHelper m_aSdtHelper;
     OUString sCurrentParaStyleName; ///< highly inaccurate. Overwritten by "overlapping" paragraphs like flys.
     bool bHasFootnoteStyle = false;
     bool bCheckFootnoteStyle = false;
     bool bIsInFootnoteProperties = false;
     RubyInfo aRubyInfo;
     bool bTextFrameInserted = false;
+    // IsFirstRun: probably better termed as 'IsBeforeContent'. Becomes false before first </w:r>
     bool bIsFirstRun = false;
     bool bIsOutsideAParagraph = true;
     bool bDummyParaAddedForTableInSection = false; // tdf#161631
@@ -281,6 +291,12 @@ struct SubstreamContext
 
     css::uno::Reference< css::text::XTextCursor > xTOCMarkerCursor;
     std::deque<FieldContextPtr> m_aFieldStack;
+
+    explicit SubstreamContext(DomainMapper_Impl& rDM_Impl,
+                              css::uno::Reference<css::uno::XComponentContext> xContext)
+        : m_aSdtHelper(rDM_Impl, std::move(xContext))
+    {
+    }
 };
 
 /// Information about a paragraph to be finished after a field end.
@@ -337,8 +353,12 @@ private:
 
     FFDataHandler::Pointer_t m_pFFDataHandler;
     FormControlHelper::Pointer_t m_pFormControlHelper;
-    /// (Character) properties of the field itself.
-    PropertyMapPtr m_pProperties;
+    /// Field metadata which is independent of command and result run formatting.
+    PropertyMapPtr m_pFieldProperties;
+    /// Character properties copied from the first command w:r (run).
+    PropertyMapPtr m_pCommandFirstRunProperties;
+    /// Character properties copied from the first non-empty result w:r (run).
+    PropertyMapPtr m_pResultFirstRunProperties;
 
     std::vector<FieldParagraph> m_aParagraphsToFinish;
 
@@ -395,7 +415,19 @@ public:
 
     void setFormControlHelper(const FormControlHelper::Pointer_t& pFormControlHelper) { m_pFormControlHelper = pFormControlHelper; }
     const FormControlHelper::Pointer_t& getFormControlHelper() const { return m_pFormControlHelper; }
-    const PropertyMapPtr& getProperties() const { return m_pProperties; }
+    const PropertyMapPtr& getFieldProperties() const { return m_pFieldProperties; }
+    const PropertyMapPtr& getCommandFirstRunProperties() const
+    {
+        return m_pCommandFirstRunProperties;
+    }
+    /// Select run formatting, not field metadata; result formatting is known at PopFieldContext().
+    const PropertyMapPtr& getRunProperties() const
+    {
+        if (m_pResultFirstRunProperties)
+            return m_pResultFirstRunProperties;
+        return m_pCommandFirstRunProperties;
+    }
+    void captureResultFirstRunProperties(const PropertyMapPtr& pProperties);
 
     ::std::vector<OUString> GetCommandParts() const;
 
@@ -811,6 +843,7 @@ public:
     void SetSymbolFont( OUString const &rName ) { m_aSymbolData.sFont = rName; }
     const SymbolData & GetSymbolData() const { return m_aSymbolData;}
 
+    SdtHelper& GetSdtHelper();
     void SetSdt(bool bSdt);
 
     void PushSdt();
@@ -840,6 +873,9 @@ public:
     void appendTextContent(const css::uno::Reference<css::text::XTextContent>&, const css::uno::Sequence<css::beans::PropertyValue>&);
     void appendOLE( const OUString& rStreamName, const std::shared_ptr<OLEHandler>& pOleHandler );
     void appendStarMath( const Value& v);
+    /// Decides the text mode of the formulas collected for the paragraph being
+    /// finished (see SubstreamContext::aParagraphFormulas).
+    void finalizeParagraphFormulas();
     void adjustLastPara(sal_Int8 nAlign);
     rtl::Reference<SwXTextSection> appendTextSectionAfter(css::uno::Reference<css::text::XTextRange> const & xBefore);
 
@@ -1181,8 +1217,6 @@ public:
 
     /// If we're importing autotext.
     bool IsReadGlossaries() const { return m_bIsReadGlossaries;}
-
-    tools::SvRef<SdtHelper> m_pSdtHelper;
 
     /// Document background color, applied to every page style.
     std::optional<sal_Int32> m_oBackgroundColor;

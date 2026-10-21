@@ -214,10 +214,10 @@ void ScNameDlg::SetActive()
 void ScNameDlg::UpdateChecks(const ScRangeData* pData)
 {
     // remove handlers, we only want the handlers to process
-    // user input and not when we are syncing the controls  with our internal
-    // model ( also UpdateChecks is called already from some other event
+    // user input and not when we are syncing the controls with our internal
+    // model (also UpdateChecks is called already from some other event
     // handlers, triggering handlers while already processing a handler can
-    // ( and does in this case ) corrupt the internal data
+    // (and does in this case) corrupt the internal data)
 
     m_xBtnCriteria->connect_toggled( Link<weld::Toggleable&,void>() );
     m_xBtnPrintArea->connect_toggled( Link<weld::Toggleable&,void>() );
@@ -419,10 +419,10 @@ void ScNameDlg::NameModified()
     if ( m_xBtnPrintArea->get_active() ) nType |= ScRangeData::Type::PrintArea;
     if ( m_xBtnCriteria->get_active()  ) nType |= ScRangeData::Type::Criteria;
 
-    ScRangeData* pNewEntry = new ScRangeData( mrDoc, aNewName, aExpr,
-            maCursorPos, nType);
+    std::unique_ptr<ScRangeData> pNewEntry(new ScRangeData( mrDoc, aNewName, aExpr,
+            maCursorPos, nType));
     pNewEntry->SetIndex( nIndex);
-    pNewRangeName->insert(pNewEntry, false /*bReuseFreeIndex*/);
+    pNewRangeName->insert(std::move(pNewEntry), false /*bReuseFreeIndex*/);
     aLine.aName = aNewName;
     aLine.aExpression = aExpr;
     aLine.aScope = aNewScope;
@@ -511,10 +511,7 @@ IMPL_LINK_NOARG(ScNameDlg, EdModifyCheckBoxHdl, weld::Toggleable&, void)
     NameModified();
 }
 
-IMPL_LINK_NOARG(ScNameDlg, EdModifyHdl, weld::Entry&, void)
-{
-    NameModified();
-}
+IMPL_LINK_NOARG(ScNameDlg, EdModifyHdl, weld::TextWidget&, void) { NameModified(); }
 
 IMPL_LINK_NOARG(ScNameDlg, RefEdModifyHdl, formula::RefEdit&, void)
 {

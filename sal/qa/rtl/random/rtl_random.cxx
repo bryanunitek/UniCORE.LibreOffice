@@ -43,7 +43,7 @@ public:
 
         rtlRandomPool aPool = rtl_random_createPool();
 
-        // LLA: seems to be that another test is not possible for createPool()
+        // LLA: it seems that no other test is possible for createPool()
         CPPUNIT_ASSERT_MESSAGE("create failed", aPool != nullptr);
 
         rtl_random_destroyPool(aPool);
@@ -51,7 +51,7 @@ public:
 
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(createPool);
     CPPUNIT_TEST(createPool_001);
@@ -72,14 +72,14 @@ public:
     {
         rtlRandomPool aPool = rtl_random_createPool();
 
-        // LLA: seems to be that another test is not possible for createPool()
+        // LLA: it seems that no other test is possible for createPool()
         CPPUNIT_ASSERT_MESSAGE("create failed", aPool != nullptr);
 
         rtl_random_destroyPool(aPool);
     }
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(destroyPool);
     CPPUNIT_TEST(destroyPool_000);
@@ -130,7 +130,7 @@ public:
 
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(addBytes);
     CPPUNIT_TEST(addBytes_000);
@@ -303,7 +303,7 @@ public:
         aStat.build(nCountMax);
         aStat.print();
 
-        CPPUNIT_ASSERT_MESSAGE("deviation should be less average", aStat.getMaxDeviation() < aStat.getAverage());
+        CPPUNIT_ASSERT_MESSAGE("deviation should be less than average", aStat.getMaxDeviation() < aStat.getAverage());
 
         rtl_random_destroyPool(aPool);
     }
@@ -335,14 +335,14 @@ public:
         aStat.build(nCountMax * nBufLen);
         aStat.print();
 
-        CPPUNIT_ASSERT_MESSAGE("deviation should be less average", aStat.getMaxDeviation() < aStat.getAverage());
+        CPPUNIT_ASSERT_MESSAGE("deviation should be less than average", aStat.getMaxDeviation() < aStat.getAverage());
 
         rtl_random_destroyPool(aPool);
     }
 
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(getBytes);
     CPPUNIT_TEST(getBytes_000);

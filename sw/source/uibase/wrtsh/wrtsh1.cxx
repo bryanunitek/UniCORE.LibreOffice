@@ -155,6 +155,38 @@ void collectUIInformation(const OUString& rAction, const OUString& aParameters)
 
 sal_uInt32 MakeAllOutlineContentTemporarilyVisible::nLock = 0;
 
+MakeAllOutlineContentTemporarilyVisible::MakeAllOutlineContentTemporarilyVisible(SwDoc* pDoc, bool bScrollToCursor)
+{
+    ++nLock;
+    if (nLock > 1)
+        return;
+    if (SwDocShell* pDocSh = pDoc->GetDocShell())
+        if ((m_pWrtSh = pDocSh->GetWrtShell()) && m_pWrtSh->GetViewOptions() &&
+                m_pWrtSh->GetViewOptions()->IsShowOutlineContentVisibilityButton())
+        {
+            m_pWrtSh->LockView(true);
+            m_pWrtSh->LockPaint(LockPaintReason::OutlineFolding);
+            m_pWrtSh->MakeAllFoldedOutlineContentVisible();
+            m_bScrollToCursor = bScrollToCursor;
+            m_bDone = true;
+        }
+}
+
+MakeAllOutlineContentTemporarilyVisible::~MakeAllOutlineContentTemporarilyVisible() COVERITY_NOEXCEPT_FALSE
+{
+    --nLock;
+    if (nLock > 0)
+        return;
+    if (m_bDone && m_pWrtSh)
+    {
+        m_pWrtSh->MakeAllFoldedOutlineContentVisible(false);
+        m_pWrtSh->UnlockPaint();
+        m_pWrtSh->LockView(false);
+        if (m_bScrollToCursor)
+            m_pWrtSh->UpdateCursor(SwCursorShell::SCROLLWIN);
+    }
+}
+
 static bool lcl_IsAllowed(const SwWrtShell* rSh)
 {
     if (rSh->GetViewOptions()->IsShowOutlineContentVisibilityButton() && rSh->IsEndPara())
@@ -248,6 +280,14 @@ void SwWrtShell::Insert( const OUString &rStr )
     bool bHasSel = HasSelection(),
          bCallIns = m_bIns /*|| bHasSel*/;
     bool bDeleted = false;
+
+    // tdf#169913 - insert at cursor position without overwriting the selection
+    if (bHasSel && !SwViewOption::IsTypingReplacesSelection())
+    {
+        NormalizePam(false);
+        ClearMark();
+        bHasSel = false;
+    }
 
     if( bHasSel || ( !m_bIns && IsInHiddenRange(/*bSelect=*/true) ) )
     {
@@ -1700,7 +1740,7 @@ void SwWrtShell::NumOrBulletOn(bool bNum)
         const SwTextNode *const pTextNode = sw::GetParaPropsNode(*GetLayout(),
                 GetCursor()->GetPoint()->GetNode());
         const SwTwips nWidthOfTabs = pTextNode
-                                     ? pTextNode->GetWidthOfLeadingTabs()
+                                     ? pTextNode->GetWidthOfLeadingTabs().as_twip<SwTwips>()
                                      : 0;
         GetDoc()->getIDocumentContentOperations().RemoveLeadingWhiteSpace(*GetCursor());
 
@@ -1769,7 +1809,7 @@ void SwWrtShell::NumOrBulletOn(bool bNum)
              ePosAndSpaceMode == SvxNumberFormat::LABEL_ALIGNMENT )
         {
 
-            const SwTwips nTextNodeIndent = pTextNode->GetAdditionalIndentForStartingNewList();
+            const SwTwips nTextNodeIndent = pTextNode->GetAdditionalIndentForStartingNewList().as_twip<SwTwips>();
             if ( ( nTextNodeIndent + nWidthOfTabs ) != 0 )
             {
                 // #i111172#/fdo#85666
@@ -2277,6 +2317,10 @@ void SwWrtShell::ChangeHeaderOrFooter(
         pSdrView->SdrEndTextEdit(true);
     }
     addCurrentPosition();
+    // tdf#137107 - prevent scrolling to cursor when deleting header/footer
+    const bool bLockedView = IsViewLocked();
+    if (!bOn)
+        LockView(true);
     StartAllAction();
     StartUndo( SwUndoId::HEADER_FOOTER ); // #i7983#
     bool bExecute = true;
@@ -2315,10 +2359,24 @@ void SwWrtShell::ChangeHeaderOrFooter(
             {
                 bChgd = true;
                 SwFrameFormat &rMaster = aDesc.GetMaster();
-                if(bHeader)
-                    rMaster.SetFormatAttr( SwFormatHeader( bOn ));
+                if (bOn && (bHeader ? aDesc.IsWithoutFirstHeader() : aDesc.IsWithoutFirstFooter()))
+                {
+                    if (bHeader)
+                    {
+                        aDesc.ChgWithoutFirstHeader(false);
+                    }
+                    else
+                    {
+                        aDesc.ChgWithoutFirstFooter(false);
+                    }
+                }
                 else
-                    rMaster.SetFormatAttr( SwFormatFooter( bOn ));
+                {
+                    if (bHeader)
+                        rMaster.SetFormatAttr( SwFormatHeader( bOn ));
+                    else
+                        rMaster.SetFormatAttr( SwFormatFooter( bOn ));
+                }
                 if( bOn )
                 {
                     // keep in sync with FN_PGNUMBER_WIZARD
@@ -2349,6 +2407,9 @@ void SwWrtShell::ChangeHeaderOrFooter(
     }
     EndUndo( SwUndoId::HEADER_FOOTER ); // #i7983#
     EndAllAction();
+    // tdf#137107 - prevent scrolling to cursor when deleting header/footer
+    if (!bOn)
+        LockView(bLockedView);
 }
 
 void SwWrtShell::SetShowHeaderFooterSeparator( FrameControlType eControl, bool bShow )

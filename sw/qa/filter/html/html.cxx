@@ -13,12 +13,19 @@
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/text/XDependentTextField.hpp>
 
+#include <editeng/brushitem.hxx>
+#include <editeng/charhiddenitem.hxx>
+#include <fmtautofmt.hxx>
+#include <ndhints.hxx>
+#include <txatbase.hxx>
 #include <vcl/gdimtf.hxx>
 
 #include <comphelper/propertyvalue.hxx>
 #include <docsh.hxx>
 #include <fmtfsize.hxx>
 #include <frameformats.hxx>
+#include <hintids.hxx>
+#include <ndtxt.hxx>
 #include <unotxdoc.hxx>
 #include <itabenum.hxx>
 #include <wrtsh.hxx>
@@ -258,6 +265,31 @@ CPPUNIT_TEST_FIXTURE(Test, testCenteredTableCSSImport)
     CPPUNIT_ASSERT_EQUAL(text::HoriOrientation::CENTER, eHoriOrient);
 }
 
+CPPUNIT_TEST_FIXTURE(Test, testSpanVendorBackground)
+{
+    // Given an HTML doc whose <span> style has color, an unknown vendor-prefixed property
+    // and background-color, in this order:
+    setImportFilterName(TestFilter::HTML_WRITER);
+    // When importing that document:
+    createSwDoc("span-vendor-background.html");
+
+    // Then make sure the background-color survives the unknown property and ends up
+    // as a SvxBrushItem in the last paragraph's direct format item set:
+    SwDoc* pDoc = getSwDoc();
+    SwNodeIndex aIdx(pDoc->GetNodes().GetEndOfContent(), -1);
+    SwTextNode* pTextNode = aIdx.GetNode().GetTextNode();
+    CPPUNIT_ASSERT(pTextNode);
+    const SfxItemSet* pAttrSet = pTextNode->GetpSwAttrSet();
+    CPPUNIT_ASSERT(pAttrSet);
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 64 (SfxItemState::SET)
+    // - Actual  : 32 (SfxItemState::DEFAULT)
+    // i.e. the background color was lost.
+    CPPUNIT_ASSERT_EQUAL(SfxItemState::SET, pAttrSet->GetItemState(RES_CHRATR_BACKGROUND, false));
+    const SvxBrushItem& rBrush = pAttrSet->Get(RES_CHRATR_BACKGROUND);
+    CPPUNIT_ASSERT_EQUAL(Color(41, 41, 41), rBrush.GetColor());
+}
+
 CPPUNIT_TEST_FIXTURE(Test, testMailmergeCopy)
 {
     // Given a document with a mail merge field:
@@ -298,6 +330,52 @@ CPPUNIT_TEST_FIXTURE(Test, testMailmergeCopy)
     OUString aContent = getXPathContent(pHtmlDoc, "/html/body/p/text()");
     CPPUNIT_ASSERT_EQUAL(u"content"_ustr, aContent.trim());
 }
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf167445EmptyParagraph)
+{
+    createSwDoc();
+    save(TestFilter::HTML_WRITER);
+    xmlDocUniquePtr pXmlDoc = parseXml(maTempFile);
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 0
+    // - Actual  : 1
+    // as the empty paragraph would have had a <br> element inside.
+    assertXPathChildren(pXmlDoc, "/html/body/p", 0);
+}
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testDisplayNoneImport)
+{
+    // Given an HTML document with a "display: none" span:
+    setImportFilterName(TestFilter::HTML_WRITER);
+    // When importing that document:
+    createSwDoc("hidden-text.html");
+
+    // Then make sure the pasted run is imported as hidden text
+    // (SvxCharHiddenItem, i.e. RES_CHRATR_HIDDEN):
+    SwDoc* pDoc = getSwDocShell()->GetDoc();
+    SwNodeIndex aIdx(pDoc->GetNodes().GetEndOfContent(), -1);
+    SwTextNode* pTextNode = aIdx.GetNode().GetTextNode();
+    CPPUNIT_ASSERT(pTextNode);
+    // Without the accompanying fix in place, this test would have failed, the paragraph had no
+    // spans with direct char formats.
+    CPPUNIT_ASSERT(pTextNode->HasHints());
+    const SwpHints& rHints = pTextNode->GetSwpHints();
+    const SwFormatAutoFormat* pAutoFmt = nullptr;
+    for (size_t i = 0; i < rHints.Count(); ++i)
+    {
+        const SwTextAttr* pHint = rHints.Get(i);
+        if (pHint->Which() == RES_TXTATR_AUTOFMT)
+        {
+            pAutoFmt = &pHint->GetAutoFormat();
+            break;
+        }
+    }
+    CPPUNIT_ASSERT(pAutoFmt);
+    const SfxItemSet& rSet = *pAutoFmt->GetStyleHandle();
+    const SvxCharHiddenItem* pHidden = rSet.GetItemIfSet(RES_CHRATR_HIDDEN);
+    CPPUNIT_ASSERT(pHidden);
+    CPPUNIT_ASSERT(pHidden->GetValue());
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

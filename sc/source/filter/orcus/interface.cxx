@@ -201,15 +201,15 @@ void ScOrcusNamedExpression::set_named_range(std::string_view /*name*/, std::str
 void ScOrcusNamedExpression::commit()
 {
     ScRangeName* pNames
-        = mnTab >= 0 ? mrDoc.getDoc().GetRangeName(mnTab) : mrDoc.getDoc().GetRangeName();
+        = mnTab >= 0 ? mrDoc.getDoc().GetRangeName(mnTab) : &mrDoc.getDoc().GetRangeName();
     if (!pNames)
         return;
 
-    ScRangeData* pRange
-        = new ScRangeData(mrDoc.getDoc(), maName, maExpr, maBasePos, ScRangeData::Type::Name,
-                          mrGlobalSettings.getCalcGrammar());
+    std::unique_ptr<ScRangeData> pRange(new ScRangeData(mrDoc.getDoc(), maName, maExpr, maBasePos,
+                                                        ScRangeData::Type::Name,
+                                                        mrGlobalSettings.getCalcGrammar()));
 
-    pNames->insert(pRange, false);
+    pNames->insert(std::move(pRange), false);
 
     reset(); // make sure to reset the state for the next run.
 }
@@ -415,7 +415,8 @@ void ScOrcusFactory::finalize()
                         maDoc.setStringCell(rToken.maPos, std::get<0>(s));
                         break;
                     case 1: // std::unique_ptr<EditTextObject>
-                        maDoc.setEditCell(rToken.maPos, std::get<1>(s)->Clone());
+                        maDoc.setEditCell(rToken.maPos,
+                                          std::make_unique<EditTextObject>(*std::get<1>(s)));
                         break;
                 }
                 ++nCellCount;
@@ -604,7 +605,7 @@ void ScOrcusFactory::pushMatrixFormulaToken(const ScAddress& rPos, const OUStrin
 void ScOrcusFactory::pushFormulaResult(const ScAddress& rPos, double fValue)
 {
     // Formula result is expected to be pushed immediately following the
-    // formula token it belongs.
+    // formula token it belongs to.
     if (maCellStoreTokens.empty())
         return;
 
@@ -630,7 +631,7 @@ void ScOrcusFactory::pushFormulaResult(const ScAddress& rPos, double fValue)
 void ScOrcusFactory::pushFormulaResult(const ScAddress& rPos, const OUString& rValue)
 {
     // Formula result is expected to be pushed immediately following the
-    // formula token it belongs.
+    // formula token it belongs to.
     if (maCellStoreTokens.empty())
         return;
 
@@ -1599,7 +1600,8 @@ size_t ScOrcusSharedStrings::commit_segments()
     for (const auto & [ rSel, rFormat ] : maFormatSegments)
         mrEditEngine.QuickSetAttribs(rFormat, rSel);
 
-    auto nPos = mrFactory.appendFormattedString(mrEditEngine.CreateTextObject());
+    auto nPos = mrFactory.appendFormattedString(
+        std::make_unique<EditTextObject>(mrEditEngine.CreateTextObject()));
     mrEditEngine.Clear();
     maFormatSegments.clear();
     return nPos;

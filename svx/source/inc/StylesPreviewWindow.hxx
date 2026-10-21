@@ -27,7 +27,7 @@
 #include <sfx2/sfxstatuslistener.hxx>
 #include <vcl/weld/IconView.hxx>
 
-// pair of id and name, name can be translated to other language
+// pair of id and name, name can be translated to another language
 struct StylePreviewDescriptor
 {
     OUString commonName; // English: Heading 1
@@ -65,7 +65,7 @@ public:
 
 class StyleItemController
 {
-    static constexpr unsigned LEFT_MARGIN = 8;
+    static constexpr unsigned LEFT_MARGIN = 3;
 
     SfxStyleFamily m_eStyleFamily;
     StylePreviewDescriptor m_aStyleName;

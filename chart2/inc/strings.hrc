@@ -27,6 +27,7 @@
 #define STR_DLG_REMOVE_DATA_TABLE                   NC_("STR_DLG_REMOVE_DATA_TABLE", "This chart currently contains an internal data table. Do you want to proceed, deleting the internal data table, and set a new data range?")
 #define STR_PAGE_CHARTTYPE                          NC_("STR_PAGE_CHARTTYPE", "Chart Type")
 #define STR_PAGE_DATA_RANGE                         NC_("STR_PAGE_DATA_RANGE", "Data Range")
+#define STR_RANGE_NOTE_DIMENSIONS                   NC_("STR_RANGE_NOTE_DIMENSIONS", "The last two columns hold the dimensions; the columns before them are the features.")
 #define STR_PAGE_CHART_ELEMENTS                     NC_("STR_PAGE_CHART_ELEMENTS", "Chart Elements")
 #define STR_OBJECT_AVERAGE_LINE_WITH_PARAMETERS     NC_("STR_OBJECT_AVERAGE_LINE_WITH_PARAMETERS", "Mean value line with value %AVERAGE_VALUE and standard deviation %STD_DEVIATION")
 #define STR_OBJECT_AXIS                             NC_("STR_OBJECT_AXIS", "Axis")
@@ -103,6 +104,7 @@
 #define STR_DATA_ROLE_X                             NC_("STR_DATA_ROLE_X", "X-Values")
 #define STR_DATA_ROLE_Y                             NC_("STR_DATA_ROLE_Y", "Y-Values")
 #define STR_DATA_ROLE_SIZE                          NC_("STR_DATA_ROLE_SIZE", "Bubble Sizes")
+#define STR_DATA_ROLE_FEATURE                       NC_("STR_DATA_ROLE_FEATURE", "Feature Values")
 #define STR_DATA_ROLE_X_ERROR                       NC_("STR_DATA_ROLE_X_ERROR", "X-Error-Bars")
 #define STR_DATA_ROLE_X_ERROR_POSITIVE              NC_("STR_DATA_ROLE_X_ERROR_POSITIVE", "Positive X-Error-Bars")
 #define STR_DATA_ROLE_X_ERROR_NEGATIVE              NC_("STR_DATA_ROLE_X_ERROR_NEGATIVE", "Negative X-Error-Bars")
@@ -140,9 +142,11 @@
 #define STR_TYPE_BAR                                NC_("STR_TYPE_BAR", "Bar")
 #define STR_TYPE_HISTOGRAM                          NC_("STR_TYPE_HISTOGRAM", "Histogram")
 #define STR_HISTOGRAM                               NC_("STR_HISTOGRAM", "Histogram Chart")
+#define STR_HISTOGRAM_BIN_WIDTH_GT_ZERO             NC_("STR_HISTOGRAM_BIN_WIDTH_GT_ZERO", "The bin width requires a positive number. Check your input.")
+#define STR_HISTOGRAM_INVALID_OVERFLOW_UNDERFLOW    NC_("STR_HISTOGRAM_INVALID_OVERFLOW_UNDERFLOW", "The underflow value must be lower than the overflow value. Check your input.")
 #define STR_TYPE_AREA                               NC_("STR_TYPE_AREA", "Area")
 #define STR_TYPE_PIE                                NC_("STR_TYPE_PIE", "Pie")
-#define STR_TYPE_OFPIE                              NC_("STR_TYPE_PIE", "Of-Pie")
+#define STR_TYPE_OFPIE                              NC_("STR_TYPE_OFPIE", "Of-Pie")
 #define STR_PIE_EXPLODED                            NC_("STR_PIE_EXPLODED", "Exploded Pie Chart")
 #define STR_BAR_OF_PIE                              NC_("STR_BAR_OF_PIE", "Bar-of-pie Chart")
 #define STR_PIE_OF_PIE                              NC_("STR_PIE_OF_PIE", "Pie-of-pie Chart")
@@ -170,6 +174,8 @@
 #define STR_FILLED                                  NC_("STR_FILLED", "Filled")
 #define STR_TYPE_BUBBLE                             NC_("STR_TYPE_BUBBLE", "Bubble")
 #define STR_BUBBLE_1                                NC_("STR_BUBBLE_1", "Bubble Chart")
+#define STR_TYPE_CORRELATION_CIRCLE                 NC_("STR_TYPE_CORRELATION_CIRCLE", "Correlation Circle")
+#define STR_CORRELATION_CIRCLE                      NC_("STR_CORRELATION_CIRCLE", "Correlation Circle Plot")
 
 #define STR_INVALID_NUMBER                          NC_("STR_INVALID_NUMBER", "Numbers are required. Check your input.")
 #define STR_STEP_GT_ZERO                            NC_("STR_STEP_GT_ZERO", "The major interval requires a positive number. Check your input.")
@@ -178,6 +184,8 @@
 #define STR_INVALID_INTERVALS                       NC_("STR_INVALID_INTERVALS", "The major interval needs to be greater than the minor interval. Check your input.")
 #define STR_INVALID_TIME_UNIT                       NC_("STR_INVALID_TIME_UNIT", "The major and minor interval need to be greater or equal to the resolution. Check your input.")
 #define STR_UNSUPPORTED_CHART_TYPE                  NC_("STR_UNSUPPORTED_CHART_TYPE", "One or more chart types are unsupported in this version of %PRODUCTNAME")
+
+#define STR_RANGE_FOR_VALUETYPE                     NC_("STR_RANGE_FOR_VALUETYPE", "Ran~ge for %VALUETYPE")
 
 #endif
 

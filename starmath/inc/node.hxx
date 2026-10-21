@@ -183,6 +183,7 @@ public:
      * @return font attributes
      */
     FontAttribute &Attributes() { return mnAttributes; }
+    const FontAttribute &Attributes() const { return mnAttributes; }
 
     /**
      * Checks if it is a visible node rendered invisible.
@@ -310,7 +311,7 @@ public:
      * @return
      */
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) = 0;
-
+    virtual void ArrangeOpenType(OutputDevice &rDev, const SmFormat &rFormat);
     /**
      * Appends to rText the node text.
      * @param rText
@@ -462,10 +463,10 @@ private:
 };
 
 
-/** Abstract baseclass for all composite node
+/** Abstract base class for all composite nodes
  *
- * Subclasses of this class can have subnodes. Nodes that doesn't derivate from
- * this class does not have subnodes.
+ * Subclasses of this class can have subnodes. Nodes that don't derive from
+ * this class do not have subnodes.
  */
 class SmStructureNode : public SmNode
 {
@@ -588,9 +589,9 @@ private:
 };
 
 
-/** Abstract base class for all visible node
+/** Abstract base class for all visible nodes
  *
- * Nodes that doesn't derivate from this class doesn't draw anything, but their
+ * Nodes that don't derive from this class don't draw anything, but their
  * children.
  */
 class SmVisibleNode : public SmNode
@@ -1134,6 +1135,7 @@ public:
      * @return
      */
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
+    virtual void ArrangeOpenType(OutputDevice &rDev, const SmFormat &rFormat) override;
 
     /**
      * Gets the formula baseline.
@@ -1205,6 +1207,7 @@ public:
      * @return
      */
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
+    virtual void ArrangeOpenType(OutputDevice &rDev, const SmFormat &rFormat) override;
 
     /**
      * Accept a visitor.
@@ -1359,6 +1362,7 @@ public:
      * @return
      */
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
+    virtual void ArrangeOpenType(OutputDevice &rDev, const SmFormat &rFormat) override;
 
     /**
      * Accept a visitor.
@@ -1418,6 +1422,7 @@ public:
      * @return
      */
     virtual void Arrange(OutputDevice &rDev, const SmFormat &rFormat) override;
+    virtual void ArrangeOpenType(OutputDevice &rDev, const SmFormat &rFormat) override;
 
     /**
      * Accept a visitor.
@@ -1497,7 +1502,7 @@ public:
 };
 
 
-/** Enum used to index sub-/supscripts in the 'maSubNodes' array
+/** Enum used to index sub-/superscripts in the 'maSubNodes' array
  * in 'SmSubSupNode'
  *
  * See graphic for positions at char:
@@ -1519,7 +1524,7 @@ enum SmSubSup
 };
 
 /** numbers of entries in the above enum (that is: the number of possible
- * sub-/supscripts)
+ * sub-/superscripts)
  */
 #define SUBSUP_NUM_ENTRIES 6
 

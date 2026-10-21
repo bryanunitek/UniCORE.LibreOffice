@@ -131,7 +131,7 @@ bool ScGroupTokenConverter::convert( const ScTokenArray& rCode, sc::FormulaLogge
                     // Trim data array length to actual data range.
                     SCROW nTrimLen = trimLength(aRefPos.Tab(), aRefPos.Col(), aRefPos.Col(), aRefPos.Row(), nLen);
                     // Fetch double array guarantees that the length of the
-                    // returned array equals or greater than the requested
+                    // returned array is equal to or greater than the requested
                     // length.
 
                     formula::VectorRefArray aArray;
@@ -258,7 +258,7 @@ bool ScGroupTokenConverter::convert( const ScTokenArray& rCode, sc::FormulaLogge
                     aArrays.push_back(aArray);
                 }
 
-                std::vector<formula::VectorRefArray> aArraysTmp = aArrays; 
+                std::vector<formula::VectorRefArray> aArraysTmp = aArrays;
                 formula::DoubleVectorRefToken aTok( std::move(aArraysTmp), nArrayLength, nRefRowSize, bAbsFirst, bAbsLast );
                 mrGroupTokens.AddToken(aTok);
                 rScope.addRefMessage(mrPos, aAbs.aStart, nRequestedLength, aArrays);
@@ -283,12 +283,9 @@ bool ScGroupTokenConverter::convert( const ScTokenArray& rCode, sc::FormulaLogge
                 }
 
                 // Named range.
-                ScRangeName* pNames = mrDoc.GetRangeName();
-                if (!pNames)
-                    // This should never fail.
-                    return false;
+                ScRangeName& rNames = mrDoc.GetRangeName();
 
-                ScRangeData* pRange = pNames->findByIndex(static_cast<const FormulaIndexToken*>(p)->GetIndex());
+                ScRangeData* pRange = rNames.findByIndex(static_cast<const FormulaIndexToken*>(p)->GetIndex());
                 if (!pRange)
                     // No named range exists by that index.
                     return false;

@@ -441,6 +441,7 @@ bool SbxVariable::LoadData( SvStream& rStrm, sal_uInt16 nVer )
         SbxValues aTmp;
         OUString aTmpString;
         OUString aVal;
+        SbxValue::Clear();
         aTmp.eType = aData.eType = static_cast<SbxDataType>(nType);
         aTmp.pOUString = &aVal;
         switch( nType )
@@ -523,7 +524,7 @@ std::pair<bool, sal_uInt32> SbxVariable::StoreData( SvStream& rStrm ) const
     bool bValStore;
     if( dynamic_cast<const SbxMethod *>(this) != nullptr )
     {
-        // #50200 Avoid that objects , which during the runtime
+        // #50200 Avoid that objects, which during the runtime
         // as return-value are saved in the method as a value were saved
         SbxVariable* pThis = const_cast<SbxVariable*>(this);
         SbxFlagBits nSaveFlags = GetFlags();

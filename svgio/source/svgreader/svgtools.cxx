@@ -19,8 +19,11 @@
 
 #include <svgtools.hxx>
 #include <sal/log.hxx>
+#include <rtl/uri.hxx>
 #include <tools/color.hxx>
 #include <rtl/character.hxx>
+#include <tools/urlobj.hxx>
+#include <unotools/securityoptions.hxx>
 #include <rtl/math.hxx>
 #include <o3tl/numeric.hxx>
 #include <o3tl/string_view.hxx>
@@ -200,7 +203,7 @@ namespace svgio::svgreader
                 (bNoSWidth ? 1.0 : 1.0 / fSWidth) * rTarget.getWidth(),
                 (bNoSHeight ? 1.0 : 1.0 / fSHeight) * rTarget.getHeight());
 
-            // transform from unit rage to target range
+            // transform from unit range to target range
             aRetval.translate(rTarget.getMinX(), rTarget.getMinY());
 
             return aRetval;
@@ -901,7 +904,7 @@ namespace svgio::svgreader
 
                                                         // caution: String is evaluated from left to right, but matrix multiplication
                                                         // in SVG is right to left, so put the new transformation before the current
-                                                        // one by multiplicating from the right side
+                                                        // one by multiplying from the right side
                                                         aMatrix = aMatrix * aNew;
                                                     }
                                                 }
@@ -1364,6 +1367,44 @@ namespace svgio::svgreader
                     rUrl = rCandidate;
                 }
             }
+        }
+
+        OUString resolveImageUrl(const OUString& rDocumentPath, const OUString& rUrl)
+        {
+            OUString aAbsoluteUrl;
+
+            try
+            {
+                aAbsoluteUrl = rtl::Uri::convertRelToAbs(rDocumentPath, rUrl);
+            }
+            catch (const rtl::MalformedUriException& rException)
+            {
+                SAL_WARN("svg", "caught rtl::MalformedUriException \"" << rException.getMessage() << "\"");
+                return OUString();
+            }
+
+            if (aAbsoluteUrl.isEmpty() || aAbsoluteUrl == rDocumentPath)
+                return OUString();
+
+            if (INetURLObject(aAbsoluteUrl).IsExoticProtocol())
+            {
+                SAL_WARN("svg", "ignore exotic protocol: " << rUrl);
+                return OUString();
+            }
+
+            // An SVG inside a document is read from a stream and has no location, so it opens no
+            // picture outside itself.
+            if (rDocumentPath.isEmpty())
+            {
+                SAL_WARN("svg", "ignore reference from a stream, has no location: " << rUrl);
+                return OUString();
+            }
+
+            // With BlockUntrustedRefererLinks set, only an SVG in a trusted location opens one.
+            if (SvtSecurityOptions::isUntrustedReferer(rDocumentPath))
+                return OUString();
+
+            return aAbsoluteUrl;
         }
 
         // #i125325#

@@ -22,6 +22,7 @@
 #include <undotab.hxx>
 #include <attrib.hxx>
 #include <dbdata.hxx>
+#include <filterentries.hxx>
 #include <reftokenhelper.hxx>
 #include <userdat.hxx>
 #include <refdata.hxx>
@@ -874,6 +875,28 @@ CPPUNIT_TEST_FIXTURE(Test, testDataEntries)
     CPPUNIT_ASSERT_EQUAL(u"Charlie"_ustr, it->GetString());
     ++it;
     CPPUNIT_ASSERT_MESSAGE("The entries should have ended here.", bool(it == aEntries.end()));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf158326_GermanEszett)
+{
+    m_pDoc->InsertTab(0, u"Test"_ustr);
+
+    m_pDoc->SetString(ScAddress(0, 0, 0), u"Strasse"_ustr);
+    m_pDoc->SetString(ScAddress(0, 1, 0), u"Straße"_ustr);
+    m_pDoc->SetString(ScAddress(0, 2, 0), u"STRASSE"_ustr);
+
+    ScFilterEntries aFilterEntries;
+    m_pDoc->GetFilterEntriesArea(0, 0, 2, 0, /*bCaseSens*/ false, aFilterEntries);
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 2
+    // - Actual  : 1
+    // i.e. the German "ß" would have been folded to "ss" leaving just a single entry
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aFilterEntries.size());
+    CPPUNIT_ASSERT_EQUAL(u"Strasse"_ustr, aFilterEntries.maStrData[0].GetString());
+    CPPUNIT_ASSERT_EQUAL(u"Straße"_ustr, aFilterEntries.maStrData[1].GetString());
 
     m_pDoc->DeleteTab(0);
 }
@@ -1971,13 +1994,12 @@ CPPUNIT_TEST_FIXTURE(Test, testNamedRange)
     CPPUNIT_ASSERT_MESSAGE("Failed to insert range names.", bSuccess);
     m_pDoc->SetRangeName(std::move(pNames));
 
-    ScRangeName* pNewRanges = m_pDoc->GetRangeName();
-    CPPUNIT_ASSERT(pNewRanges);
+    ScRangeName& rNewRanges = m_pDoc->GetRangeName();
 
     // Make sure the index lookup does the right thing.
     for (const auto& rName : aNames)
     {
-        const ScRangeData* p = pNewRanges->findByIndex(rName.mnIndex);
+        const ScRangeData* p = rNewRanges.findByIndex(rName.mnIndex);
         CPPUNIT_ASSERT_MESSAGE("lookup of range name by index failed.", p);
         OUString aName = p->GetName();
         CPPUNIT_ASSERT_MESSAGE("wrong range name is retrieved.", aName.equalsAscii(rName.mpName));
@@ -1991,12 +2013,12 @@ CPPUNIT_TEST_FIXTURE(Test, testNamedRange)
     ASSERT_DOUBLES_EQUAL_MESSAGE ("calculation failed", 1.0, result);
 
     // Test copy-ability of range names.
-    std::unique_ptr<ScRangeName> pCopiedRanges(new ScRangeName(*pNewRanges));
+    std::unique_ptr<ScRangeName> pCopiedRanges(new ScRangeName(rNewRanges));
     m_pDoc->SetRangeName(std::move(pCopiedRanges));
     // Make sure the index lookup still works.
     for (const auto& rName : aNames)
     {
-        const ScRangeData* p = m_pDoc->GetRangeName()->findByIndex(rName.mnIndex);
+        const ScRangeData* p = m_pDoc->GetRangeName().findByIndex(rName.mnIndex);
         CPPUNIT_ASSERT_MESSAGE("lookup of range name by index failed with the copied instance.", p);
         OUString aName = p->GetName();
         CPPUNIT_ASSERT_MESSAGE("wrong range name is retrieved with the copied instance.", aName.equalsAscii(rName.mpName));
@@ -2008,10 +2030,10 @@ CPPUNIT_TEST_FIXTURE(Test, testNamedRange)
     ScRangeData* pLocal3 = new ScRangeData( *m_pDoc, u"local3"_ustr, u"Sheet1.$A$1"_ustr);
     ScRangeData* pLocal4 = new ScRangeData( *m_pDoc, u"local4"_ustr, u"$A$1"_ustr); // implicit relative sheet reference
     std::unique_ptr<ScRangeName> pLocalRangeName1(new ScRangeName);
-    pLocalRangeName1->insert(pLocal1);
-    pLocalRangeName1->insert(pLocal2);
-    pLocalRangeName1->insert(pLocal3);
-    pLocalRangeName1->insert(pLocal4);
+    pLocalRangeName1->insert(std::unique_ptr<ScRangeData>(pLocal1));
+    pLocalRangeName1->insert(std::unique_ptr<ScRangeData>(pLocal2));
+    pLocalRangeName1->insert(std::unique_ptr<ScRangeData>(pLocal3));
+    pLocalRangeName1->insert(std::unique_ptr<ScRangeData>(pLocal4));
     m_pDoc->SetRangeName(0, std::move(pLocalRangeName1));
 
     CPPUNIT_ASSERT_MESSAGE ("failed to insert sheet", m_pDoc->InsertTab (1, u"Sheet2"_ustr));
@@ -2028,6 +2050,43 @@ CPPUNIT_TEST_FIXTURE(Test, testNamedRange)
     m_pDoc->DeleteTab(1);
     m_pDoc->SetRangeName(0,nullptr); // Delete the names.
     m_pDoc->SetRangeName(nullptr); // Delete the names.
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testNamedRangeRedefinedKeepsTheSameEntry)
+{
+    CPPUNIT_ASSERT(m_pDoc->InsertTab(0, u"Sheet1"_ustr));
+
+    ScRangeName& rNames = m_pDoc->GetRangeName();
+
+    // the xls import assigns the index itself before it hands the name over
+    std::unique_ptr<ScRangeData> pFirst(
+        new ScRangeData(*m_pDoc, u"MyRange"_ustr, u"$Sheet1.$A$1:$A$10"_ustr));
+    pFirst->SetIndex(4);
+    ScRangeData* pInserted = rNames.insert(std::move(pFirst));
+    CPPUNIT_ASSERT(pInserted);
+
+    // a second definition of the same name arrives, under a different index
+    std::unique_ptr<ScRangeData> pSecond(
+        new ScRangeData(*m_pDoc, u"MyRange"_ustr, u"$Sheet1.$B$1:$B$20"_ustr));
+    pSecond->SetIndex(7);
+    ScRangeData* pSurvivor = rNames.insert(std::move(pSecond));
+
+    // a pointer taken from the first insert still addresses the live entry
+    CPPUNIT_ASSERT_EQUAL(pInserted, pSurvivor);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), rNames.size());
+
+    // and that entry holds the later definition
+    ScRange aRange;
+    CPPUNIT_ASSERT(pSurvivor->IsReference(aRange));
+    CPPUNIT_ASSERT_EQUAL(ScRange(1, 0, 0, 1, 19, 0), aRange);
+
+    // the later index reaches the entry, the earlier one reaches nothing
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(7), pSurvivor->GetIndex());
+    CPPUNIT_ASSERT_EQUAL(pSurvivor, rNames.findByIndex(7));
+    CPPUNIT_ASSERT(!rNames.findByIndex(4));
+
+    m_pDoc->SetRangeName(nullptr);
     m_pDoc->DeleteTab(0);
 }
 
@@ -2816,6 +2875,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFunctionLists)
         "ISNONTEXT",
         "ISNUMBER",
         "ISODD",
+        "ISOMITTED",
         "ISREF",
         "ISTEXT",
         "N",
@@ -2919,15 +2979,21 @@ CPPUNIT_TEST_FIXTURE(Test, testFunctionLists)
     };
 
     const char* aArray[] = {
+        "BYCOL",
+        "BYROW",
         "FOURIER",
         "FREQUENCY",
         "GROWTH",
         "LINEST",
         "LOGEST",
+        "MAKEARRAY",
+        "MAP",
         "MDETERM",
         "MINVERSE",
         "MMULT",
         "MUNIT",
+        "REDUCE",
+        "SCAN",
         "SEQUENCE",
         "SUMPRODUCT",
         "SUMX2MY2",
@@ -3113,6 +3179,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFunctionLists)
         "HYPERLINK",
         "INDEX",
         "INDIRECT",
+        "LAMBDA",
         "LET",
         "LOOKUP",
         "MATCH",
@@ -3140,6 +3207,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFunctionLists)
 
     const char* aText[] = {
         "ARABIC",
+        "ARRAYTOTEXT",
         "ASC",
         "BAHTTEXT",
         "BASE",
@@ -3867,6 +3935,48 @@ CPPUNIT_TEST_FIXTURE(Test, testAutofilterOptimizations)
     m_pDoc->DeleteTab(0);
 }
 
+CPPUNIT_TEST_FIXTURE(Test, testTdf162609_autofilterErrorValue)
+{
+    m_pDoc->InsertTab(0, u"Test"_ustr);
+
+    // A1 is the header, A2:A11 contain 0-9 and A12 an error. With 10 query items,
+    // the optimized search would incorrectly match the error cell against the 0.
+    constexpr sal_Int32 nItems = 10;
+    m_pDoc->SetString(0, 0, 0, u"Number"_ustr);
+    for (sal_Int32 i = 0; i < nItems; ++i)
+        m_pDoc->SetValue(0, i + 1, 0, i);
+    m_pDoc->SetString(0, nItems + 1, 0, u"=NA()"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"#N/A"_ustr, m_pDoc->GetString(0, nItems + 1, 0));
+
+    ScDBData* pDBData = new ScDBData(u"NONAME"_ustr, 0, 0, 0, 0, nItems + 1);
+    m_pDoc->SetAnonymousDBData(0, std::unique_ptr<ScDBData>(pDBData));
+    pDBData->SetAutoFilter(true);
+
+    // Select every value the autofilter offers except the error one
+    ScQueryParam aParam;
+    pDBData->GetQueryParam(aParam);
+    ScQueryEntry& rEntry = aParam.GetEntry(0);
+    rEntry.bDoQuery = true;
+    rEntry.nField = 0;
+    rEntry.eOp = SC_EQUAL;
+    rEntry.GetQueryItems().resize(nItems);
+    for (sal_Int32 i = 0; i < nItems; ++i)
+    {
+        rEntry.GetQueryItems()[i].mfVal = i;
+        rEntry.GetQueryItems()[i].maString
+            = m_pDoc->GetSharedStringPool().intern(OUString::number(i));
+    }
+    pDBData->SetQueryParam(aParam);
+    m_pDoc->Query(0, aParam, true);
+
+    // Without the fix in place, this test would have failed
+    // because the row with the error value was not filtered out
+    CPPUNIT_ASSERT_MESSAGE("row with #N/A should be hidden", m_pDoc->RowHidden(nItems + 1, 0));
+    CPPUNIT_ASSERT_MESSAGE("row with 0 should be visible", !m_pDoc->RowHidden(1, 0));
+
+    m_pDoc->DeleteTab(0);
+}
+
 CPPUNIT_TEST_FIXTURE(Test, testTdf76441)
 {
     m_pDoc->InsertTab(0, u"Test"_ustr);
@@ -4220,8 +4330,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf98642)
     ScRangeData* pName2 = new ScRangeData( *m_pDoc, u"name2"_ustr, u"$Sheet1.$A$1"_ustr);
 
     std::unique_ptr<ScRangeName> pGlobalRangeName(new ScRangeName());
-    pGlobalRangeName->insert(pName1);
-    pGlobalRangeName->insert(pName2);
+    pGlobalRangeName->insert(std::unique_ptr<ScRangeData>(pName1));
+    pGlobalRangeName->insert(std::unique_ptr<ScRangeData>(pName2));
     m_pDoc->SetRangeName(std::move(pGlobalRangeName));
 
     m_pDoc->SetString(1, 0, 0, u"=name1"_ustr);
@@ -4509,6 +4619,40 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf106137_UnicodeEscapeInReplacement)
 
     // shouldn't be 'A find B'
     CPPUNIT_ASSERT_EQUAL(u"A find \\u0042"_ustr, m_pDoc->GetString(ScAddress(0, 1, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testSearchCellsIgnoreDiacritics)
+{
+    m_pDoc->InsertTab(0, u"Test"_ustr);
+
+    // The same two letters, written with a precomposed accented character and
+    // with a base letter followed by a combining mark.
+    m_pDoc->SetString(ScAddress(0,0,0), u"a\u00e1"_ustr);
+    m_pDoc->SetString(ScAddress(0,1,0), u"a\u0061\u0308"_ustr);
+
+    SvxSearchItem aItem(SID_SEARCH_ITEM);
+    aItem.SetSearchString(u"aa"_ustr);
+    aItem.SetCommand(SvxSearchCmd::FIND_ALL);
+    aItem.SetTransliterationFlags(TransliterationFlags::IGNORE_DIACRITICS_CTL);
+    ScMarkData aMarkData(m_pDoc->GetSheetLimits());
+    aMarkData.SelectOneTable(0);
+    SCCOL nCol = 0;
+    SCROW nRow = 0;
+    SCTAB nTab = 0;
+    ScRangeList aMatchedRanges;
+    OUString aUndoStr;
+    bool bMatchedRangesWereClamped = false;
+    bool bSuccess = m_pDoc->SearchAndReplace(aItem, nCol, nRow, nTab, aMarkData, aMatchedRanges,
+                                             aUndoStr, nullptr, bMatchedRangesWereClamped);
+
+    // A search that ignores diacritics finds both spellings. Without the
+    // accompanying fix only the second cell was found, because the accent of
+    // the first one was still compared.
+    CPPUNIT_ASSERT(bSuccess);
+    CPPUNIT_ASSERT(aMatchedRanges.Contains(ScRange(ScAddress(0,0,0))));
+    CPPUNIT_ASSERT(aMatchedRanges.Contains(ScRange(ScAddress(0,1,0))));
 
     m_pDoc->DeleteTab(0);
 }
@@ -4862,6 +5006,26 @@ CPPUNIT_TEST_FIXTURE(Test, testAutoFill)
 
     // Clear column A for a new test.
     clearRange(m_pDoc, ScRange(0,0,0,0,m_pDoc->MaxRow(),0));
+    m_pDoc->SetRowHidden(0, m_pDoc->MaxRow(), 0, false); // Show all rows.
+
+    ScSetStringParam aTextParam;
+    aTextParam.setTextInput();
+    m_pDoc->SetString(0, 0, 0, u"-307"_ustr, &aTextParam);
+    m_pDoc->Fill(0, 0, 0, 0, nullptr, aMarkData, 3, FILL_TO_BOTTOM, FILL_AUTO);
+
+    // tdf#140703: Without the fix in place, this test would have failed with
+    // - Expected: -306
+    // - Actual  : -308
+    CPPUNIT_ASSERT_EQUAL(u"-306"_ustr, m_pDoc->GetString(0, 1, 0));
+    CPPUNIT_ASSERT_EQUAL(u"-305"_ustr, m_pDoc->GetString(0, 2, 0));
+    CPPUNIT_ASSERT_EQUAL(u"-304"_ustr, m_pDoc->GetString(0, 3, 0));
+
+    // The fill has to match the autofill preview shown while dragging
+    CPPUNIT_ASSERT_EQUAL(m_pDoc->GetAutoFillPreview(ScRange(0, 0, 0), 0, 3),
+                         m_pDoc->GetString(0, 3, 0));
+
+    // Clear column A for a new test, including the text format
+    clearRange(m_pDoc, ScRange(0, 0, 0, 0, m_pDoc->MaxRow(), 0), InsertDeleteFlags::ALL);
     m_pDoc->SetRowHidden(0, m_pDoc->MaxRow(), 0, false); // Show all rows.
 
     m_pDoc->SetString( 0, 80, 0, u"1%"_ustr );
@@ -5799,6 +5963,214 @@ CPPUNIT_TEST_FIXTURE(Test, testAreasWithNotes)
     m_pDoc->DeleteTab(0);
 }
 
+namespace
+{
+// A header row, then empty rows that carry a border on every side, down to nLastBorderedRow.
+// This is the shape of a pre-printed form, where the bordered rows are filled in later.
+void lcl_makeBorderedForm(ScDocument* pDoc, SCROW nLastBorderedRow)
+{
+    pDoc->SetString(0, 0, 0, u"Header"_ustr);
+
+    ::editeng::SvxBorderLine aLine(nullptr, 50, SvxBorderLineStyle::SOLID);
+    SvxBoxItem aBorderItem(ATTR_BORDER);
+    aBorderItem.SetLine(&aLine, SvxBoxItemLine::LEFT);
+    aBorderItem.SetLine(&aLine, SvxBoxItemLine::RIGHT);
+    aBorderItem.SetLine(&aLine, SvxBoxItemLine::TOP);
+    aBorderItem.SetLine(&aLine, SvxBoxItemLine::BOTTOM);
+    ScPatternAttr aBordered(pDoc->getCellAttributeHelper());
+    aBordered.ItemSetPut(aBorderItem);
+    pDoc->ApplyPatternAreaTab(0, 1, 2, nLastBorderedRow, 0, aBordered);
+}
+
+// The pattern of a single border line, for marking one cell or one row.
+ScPatternAttr lcl_oneLine(ScDocument* pDoc, SvxBoxItemLine eSide)
+{
+    ::editeng::SvxBorderLine aLine(nullptr, 50, SvxBorderLineStyle::SOLID);
+    SvxBoxItem aBorderItem(ATTR_BORDER);
+    aBorderItem.SetLine(&aLine, eSide);
+    ScPatternAttr aPattern(pDoc->getCellAttributeHelper());
+    aPattern.ItemSetPut(aBorderItem);
+    return aPattern;
+}
+
+ScPatternAttr lcl_colour(ScDocument* pDoc, const Color& rColor)
+{
+    ScPatternAttr aPattern(pDoc->getCellAttributeHelper());
+    aPattern.ItemSetPut(SvxBrushItem(rColor, ATTR_BACKGROUND));
+    return aPattern;
+}
+
+SCROW lcl_printAreaEndRow(ScDocument* pDoc)
+{
+    SCCOL nEndCol;
+    SCROW nEndRow;
+    CPPUNIT_ASSERT(pDoc->GetPrintArea(0, nEndCol, nEndRow, false));
+    return nEndRow;
+}
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testPrintAreaCoversABorderedForm)
+{
+    // Empty rows carrying a border are printed, so they belong to the print area even though
+    // no cell in them holds anything.
+    m_pDoc->InsertTab(0, u"Form"_ustr);
+    lcl_makeBorderedForm(m_pDoc, 99);
+
+    SCCOL nEndCol;
+    SCROW nEndRow;
+    CPPUNIT_ASSERT(m_pDoc->GetPrintArea(0, nEndCol, nEndRow, false));
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("the printout reaches the last bordered row",
+                                 static_cast<SCROW>(99), nEndRow);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("the printout reaches the last bordered column",
+                                 static_cast<SCCOL>(2), nEndCol);
+    m_pDoc->DeleteTab(0);
+
+    // A form of over a thousand rows is still a form.
+    m_pDoc->InsertTab(0, u"LongForm"_ustr);
+    lcl_makeBorderedForm(m_pDoc, 1499);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("the printout reaches the last bordered row",
+                                 static_cast<SCROW>(1499), lcl_printAreaEndRow(m_pDoc));
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testPrintAreaIgnoresAColourBelowTheContent)
+{
+    // A colour below the last cell with content stays out of the print area, wherever it sits
+    // and however far it runs.
+    const SCROW nLast = m_pDoc->MaxRow();
+
+    const std::pair<SCROW, SCROW> aRanges[] = {
+        { 0, nLast },           // the whole column
+        { 1, nLast },           // from under the header to the last row
+        { 10, nLast },          // from below the content to the last row
+        { 10, nLast - 1 },      // stopping one row short of the last row
+        { 49999, 49999 },       // one cell far below the content
+    };
+
+    sal_Int32 nSheet = 0;
+    for (const auto& rRange : aRanges)
+    {
+        m_pDoc->InsertTab(0, "Colour" + OUString::number(nSheet++));
+        m_pDoc->SetString(0, 0, 0, u"Header"_ustr);
+        m_pDoc->ApplyPatternAreaTab(0, rRange.first, 0, rRange.second, 0,
+                                    lcl_colour(m_pDoc, COL_BLUE));
+
+        OString aMessage = "a colour over rows " + OString::number(rRange.first) + " to "
+                           + OString::number(rRange.second);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(aMessage.getStr(), static_cast<SCROW>(0),
+                                     lcl_printAreaEndRow(m_pDoc));
+        m_pDoc->DeleteTab(0);
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testPrintAreaIgnoresABorderTooWideForAForm)
+{
+    // A border far below the content, or one many times wider than a form, stays out of the
+    // print area. The printout ends at the last row with content.
+    const SCROW nLast = m_pDoc->MaxRow();
+
+    const std::pair<SCROW, SCROW> aRanges[] = {
+        { nLast, nLast },       // the last row of the sheet
+        { 10, 50000 },          // reaching far below the content
+    };
+
+    sal_Int32 nSheet = 0;
+    for (const auto& rRange : aRanges)
+    {
+        m_pDoc->InsertTab(0, "Border" + OUString::number(nSheet++));
+        m_pDoc->SetString(0, 0, 0, u"Header"_ustr);
+        m_pDoc->ApplyPatternAreaTab(0, rRange.first, 0, rRange.second, 0,
+                                    lcl_oneLine(m_pDoc, SvxBoxItemLine::BOTTOM));
+
+        OString aMessage = "a border over rows " + OString::number(rRange.first) + " to "
+                           + OString::number(rRange.second);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(aMessage.getStr(), static_cast<SCROW>(0),
+                                     lcl_printAreaEndRow(m_pDoc));
+        m_pDoc->DeleteTab(0);
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testPrintAreaIgnoresAFrameRoundAWholeColumn)
+{
+    // A frame round a whole column keeps the side lines on every row, the top line on the
+    // first row and the bottom line on the last, so it arrives as three ranges and the middle
+    // one covers nearly the sheet. The printout ends at the last row with content.
+    m_pDoc->InsertTab(0, u"Frame"_ustr);
+    m_pDoc->SetString(0, 0, 0, u"Header"_ustr);
+    const SCROW nLast = m_pDoc->MaxRow();
+
+    ::editeng::SvxBorderLine aLine(nullptr, 50, SvxBorderLineStyle::SOLID);
+    SvxBoxItem aSides(ATTR_BORDER);
+    aSides.SetLine(&aLine, SvxBoxItemLine::LEFT);
+    aSides.SetLine(&aLine, SvxBoxItemLine::RIGHT);
+    ScPatternAttr aSidesOnly(m_pDoc->getCellAttributeHelper());
+    aSidesOnly.ItemSetPut(aSides);
+    m_pDoc->ApplyPatternAreaTab(0, 0, 0, nLast, 0, aSidesOnly);
+
+    SvxBoxItem aTop(aSides);
+    aTop.SetLine(&aLine, SvxBoxItemLine::TOP);
+    ScPatternAttr aTopRow(m_pDoc->getCellAttributeHelper());
+    aTopRow.ItemSetPut(aTop);
+    m_pDoc->ApplyPatternAreaTab(0, 0, 0, 0, 0, aTopRow);
+
+    SvxBoxItem aBottom(aSides);
+    aBottom.SetLine(&aLine, SvxBoxItemLine::BOTTOM);
+    ScPatternAttr aBottomRow(m_pDoc->getCellAttributeHelper());
+    aBottomRow.ItemSetPut(aBottom);
+    m_pDoc->ApplyPatternAreaTab(0, nLast, 0, nLast, 0, aBottomRow);
+
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("the printout stops at the last row with content",
+                                 static_cast<SCROW>(0), lcl_printAreaEndRow(m_pDoc));
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testPrintAreaDoesNotMoveAsTheSheetIsFilledIn)
+{
+    // A form is printed in full wherever the last cell with content sits, so filling the form
+    // in row by row leaves the printout the same.
+    for (SCROW nContentRow : { SCROW(1), SCROW(13), SCROW(15), SCROW(16), SCROW(17), SCROW(50) })
+    {
+        m_pDoc->InsertTab(0, "Form" + OUString::number(nContentRow));
+        lcl_makeBorderedForm(m_pDoc, 99);
+        m_pDoc->SetString(0, nContentRow, 0, u"filled in"_ustr);
+
+        OString aMessage = "a form, content in row " + OString::number(nContentRow);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(aMessage.getStr(), static_cast<SCROW>(99),
+                                     lcl_printAreaEndRow(m_pDoc));
+        m_pDoc->DeleteTab(0);
+    }
+
+    // A block too wide to be a form stays out of the printout while the content ends well
+    // above it.
+    for (SCROW nContentRow : { SCROW(0), SCROW(600), SCROW(3000) })
+    {
+        m_pDoc->InsertTab(0, "Wide" + OUString::number(nContentRow));
+        m_pDoc->SetString(0, 0, 0, u"Header"_ustr);
+        if (nContentRow > 0)
+            m_pDoc->SetString(0, nContentRow, 0, u"filled in"_ustr);
+        lcl_makeBorderedForm(m_pDoc, 10499);
+
+        OString aMessage = "a wide block, content in row " + OString::number(nContentRow);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(aMessage.getStr(), nContentRow,
+                                     lcl_printAreaEndRow(m_pDoc));
+        m_pDoc->DeleteTab(0);
+    }
+
+    // A form too wide for the printout stays out of it wherever the content sits inside it.
+    // Bold over the upper part splits the form into two ranges that still look the same, and
+    // the lower one is short enough on its own to pass for a form.
+    m_pDoc->InsertTab(0, u"Split"_ustr);
+    lcl_makeBorderedForm(m_pDoc, 3000);
+    ScPatternAttr aBold(m_pDoc->getCellAttributeHelper());
+    aBold.ItemSetPut(SvxWeightItem(WEIGHT_BOLD, ATTR_FONT_WEIGHT));
+    m_pDoc->ApplyPatternAreaTab(0, 1, 2, 2500, 0, aBold);
+    m_pDoc->SetString(0, 2600, 0, u"filled in"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("a wide form, content in its lower range",
+                                 static_cast<SCROW>(2600), lcl_printAreaEndRow(m_pDoc));
+    m_pDoc->DeleteTab(0);
+}
+
 CPPUNIT_TEST_FIXTURE(Test, testAnchoredRotatedShape)
 {
     m_pDoc->InsertTab(0, u"TestTab"_ustr);
@@ -6344,6 +6716,29 @@ CPPUNIT_TEST_FIXTURE(Test, testFormulaToValue)
     m_pDoc->SetValue(ScAddress(1,5,0), 11);
     CPPUNIT_ASSERT_EQUAL(20.0, m_pDoc->GetValue(ScAddress(2,4,0)));
     CPPUNIT_ASSERT_EQUAL(22.0, m_pDoc->GetValue(ScAddress(2,5,0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testFormulaToValueUninterpreted)
+{
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+
+    m_pDoc->InsertTab(0, u"Test"_ustr);
+
+    // Nothing reads the cell after entry, so its result is not computed yet
+    m_pDoc->SetString(ScAddress(0, 0, 0), u"=1+1"_ustr);
+    const ScFormulaCell* pFC = m_pDoc->GetFormulaCell(ScAddress(0, 0, 0));
+    CPPUNIT_ASSERT(pFC);
+    CPPUNIT_ASSERT(pFC->GetDirty());
+
+    m_xDocShell->GetDocFunc().ConvertFormulaToValue(ScRange(ScAddress(0, 0, 0)), false);
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 2
+    // - Actual  : 0
+    CPPUNIT_ASSERT_EQUAL(CELLTYPE_VALUE, m_pDoc->GetCellType(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 0, 0)));
 
     m_pDoc->DeleteTab(0);
 }
@@ -7756,22 +8151,19 @@ CPPUNIT_TEST_FIXTURE(Test, testAutoFilterFlagsAfterColumnDeleteUndoRedo)
 
 CPPUNIT_TEST_FIXTURE(Test, testCopyTabContent)
 {
-    m_pDoc->InsertTab(0, u"Tab0"_ustr);
-    m_pDoc->InsertTab(1, u"Tab1"_ustr);
-    m_pDoc->InsertTab(2, u"Tab2"_ustr);
-    m_pDoc->InsertTab(3, u"Tab3"_ustr);
+    m_pDoc->InsertTab(0, u"Tab1"_ustr);
+    m_pDoc->InsertTab(1, u"Tab2"_ustr);
+    m_pDoc->InsertTab(2, u"Tab3"_ustr);
 
-    // For cross-sheet formula checking (forward and backward)
-    m_pDoc->SetValue(ScAddress(0, 0, 0), 99.0); // Tab0.A1
-    m_pDoc->SetValue(ScAddress(0, 0, 3), 66.0); // Tab3.A1
+    // For cross-sheet formula checking
+    m_pDoc->SetValue(ScAddress(0, 0, 2), 66.0);
 
     std::vector<std::vector<OUString>> aData = {
         { u"Column 1"_ustr, u"Column 2"_ustr, u"Column 3"_ustr },
         {  u"7"_ustr,       u"A"_ustr,        u"=A2+5"_ustr },
-        {  u"=2+2"_ustr,    u"C"_ustr,        u"=Tab3.A1"_ustr }, // forward cross-tab reference
-        {  u"=A3-2"_ustr,   u"D"_ustr,        u"=SUM(A2:A6)"_ustr },
-        {  u"3"_ustr,       u"B"_ustr,        u"=C3-60"_ustr },
-        {  u"5"_ustr,       u"E"_ustr,        u"=Tab0.A1"_ustr }, // backward cross-tab reference
+        {  u"=2+2"_ustr,    u"C"_ustr,        u"=Tab3.A1"_ustr },
+        {  u"=A3-2"_ustr,   u"D"_ustr,        u"=SUM(A2:A5)"_ustr },
+        {  u"3"_ustr,       u"B"_ustr,        u"=C3-60"_ustr }
     };
 
     for (size_t i = 0; i < aData.size(); ++i)
@@ -7780,7 +8172,7 @@ CPPUNIT_TEST_FIXTURE(Test, testCopyTabContent)
         {
             if (!aData[i][j].isEmpty())
             {
-                m_pDoc->SetString(j, i, 1, aData[i][j]);
+                m_pDoc->SetString(j, i, 0, aData[i][j]);
             }
         }
     }
@@ -7788,134 +8180,115 @@ CPPUNIT_TEST_FIXTURE(Test, testCopyTabContent)
 
     // Verify Tab1 values and formulas before copy
     {
-        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 1)));
-        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 1)));
-        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 1)));
-        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 1)));
+        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 0)));
+        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 0)));
+        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 0)));
 
-        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 1)));
-        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 1)));
-        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 1)));
-        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 0)));
 
-        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 1))); // =A2+5=12
-        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 1))); // =Tab3.A1
-        CPPUNIT_ASSERT_EQUAL(21.0, m_pDoc->GetValue(ScAddress(2, 3, 1))); // =SUM(A2:A6)
-        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 1)));  // =C3-60
-        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 1))); // =Tab0.A1
+        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 0)));
+        CPPUNIT_ASSERT_EQUAL(16.0, m_pDoc->GetValue(ScAddress(2, 3, 0)));
+        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 0)));
     }
 
-    // Copy Tab1 to index 2 - Tab1_2
-    m_pDoc->CopyTab(1, 2);
-    CPPUNIT_ASSERT_EQUAL(static_cast<SCTAB>(5), m_pDoc->GetTableCount());
+    // Copy Tab1 to index 1 - Tab1_2
+    m_pDoc->CopyTab(0, 1);
+    CPPUNIT_ASSERT_EQUAL(static_cast<SCTAB>(4), m_pDoc->GetTableCount());
 
-    // Tab3 value shifted from index 3 to index 4
-    CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(0, 0, 4)));
-    // Tab0 value stays at index 0
-    CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(0, 0, 0)));
+    // Tab3 value shifted from index 2 to index 3
+    CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(0, 0, 3)));
 
-    // Tab1 (tab index 1) should be unchanged
+    // Tab1 (tab index 0) should be unchanged
+    {
+        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 0)));
+        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 0)));
+        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 0)));
+
+        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 0)));
+
+        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 0)));
+        CPPUNIT_ASSERT_EQUAL(16.0, m_pDoc->GetValue(ScAddress(2, 3, 0)));
+        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 0)));
+    }
+
+    // The copy Tab1_2 (tab index 1) should have the same data as Tab1
     {
         CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 1)));
         CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 1)));
 
         CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 1)));
         CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 1)));
 
         CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 1)));
-        CPPUNIT_ASSERT_EQUAL(21.0, m_pDoc->GetValue(ScAddress(2, 3, 1)));
+        CPPUNIT_ASSERT_EQUAL(16.0, m_pDoc->GetValue(ScAddress(2, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 1)));
-    }
-
-    // The copy Tab1_2 (tab index 2) should have the same data as Tab1
-    {
-        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 2)));
-        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 2)));
-        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 2)));
-        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 2)));
-        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 2)));
-
-        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 2)));
-        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 2)));
-        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 2)));
-        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 2)));
-        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 2)));
-
-        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 2)));
-        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 2)));
-        CPPUNIT_ASSERT_EQUAL(21.0, m_pDoc->GetValue(ScAddress(2, 3, 2)));
-        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 2)));
-        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 2)));
     }
 
     // Check the formulas in Tab1_2
     {
-        CPPUNIT_ASSERT_EQUAL(u"=2+2"_ustr, m_pDoc->GetFormula(0, 2, 2));
-        CPPUNIT_ASSERT_EQUAL(u"=A3-2"_ustr, m_pDoc->GetFormula(0, 3, 2));
-        CPPUNIT_ASSERT_EQUAL(u"=A2+5"_ustr, m_pDoc->GetFormula(2, 1, 2));
-        CPPUNIT_ASSERT_EQUAL(u"='Tab3'.A1"_ustr, m_pDoc->GetFormula(2, 2, 2));
-        CPPUNIT_ASSERT_EQUAL(u"=SUM(A2:A6)"_ustr, m_pDoc->GetFormula(2, 3, 2));
-        CPPUNIT_ASSERT_EQUAL(u"=C3-60"_ustr, m_pDoc->GetFormula(2, 4, 2));
-        CPPUNIT_ASSERT_EQUAL(u"=Tab0.A1"_ustr, m_pDoc->GetFormula(2, 5, 2));
+        CPPUNIT_ASSERT_EQUAL(u"=2+2"_ustr, m_pDoc->GetFormula(0, 2, 1));
+        CPPUNIT_ASSERT_EQUAL(u"=A3-2"_ustr, m_pDoc->GetFormula(0, 3, 1));
+        CPPUNIT_ASSERT_EQUAL(u"=A2+5"_ustr, m_pDoc->GetFormula(2, 1, 1));
+        CPPUNIT_ASSERT_EQUAL(u"='Tab3'.A1"_ustr, m_pDoc->GetFormula(2, 2, 1));
+        CPPUNIT_ASSERT_EQUAL(u"=SUM(A2:A5)"_ustr, m_pDoc->GetFormula(2, 3, 1));
+        CPPUNIT_ASSERT_EQUAL(u"=C3-60"_ustr, m_pDoc->GetFormula(2, 4, 1));
     }
 
     // Change Tab1 and verify the copy is independent
-    m_pDoc->SetValue(ScAddress(0, 1, 1), 10.0); // 7 -> 10
+    m_pDoc->SetValue(ScAddress(0, 1, 0), 10.0); // 7 -> 10
     m_pDoc->CalcAll();
 
     // Tab1 should be changed
     {
-        CPPUNIT_ASSERT_EQUAL(10.0, m_pDoc->GetValue(ScAddress(0, 1, 1)));
+        CPPUNIT_ASSERT_EQUAL(10.0, m_pDoc->GetValue(ScAddress(0, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 0)));
+        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 0)));
+        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 0)));
+
+        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 0)));
+
+        CPPUNIT_ASSERT_EQUAL(15.0, m_pDoc->GetValue(ScAddress(2, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 0)));
+        CPPUNIT_ASSERT_EQUAL(19.0, m_pDoc->GetValue(ScAddress(2, 3, 0)));
+        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 0)));
+    }
+
+    // No change in Tab1_2
+    {
+        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 1)));
         CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 1)));
 
         CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 1)));
         CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 1)));
 
-        CPPUNIT_ASSERT_EQUAL(15.0, m_pDoc->GetValue(ScAddress(2, 1, 1)));
+        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 1)));
-        CPPUNIT_ASSERT_EQUAL(24.0, m_pDoc->GetValue(ScAddress(2, 3, 1))); // =SUM(A2:A6)=10+4+2+3+5
+        CPPUNIT_ASSERT_EQUAL(16.0, m_pDoc->GetValue(ScAddress(2, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 1)));
     }
 
-    // No change in Tab1_2
-    {
-        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 2)));
-        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 2)));
-        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 2)));
-        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 2)));
-        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 2)));
-
-        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 2)));
-        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 2)));
-        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 2)));
-        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 2)));
-        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 2)));
-
-        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 2)));
-        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 2)));
-        CPPUNIT_ASSERT_EQUAL(21.0, m_pDoc->GetValue(ScAddress(2, 3, 2)));
-        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 2)));
-        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 2)));
-    }
-
-    m_pDoc->DeleteTab(4);
     m_pDoc->DeleteTab(3);
     m_pDoc->DeleteTab(2);
     m_pDoc->DeleteTab(1);

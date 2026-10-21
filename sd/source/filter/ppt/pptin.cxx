@@ -233,7 +233,7 @@ bool ImplSdPPTImport::Import()
     SdrOutliner& rOutl = mrDoc.GetDrawOutliner();
     EEControlBits nControlWord = rOutl.GetEditEngine().GetControlWord();
     nControlWord |=  EEControlBits::ULSPACESUMMATION;
-    const_cast<EditEngine&>(rOutl.GetEditEngine()).SetControlWord( nControlWord );
+    rOutl.GetEditEngine().SetControlWord( nControlWord );
 
     SdrLayerAdmin& rAdmin = mrDoc.GetLayerAdmin();
     mnBackgroundObjectsLayerID = rAdmin.GetLayerID( sUNO_LayerName_background_objects );
@@ -1828,7 +1828,8 @@ void ImplSdPPTImport::ImportPageEffect( SdPage* pPage, const bool bNewAnimations
                                 {   // slide with sound effect
                                     pPage->SetSound( true );
                                     OUString aSoundFile( ReadSound( nSoundRef ) );
-                                    pPage->SetSoundFile( aSoundFile );
+                                    // Embedded in the .ppt, not a link: allow it.
+                                    pPage->SetSoundFile( aSoundFile, /*bAllowed*/true );
                                 }
                                 if ( nBuildFlags & ( 1 << 6 ) )     // Loop until next sound
                                     pPage->SetLoopSound( true );
@@ -2090,8 +2091,11 @@ void ImplSdPPTImport::FillSdAnimationInfo(SdAnimationInfo* pInfo, const PptInter
     // set local information into pInfo
     if( rIAtom.nSoundRef )
     {
+        // Embedded in the .ppt, not a link: allow it. Set the action before the
+        // bookmark so the URL is stored as a click-action sound.
+        pInfo->meClickAction = css::presentation::ClickAction_SOUND;
+        pInfo->mbClickSoundAllowed = true;
         pInfo->SetBookmark( ReadSound( rIAtom.nSoundRef ) );   // path to sound file in MS DOS notation
-        pInfo->meClickAction = css::presentation::ClickAction_SOUND;           // RunProgramAction
     }
 
     switch ( rIAtom.nAction )

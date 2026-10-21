@@ -159,6 +159,13 @@ public:
 
     virtual bool isSwapXAndY() const;
 
+    /** True for a template that reads the last two columns of its range as the
+        two dimensions its points are placed against, and every column before
+        them as one of the features. False for a template whose range reads the
+        way a reader expects without being told.
+     */
+    virtual bool usesLastTwoColumnsAsDimensions() const;
+
     // Methods for creating the diagram piecewise
 
     /** Allows derived classes to manipulate the diagrams whole, like changing
@@ -171,7 +178,7 @@ public:
 
     /** Creates a 2d or 3d cartesian coordinate system with mathematically
         oriented, linear scales with auto-min/max.  If the given
-        CoordinateSystemContainer is not empty, those coordinate system should
+        CoordinateSystemContainer is not empty, those coordinate systems should
         be reused.
 
         <p>The dimension depends on the value returned by getDimension().</p>
@@ -228,9 +235,9 @@ public:
         compatible axes in the container these should be maintained.
 
         <p>As default, this method creates as many axes as there are dimensions
-        in the given first coordinate system.  Each of the axis
+        in the given first coordinate system.  Each of the axes
         represents one of the dimensions of the coordinate systems. If there are series
-        requesting a secondary axes a secondary y axes is added</p>
+        requesting a secondary axis a secondary y axis is added</p>
      */
     void createAxes(
         const std::vector< rtl::Reference< ::chart::BaseCoordinateSystem > > & rCoordSys );

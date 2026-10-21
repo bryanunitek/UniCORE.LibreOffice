@@ -508,7 +508,7 @@ CPPUNIT_TEST_FIXTURE(SheetViewTest, testSyncValuesBetweenMainSheetAndSheetView)
     Scheduler::ProcessEventsToIdle();
     createNewSheetViewInCurrentView();
 
-    // Change content in View1 with default view -> default view ro sheet view sync
+    // Change content in View1 with default view -> default view to sheet view sync
     SfxLokHelper::setView(aView1.getViewID());
     typeCharsInCell(std::string("XYZ"), aA1.Col(), aA1.Row(), pTabView1, pModelObj);
     typeCharsInCell(std::string("=UPPER(\"x\"&\"Y\"&\"z\""), aA2.Col(), aA2.Row(), pTabView1,
@@ -2850,7 +2850,7 @@ CPPUNIT_TEST_FIXTURE(SyncTest, testUndo_DefaultView_DeleteContent)
         undo();
     }
 
-    // Default view and and sheet view state
+    // Default view and sheet view state
     CPPUNIT_ASSERT_EQUAL(expectedValues({ u"4", u"5", u"3", u"7" }),
                          getValues(pDocument, 0, 1, 4, 0));
     CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
@@ -2876,7 +2876,7 @@ CPPUNIT_TEST_FIXTURE(SyncTest, testUndo_DefaultView_DeleteContent)
         undo();
     }
 
-    // Default view and and sheet view state
+    // Default view and sheet view state
     CPPUNIT_ASSERT_EQUAL(expectedValues({ u"4", u"5", u"3", u"7" }),
                          getValues(pDocument, 0, 1, 4, 0));
     CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
@@ -3173,9 +3173,9 @@ CPPUNIT_TEST_FIXTURE(SyncTest, testSync_InsertNameList_DefaultAndSheetView)
     int nView3ID = aView3.getViewID();
 
     // Add a named range so InsertNameList has something to insert
-    ScRangeName* pGlobalNames = pDocument->GetRangeName();
+    ScRangeName& rGlobalNames = pDocument->GetRangeName();
     ScRangeData* pRangeData = new ScRangeData(*pDocument, u"TestRange"_ustr, u"$A$10:$B$20"_ustr);
-    pGlobalNames->insert(pRangeData);
+    rGlobalNames.insert(std::unique_ptr<ScRangeData>(pRangeData));
 
     // Create sheet view 1
     {
@@ -4338,7 +4338,7 @@ CPPUNIT_TEST_FIXTURE(SyncTest, testSync_AutoFilterRangeExpansionFromSheetView)
              ScModelObj*) {
              ScFieldEditEngine& rEE = rDocument.GetEditEngine();
              rEE.SetTextCurrentDefaults(u"6"_ustr);
-             rDocShell.GetDocFunc().SetEditCell(rPos, *rEE.CreateTextObject(), true);
+             rDocShell.GetDocFunc().SetEditCell(rPos, rEE.CreateTextObject(), true);
          },
           true },
     });

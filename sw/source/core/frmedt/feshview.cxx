@@ -208,7 +208,7 @@ bool SwFEShell::SelectObj( const Point& rPt, sal_uInt8 nFlag, SdrObject *pObj )
 
                     // in tables, fix lost position, when the selected image was
                     // anchored as character at beginning of the table row:
-                    // in this case, the text cursor was positionated after the
+                    // in this case, the text cursor was positioned after the
                     // floating table, and not before the image, as in other positions
                     // in the table row (and if the table wasn't a floating one,
                     // the text cursor lost completely)
@@ -404,15 +404,15 @@ bool SwFEShell::SelectObj( const Point& rPt, sal_uInt8 nFlag, SdrObject *pObj )
 }
 
 /*
- *  Description: MoveAnchor( nDir ) looked for an another Anchor for
+ *  Description: MoveAnchor( nDir ) looks for another Anchor for
  *  the selected drawing object (or fly frame) in the given direction.
- *  An object "as character" doesn't moves anyway.
+ *  An object "as character" doesn't move anyway.
  *  A page bounded object could move to the previous/next page with up/down,
  *  an object bounded "at paragraph" moves to the previous/next paragraph, too.
  *  An object bounded "at character" moves to the previous/next paragraph
  *  with up/down and to the previous/next character with left/right.
  *  If the anchor for at paragraph/character bounded objects has vertical or
- *  right_to_left text direction, the directions for up/down/left/right will
+ *  right_to_left text direction, the directions for up/down/left/right will be
  *  interpreted accordingly.
  *  An object bounded "at fly" takes the center of the actual anchor and looks
  *  for the nearest fly frame in the given direction.
@@ -836,7 +836,7 @@ void SwFEShell::EndDrag()
     // To restore consistency we should bring up the Xor again.
 
     // Reanimation from the hack #50778 to fix bug #97057
-    // May be not the best solution, but the one with lowest risc at the moment.
+    // May be not the best solution, but the one with lowest risk at the moment.
     // pView->ShowShownXor( GetOut() );
 
     pView->EndDragObj();
@@ -1365,6 +1365,67 @@ SdrObject* SwFEShell::GetObjAt( const Point& rPt )
     return pRet;
 }
 
+bool SwFEShell::IsTextOverBgObjectAt(const Point& rPt, const SdrObject* pObj)
+{
+    // Can return false in a number of cases, eg. when not background object
+    if (!pObj)
+        return false;
+
+    // #i89920#
+    // Do not select object in background which is overlapping this text
+    // at the given position.
+    const SwContact* pContact = ::GetUserCall(pObj);
+    if (!pContact)
+        return false;
+
+    const SwAnchoredObject* pAnchoredObj = pContact->GetAnchoredObj(pObj);
+    const SwFrameFormat* pFormat = pAnchoredObj->GetFrameFormat();
+    const SwFormatSurround& rSurround = pFormat->GetSurround();
+    // Function only relevant for objects with Through wrap
+    if (rSurround.GetSurround() != css::text::WrapTextMode_THROUGH)
+        return false;
+
+    // Not background object
+    const SdrLayerID nLayerId = pObj->GetLayer();
+    const IDocumentDrawModelAccess& rIDDMA = getIDocumentDrawModelAccess();
+    if (nLayerId != rIDDMA.GetHeaderFooterHellId() && nLayerId != rIDDMA.GetHellId())
+        return false;
+
+    const SwPageFrame* pPageFrame = GetLayout()->GetPageAtPos(rPt);
+    const SwContentFrame* pContentFrame(pPageFrame?pPageFrame->ContainsContent():nullptr);
+    while (pContentFrame)
+    {
+        if (pContentFrame->UnionFrame().Contains(rPt))
+        {
+            const SwTextFrame* pTextFrame = pContentFrame->DynCastTextFrame();
+            if (pTextFrame)
+            {
+                SwPosition aPos(GetDoc()->GetNodes());
+                Point aTmpPt(rPt);
+                if (pTextFrame->GetKeyCursorOfst(&aPos, aTmpPt))
+                {
+                    SwRect aCursorCharRect;
+                    if (pTextFrame->GetCharRect(aCursorCharRect, aPos))
+                    {
+                        if (aCursorCharRect.Overlaps(SwRect(pObj->GetLastBoundRect())))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                return true;
+            }
+            break;
+        }
+
+        pContentFrame = pContentFrame->GetNextContentFrame();
+    }
+    return false;
+}
+
 // Test if there is an object at that position and if it should be selected.
 bool SwFEShell::ShouldObjectBeSelected(const Point& rPt, bool *pSelectFrameInsteadOfCroppedImage)
 {
@@ -1384,64 +1445,8 @@ bool SwFEShell::ShouldObjectBeSelected(const Point& rPt, bool *pSelectFrameInste
 
         if (pObj)
         {
-            bRet = true;
-            const IDocumentDrawModelAccess& rIDDMA = getIDocumentDrawModelAccess();
-            // #i89920#
-            // Do not select object in background which is overlapping this text
-            // at the given position.
-            bool bObjInBackground( false );
-            if ( pObj->GetLayer() == rIDDMA.GetHellId() )
-            {
-                if (const SwContact* pContact = ::GetUserCall( pObj ))
-                {
-                    const SwAnchoredObject* pAnchoredObj = pContact->GetAnchoredObj( pObj );
-                    const SwFrameFormat* pFormat = pAnchoredObj->GetFrameFormat();
-                    const SwFormatSurround& rSurround = pFormat->GetSurround();
-                    if ( rSurround.GetSurround() == css::text::WrapTextMode_THROUGH )
-                    {
-                        bObjInBackground = true;
-                    }
-                }
-            }
-            if ( bObjInBackground )
-            {
-                const SwPageFrame* pPageFrame = GetLayout()->GetPageAtPos( rPt );
-                if( pPageFrame )
-                {
-                    const SwContentFrame* pContentFrame( pPageFrame->ContainsContent() );
-                    while ( pContentFrame )
-                    {
-                        if ( pContentFrame->UnionFrame().Contains( rPt ) )
-                        {
-                            const SwTextFrame* pTextFrame = pContentFrame->DynCastTextFrame();
-                            if ( pTextFrame )
-                            {
-                                SwPosition aPos(GetDoc()->GetNodes());
-                                Point aTmpPt( rPt );
-                                if (pTextFrame->GetKeyCursorOfst(&aPos, aTmpPt))
-                                {
-                                    SwRect aCursorCharRect;
-                                    if (pTextFrame->GetCharRect(aCursorCharRect,
-                                                aPos))
-                                    {
-                                        if ( aCursorCharRect.Overlaps( SwRect( pObj->GetLastBoundRect() ) ) )
-                                        {
-                                            bRet = false;
-                                        }
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                bRet = false;
-                            }
-                            break;
-                        }
-
-                        pContentFrame = pContentFrame->GetNextContentFrame();
-                    }
-                }
-            }
+            // Text in front takes precedence over background object
+            bRet = !IsTextOverBgObjectAt(rPt, pObj);
 
             // Don't select header / footer objects in body edition and vice-versa
             SwContact* pContact = static_cast<SwContact*>(pObj->GetUserCall());
@@ -1457,6 +1462,7 @@ bool SwFEShell::ShouldObjectBeSelected(const Point& rPt, bool *pSelectFrameInste
 
             if ( bRet )
             {
+                const IDocumentDrawModelAccess& rIDDMA = getIDocumentDrawModelAccess();
                 const SdrPage* pPage = rIDDMA.GetDrawModel()->GetPage(0);
                 for(auto it = pPage->begin() + pObj->GetOrdNum() + 1; it != pPage->end(); ++it)
                 {
@@ -2490,7 +2496,7 @@ bool SwFEShell::IsGroupSelected(bool bAllowDiagams)
             {
                 if(!bAllowDiagams)
                 {
-                    // Don't allow enter Diagrams
+                    // Don't allow entering Diagrams
                     if(pObj->isDiagram())
                     {
                         return false;

@@ -48,7 +48,7 @@
 #include <com/sun/star/registry/InvalidRegistryException.hpp>
 #include <com/sun/star/script/CannotConvertException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/script/XInvocation2.hpp>
+#include <com/sun/star/script/XInvocation.hpp>
 #include <com/sun/star/reflection/XIdlReflection.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 
@@ -63,7 +63,7 @@ using com::sun::star::uno::TypeDescription;
 using com::sun::star::uno::XComponentContext;
 using com::sun::star::container::NoSuchElementException;
 using com::sun::star::reflection::XIdlClass;
-using com::sun::star::script::XInvocation2;
+using com::sun::star::script::XInvocation;
 
 using namespace pyuno;
 
@@ -139,7 +139,7 @@ public:
 
 /// @throws RuntimeException
 void fillStruct(
-    const Reference< XInvocation2 > &inv,
+    const Reference< XInvocation > &inv,
     typelib_CompoundTypeDescription *pCompType,
     PyObject *initializer,
     PyObject *kwinitializer,
@@ -202,7 +202,7 @@ OUString getLibDirImpl()
 {
     OUString libDir;
 
-    // workarounds the $(ORIGIN) until it is available
+    // workaround the $(ORIGIN) until it is available
     if (Module::getUrlFromAddress(reinterpret_cast<oslGenericFunction>(getLibDir), libDir))
     {
         libDir = libDir.copy(0, libDir.lastIndexOf('/'));
@@ -486,7 +486,7 @@ static PyObject *createUnoStructHelper(
                         PyRef returnCandidate( PyUNOStruct_new( IdlStruct, c->xInvocation ) );
                         PyUNO *me = reinterpret_cast<PyUNO*>( returnCandidate.get() );
                         TypeDescription desc( typeName );
-                        OSL_ASSERT( desc.is() ); // could already instantiate an XInvocation2 !
+                        OSL_ASSERT( desc.is() ); // could already instantiate an XInvocation !
 
                         typelib_CompoundTypeDescription *pCompType =
                             reinterpret_cast<typelib_CompoundTypeDescription *>(desc.get());
@@ -592,7 +592,7 @@ static PyObject *getConstantByName(
                       typeName)
                   >>= td))
             {
-                throw RuntimeException( "pyuno.getConstantByName: " + typeName + "is not a constant" );
+                throw RuntimeException( "pyuno.getConstantByName: " + typeName + " is not a constant" );
             }
             PyRef constant = runtime.any2PyObject( td->getConstantValue() );
             ret = constant.getAcquired();

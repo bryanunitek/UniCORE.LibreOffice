@@ -973,21 +973,13 @@ void WorksheetGlobals::finalizeWorksheetImport()
         SCCOLROW nEndRow = static_cast<SCCOLROW>(aRange.aEnd.Row());
         aSpans.push_back(sc::ColRowSpan(nStartRow, nEndRow));
     }
-    ScDBCollection* pDocColl = rDoc.GetDBCollection();
-    if (!pDocColl->empty())
+    // The database range of a table gets its auto filter only after all sheets are imported, see
+    // TableBuffer::applyAutoFilters, so ask the table model instead.
+    for (const ScRange& rRange : getTables().getAutoFilterRanges(nTab))
     {
-        ScDBCollection::NamedDBs& rDBs = pDocColl->getNamedDBs();
-        for (const auto& rxDB : rDBs)
-        {
-            if (rxDB->GetTab() == nTab && rxDB->HasAutoFilter())
-            {
-                ScRange aRange;
-                rxDB->GetArea(aRange);
-                SCCOLROW nStartRow = static_cast<SCCOLROW>(aRange.aStart.Row());
-                SCCOLROW nEndRow = static_cast<SCCOLROW>(aRange.aEnd.Row());
-                aSpans.push_back(sc::ColRowSpan(nStartRow, nEndRow));
-            }
-        }
+        SCCOLROW nStartRow = static_cast<SCCOLROW>(rRange.aStart.Row());
+        SCCOLROW nEndRow = static_cast<SCCOLROW>(rRange.aEnd.Row());
+        aSpans.push_back(sc::ColRowSpan(nStartRow, nEndRow));
     }
     convertRows(aSpans);
     lclUpdateProgressBar( mxFinalProgress, 1.0 );
@@ -1074,7 +1066,7 @@ void WorksheetGlobals::insertHyperlink( const ScAddress& rAddress, const OUStrin
         SvxFieldItem aURLItem(aURLField, EE_FEATURE_FIELD);
         rEE.QuickInsertField(aURLItem, ESelection());
 
-        rDoc.setEditCell(rAddress, rEE.CreateTextObject());
+        rDoc.setEditCell(rAddress, std::make_unique<EditTextObject>(rEE.CreateTextObject()));
     }
     else
     {
@@ -1611,7 +1603,7 @@ void WorksheetHelper::putRichString( const ScAddress& rAddress, RichString& rStr
     rEE.SetSingleLine(bSingleLine);
 
     // The cell will own the text object instance returned from convert().
-    getDocImport().setEditCell(rAddress, rString.convert(rEE, pFirstPortionFont));
+    getDocImport().setEditCell(rAddress, std::make_unique<EditTextObject>(rString.convert(rEE, pFirstPortionFont)));
 
     rEE.SetSingleLine(false);
 }
@@ -1644,21 +1636,26 @@ void WorksheetHelper::finalizeNamedSheetViews()
     mrSheetGlob.finalizeNamedSheetViews();
 }
 
-void WorksheetHelper::setCellFormula( const ScAddress& rTokenAddress, const OUString& rTokenStr )
+void WorksheetHelper::setCellFormula(const ScAddress& rTokenAddress, const OUString& rTokenStr,
+                                     bool bDynamicArrayMaster)
 {
-    getFormulaBuffer().setCellFormula( rTokenAddress,  rTokenStr );
+    getFormulaBuffer().setCellFormula(rTokenAddress, rTokenStr, bDynamicArrayMaster);
 }
 
 void WorksheetHelper::setCellFormula(
     const ScAddress& rAddr, sal_Int32 nSharedId,
-    const OUString& rCellValue, sal_Int32 nValueType )
+    const OUString& rCellValue, sal_Int32 nValueType,
+    bool bDynamicArrayMaster)
 {
-    getFormulaBuffer().setCellFormula(rAddr, nSharedId, rCellValue, nValueType);
+    getFormulaBuffer().setCellFormula(rAddr, nSharedId, rCellValue, nValueType, bDynamicArrayMaster);
 }
 
-void WorksheetHelper::setCellArrayFormula(const ScRange& rRangeAddress, const ScAddress& rTokenAddress, const OUString& rTokenStr, bool bCachedSpill)
+void WorksheetHelper::setCellArrayFormula(const ScRange& rRangeAddress, const ScAddress& rTokenAddress,
+                                          const OUString& rTokenStr, bool bCachedSpill,
+                                          bool bDynamicArrayMaster)
 {
-    getFormulaBuffer().setCellArrayFormula(rRangeAddress,  rTokenAddress, rTokenStr, bCachedSpill);
+    getFormulaBuffer().setCellArrayFormula(rRangeAddress, rTokenAddress, rTokenStr, bCachedSpill,
+                                           bDynamicArrayMaster);
 }
 
 void WorksheetHelper::createSharedFormulaMapEntry(

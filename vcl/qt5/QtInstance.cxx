@@ -278,6 +278,8 @@ QtInstance::QtInstance()
 #else
     : WindowsInstance(std::make_unique<QtYieldMutex>(), new SalData)
 #endif
+#elif defined MACOSX
+    : MacInstance()
 #else
     : SalGenericInstance(std::make_unique<QtYieldMutex>(), new GenericUnixSalData)
 #endif
@@ -647,8 +649,9 @@ Platform QtInstance::GetPlatform() const
         return Platform::WASM;
     if (sPlatformName == u"windows")
         return Platform::Windows;
+    if (sPlatformName == u"cocoa")
+        return Platform::Mac;
 
-    assert(false && "Unsupported qt VCL platform");
     return Platform::Other;
 }
 
@@ -771,31 +774,32 @@ std::unique_ptr<QApplication> QtInstance::CreateQApplication()
     SAL_INFO("vcl.qt", "qt version string is " << aVersion);
 
     const sal_uInt32 nParams = osl_getCommandArgCount();
-    sal_uInt32 nDisplayValueIdx = 0;
     OUString aParam, aBin;
-
-    for (sal_uInt32 nIdx = 0; nIdx < nParams; ++nIdx)
-    {
-        osl_getCommandArg(nIdx, &aParam.pData);
-        if (aParam != "-display")
-            continue;
-        ++nIdx;
-        nDisplayValueIdx = nIdx;
-    }
 
     osl_getExecutableFile(&aParam.pData);
     osl_getSystemPathFromFileURL(aParam.pData, &aBin.pData);
     OString aExec = OUStringToOString(aBin, osl_getThreadTextEncoding());
 
-    m_pFakeArgvFreeable.reserve(4);
     m_pFakeArgvFreeable.emplace_back(strdup(aExec.getStr()));
     m_pFakeArgvFreeable.emplace_back(strdup("--nocrashhandler"));
-    if (nDisplayValueIdx)
+
+    for (sal_uInt32 nIdx = 0; nIdx < nParams; ++nIdx)
     {
-        m_pFakeArgvFreeable.emplace_back(strdup("-display"));
-        osl_getCommandArg(nDisplayValueIdx, &aParam.pData);
-        OString aDisplay = OUStringToOString(aParam, osl_getThreadTextEncoding());
-        m_pFakeArgvFreeable.emplace_back(strdup(aDisplay.getStr()));
+        osl_getCommandArg(nIdx, &aParam.pData);
+        if (aParam == "-display" && nIdx + 1 < nParams)
+        {
+            ++nIdx;
+            osl_getCommandArg(nIdx, &aParam.pData);
+            OString aDisplay = OUStringToOString(aParam, osl_getThreadTextEncoding());
+            m_pFakeArgvFreeable.emplace_back(strdup("-display"));
+            m_pFakeArgvFreeable.emplace_back(strdup(aDisplay.getStr()));
+            continue;
+        }
+        else if (aParam.startsWith(u"-style=") || aParam.startsWith(u"-stylesheet="))
+        {
+            const OString sStyleArg = OUStringToOString(aParam, osl_getThreadTextEncoding());
+            m_pFakeArgvFreeable.emplace_back(strdup(sStyleArg.getStr()));
+        }
     }
 
     m_nFakeArgc = m_pFakeArgvFreeable.size();
@@ -823,22 +827,21 @@ std::unique_ptr<QApplication> QtInstance::CreateQApplication()
     return pQApp;
 }
 
-bool QtInstance::DoExecute(int& nExitCode)
+bool QtInstance::DoExecute()
 {
-    const bool bIsUseSystemEventLoop = Application::IsUseSystemEventLoop();
-    if (bIsUseSystemEventLoop)
-    {
+    if (!Application::IsUseSystemEventLoop())
+        return false;
+
 #if defined __EMSCRIPTEN__
-        // For Emscripten, QApplication::exec() will unwind the stack by throwing a JavaScript
-        // exception, so we need to manually undo the call of AcquireYieldMutex() done in InitVCL:
-        ReleaseYieldMutex(false);
+    // For Emscripten, QApplication::exec() will unwind the stack by throwing a JavaScript
+    // exception, so we need to manually undo the call of AcquireYieldMutex() done in InitVCL:
+    ReleaseYieldMutex(false);
 #endif
-        nExitCode = QApplication::exec();
+    QApplication::exec();
 #if defined __EMSCRIPTEN__
-        O3TL_UNREACHABLE;
+    O3TL_UNREACHABLE;
 #endif
-    }
-    return bIsUseSystemEventLoop;
+    return true;
 }
 
 void QtInstance::DoQuit()
@@ -940,15 +943,14 @@ std::unique_ptr<weld::Builder> QtInstance::CreateInterimBuilder(vcl::Window* pPa
     return std::make_unique<QtInstanceBuilder>(pWidget, rUIRoot, rUIFile);
 }
 
-weld::MessageDialog* QtInstance::CreateMessageDialog(weld::Widget* pParent,
-                                                     VclMessageType eMessageType,
-                                                     VclButtonsType eButtonsType,
-                                                     const OUString& rPrimaryMessage)
+std::unique_ptr<weld::MessageDialog>
+QtInstance::CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType,
+                                VclButtonsType eButtonsType, const OUString& rPrimaryMessage)
 {
     SolarMutexGuard g;
     if (!IsMainThread())
     {
-        weld::MessageDialog* pDialog = nullptr;
+        std::unique_ptr<weld::MessageDialog> pDialog;
         RunInMainThread([&] {
             pDialog = CreateMessageDialog(pParent, eMessageType, eButtonsType, rPrimaryMessage);
         });
@@ -967,7 +969,8 @@ weld::MessageDialog* QtInstance::CreateMessageDialog(weld::Widget* pParent,
         pMessageBox->setText(toQString(rPrimaryMessage));
         pMessageBox->setIcon(vclMessageTypeToQtIcon(eMessageType));
         pMessageBox->setWindowTitle(toQString(GetStandardMessageDialogText(eMessageType)));
-        QtInstanceMessageDialog* pDialog = new QtInstanceMessageDialog(pMessageBox);
+        std::unique_ptr<QtInstanceMessageDialog> pDialog
+            = std::make_unique<QtInstanceMessageDialog>(pMessageBox);
         pDialog->addStandardButtons(eButtonsType);
         return pDialog;
     }

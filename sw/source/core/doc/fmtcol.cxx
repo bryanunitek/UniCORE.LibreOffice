@@ -23,11 +23,10 @@
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <osl/diagnose.h>
-#include <sal/macros.h>
 #include <svl/intitem.hxx>
-#include <svl/itemiter.hxx>
 #include <calbck.hxx>
 #include <doc.hxx>
+#include <charformats.hxx>
 #include <fmtcol.hxx>
 #include <fmtcolfunc.hxx>
 #include <hintids.hxx>

@@ -419,7 +419,7 @@ public:
 
     OUString                GetSelectionTextParam( bool bCompleteWords,
                                                    bool bEraseTrail );
-    virtual bool            HasSelection( bool bText = true ) const override;
+    virtual bool            HasSelection(bool bMustHaveText) const override;
     virtual OUString        GetSelectionText( bool bCompleteWords = false, bool bOnlyASample = false ) override;
     virtual bool            PrepareClose( bool bUI = true ) override;
     virtual void            MarginChanged() override;
@@ -519,6 +519,8 @@ public:
     SvxRuler&       GetHRuler()    { return *m_pHRuler; }
     SvxRuler&       GetVRuler()    { return *m_pVRuler; }
     void            InvalidateRulerPos();
+    // tdf#43959 - updates the ruler state immediately instead of running it asynchronous
+    void            UpdateRulerPos();
     void            ChangeTabMetric(FieldUnit eUnit);
     void            GetHRulerMetric(FieldUnit& rToFill) const;
 
@@ -586,7 +588,7 @@ public:
     // edit links
     void            EditLinkDlg();
     void            AutoCaption(const sal_uInt16 nType, const SvGlobalName *pOleId = nullptr);
-    void            InsertCaption(const InsCaptionOpt *pOpt);
+    void            InsertCaption(const InsCaptionOpt *pOpt, sal_uInt16 nCntType = 0);
 
     // Async call by Core
     void UpdatePageNums();
@@ -661,7 +663,7 @@ public:
 
     // public for D&D
     ErrCode     InsertGraphic( const OUString &rPath, const OUString &rFilter,
-                            bool bLink, GraphicFilter *pFlt );
+                            bool bLink, GraphicFilter *pFlt, bool bMultiInsert = false );
 
     void ExecuteScan( SfxRequest& rReq );
 

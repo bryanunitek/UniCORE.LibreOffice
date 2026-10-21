@@ -822,7 +822,7 @@ SwFootnotePortion *SwTextFormatter::NewFootnotePortion( SwTextFormatInfo &rInf,
         if( nReal < nOldReal )
             nReal = nOldReal;
         m_pCurr->SetRealHeight( nOldReal );
-        m_pCurr->Height( nOldHeight );
+        m_pCurr->Height(nOldHeight, false);
         m_pCurr->SetAscent( nOldAscent );
     }
 
@@ -1188,7 +1188,7 @@ TextFrameIndex SwTextFormatter::FormatQuoVadis(TextFrameIndex const nOffset)
         pGlue->SetLen(TextFrameIndex(0));
         pGlue->SetAscent( 0 );
         pGlue->SetNextPortion( nullptr );
-        pGlue->SetFixWidth(0);
+        pGlue->SetFixWidth(0_emu);
     }
 
     // Luxury: We make sure the QuoVadis text appears on the right, by

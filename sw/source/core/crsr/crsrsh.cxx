@@ -3310,7 +3310,7 @@ void SwCursorShell::YrsSetCursor(OString const& rId, ::std::optional<SwPosition>
         *it->second->m_pCurrentCursor->GetMark() = *roMark;
     }
 
-    // TODO check if pos is valid? just call UC? add cursor parameter so it doesnt check all of them?
+    // TODO check if pos is valid? just call UC? add cursor parameter so it doesn't check all of them?
     UpdateCursor();
 }
 
@@ -4275,6 +4275,25 @@ void SwCursorShell::ClearUpCursors()
     {
         pStartCursor->DeleteMark();
         bChanged = true;
+    }
+
+    // sw_PosOk only asks whether the position is in a content node, so a
+    // content index pointing past the end of the text survives it.
+    // It should not happen, but still happened when an undo left it behind when
+    // it rebuilt the text it had selected.
+    // Keep the offsets inside the node, so that users of the selection cannot run
+    // out of bounds.
+    for (SwPaM& rPaM : pStartCursor->GetRingContainer())
+    {
+        for (SwPosition* pPos : { rPaM.GetPoint(), rPaM.GetMark() })
+        {
+            const SwContentNode* pContentNode = pPos->GetNode().GetContentNode();
+            if (pContentNode && pPos->GetContentIndex() > pContentNode->Len())
+            {
+                pPos->SetContent(pContentNode->Len());
+                bChanged = true;
+            }
+        }
     }
     if (pStartCursor->GetPoint()->GetNode().IsTableNode())
     {

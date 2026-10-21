@@ -17,14 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
+#include <com/sun/star/linguistic2/XHyphenatedWord.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <editeng/unolingu.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <i18npool/breakiterator.hxx>
 #include <breakit.hxx>
 #include <hintids.hxx>
-#include <EnhancedPDFExportHelper.hxx>
 #include <SwPortionHandler.hxx>
 #include "porlay.hxx"
 #include "inftxt.hxx"
@@ -39,6 +40,7 @@
 #include <pam.hxx>
 #include <doc.hxx>
 #include <o3tl/temporary.hxx>
+#include <unotools/linguprops.hxx>
 #include <xmloff/odffields.hxx>
 #include <viewopt.hxx>
 
@@ -313,6 +315,100 @@ void SwTextPortion::BreakCut( SwTextFormatInfo &rInf, const SwTextGuess &rGuess 
     }
 }
 
+// is it a hyphenation of a compound word, which splits the compound word between the
+// compound constituents OR it hyphenates the compound word just before or inside its suffix?
+bool SwTextPortion::IsCompoundSplit( SwTextFormatInfo &rInf, const SwTextGuess &rGuess,
+                bool* pbHasSplitBefore )
+{
+    if ( !rGuess.HyphWord().is() )
+        return false;
+
+    LanguageType aLang = rInf.GetTextFrame()->GetLangOfChar(rInf.GetIdx(), 1, true);
+
+    // is compound-based "smart" hyphenation enabled?
+    SvxAdjustItem aAdjustItem =
+        rInf.GetTextFrame()->GetTextNodeForParaProps()->GetSwAttrSet().GetAdjust();
+    if ( !aAdjustItem.GetCompoundBased() )
+        return false;
+
+    // need Hunspell dictionaries with compound-based heuristics
+    // TODO update the list according to the dictionary update
+    if ( LANGUAGE_ICELANDIC != aLang &&
+         LANGUAGE_DANISH != aLang &&
+         LANGUAGE_DUTCH != aLang &&
+         LANGUAGE_DUTCH_BELGIAN != aLang &&
+         LANGUAGE_ESTONIAN != aLang &&
+         LANGUAGE_FINNISH != aLang &&
+         LANGUAGE_LATVIAN != aLang &&
+         LANGUAGE_GERMAN != aLang &&
+         LANGUAGE_GERMAN_AUSTRIAN != aLang &&
+         LANGUAGE_GERMAN_LIECHTENSTEIN != aLang &&
+         LANGUAGE_GERMAN_LUXEMBOURG != aLang &&
+         LANGUAGE_GERMAN_SWISS != aLang &&
+         LANGUAGE_HUNGARIAN != aLang &&
+         LANGUAGE_MONGOLIAN_CYRILLIC_MONGOLIA != aLang &&
+         LANGUAGE_NORWEGIAN_BOKMAL != aLang &&
+         LANGUAGE_NORWEGIAN_NYNORSK != aLang &&
+         LANGUAGE_SWEDISH != aLang &&
+         LANGUAGE_SWEDISH_FINLAND != aLang &&
+         LANGUAGE_USER_ESPERANTO != aLang )
+    {
+          return false;
+    }
+
+    LanguageTag aLanguageTag(aLang);
+
+    uno::Reference< linguistic2::XHyphenator >  xHyph;
+    xHyph = ::GetHyphenator();
+
+    ::css::uno::Sequence< ::css::beans::PropertyValue > aProperties(2);
+    ::css::beans::PropertyValue *pVal = aProperties.getArray();
+
+    pVal[0].Name    = UPN_HYPH_COMPOUND_MIN_LEADING;
+    pVal[0].Handle  = UPH_HYPH_COMPOUND_MIN_LEADING;
+    // 0: compound splitting: do not hyphenate inside second, third etc.
+    //    constituent of compound words
+    pVal[0].Value <<= sal_Int16(0);
+
+    pVal[1].Name    = UPN_HYPH_COMPOUND_MIN_TRAILING;
+    pVal[1].Handle  = UPH_HYPH_COMPOUND_MIN_TRAILING;
+    // 99<=: force compound splitting to recognize and handle compound words
+    // * do not hyphenate non-compound words
+    // * do not hyphenate the first constituent of compound words
+    // * but still hyphenate terminating suffix of compound words,
+    //   including hyphenation just before the suffix, i.e. after the
+    //   stem of the last constituent (condition: LEADING != TRAILING)
+    pVal[1].Value   <<= sal_Int16(99);
+
+    css::uno::Reference< css::linguistic2::XHyphenatedWord >
+        xHyphWord = xHyph->hyphenate( rGuess.HyphWord()->getWord(),
+                    aLanguageTag.getLocale(),
+                    rGuess.HyphWord()->getHyphenationPos() + 1,
+                    aProperties );
+
+    // compound splitting resulted the same break, so the word is really a compound word
+    // and the break point split compound constituents or it breaks the compound word
+    // 1) just before its suffix or 2) inside its suffix
+    if ( xHyphWord.is() &&
+                    xHyphWord->getHyphenationPos() == rGuess.HyphWord()->getHyphenationPos() )
+    {
+        return true;
+    }
+
+    // when IsCompoundSplit() is false,  pbHasSplitBefore's return value is true, if
+    // * the word is a compound word AND the break point
+    // * is not in a compound splitting position OR just before or inside the suffix AND
+    // * not inside the first constituent
+    // otherwise is false.
+    // Note: This value is used to optimize the hyphenation of compound words, trying to
+    // show more from the first constituent(s) and the broken one before the hyphenation,
+    // if it's not possible to skip the hyphenation completely.
+    if ( pbHasSplitBefore )
+        *pbHasSplitBefore = xHyphWord.is();
+
+    return false;
+}
+
 void SwTextPortion::BreakUnderflow( SwTextFormatInfo &rInf )
 {
     Truncate();
@@ -543,9 +639,10 @@ bool SwTextPortion::Format_( SwTextFormatInfo &rInf )
     const bool bInteropSmartJustify = bFullJustified &&
             rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
                     DocumentSettingId::JUSTIFY_LINES_WITH_SHRINKING);
+    sal_Int16 nSpacingMaximum = aAdjustItem.GetPropWordSpacingMaximum();
     const bool bNoWordSpacing = aAdjustItem.GetPropWordSpacing() == 100 &&
                     aAdjustItem.GetPropWordSpacingMinimum() == 100 &&
-                    aAdjustItem.GetPropWordSpacingMaximum() == 100 &&
+                    nSpacingMaximum == 100 &&
                     aAdjustItem.GetPropScaleWidthMinimum() == 100 &&
                     aAdjustItem.GetPropScaleWidthMaximum() == 100 &&
                     aAdjustItem.GetPropLetterSpacingMinimum() == 0 &&
@@ -555,9 +652,18 @@ bool SwTextPortion::Format_( SwTextFormatInfo &rInf )
     const bool bOldInterop = bInteropSmartJustify && bNoWordSpacing;
     const bool bWordSpacing = bFullJustified && (!bNoWordSpacing || bOldInterop);
     const bool bWordSpacingMaximum = bWordSpacing && !bOldInterop &&
-           aAdjustItem.GetPropWordSpacingMaximum() > aAdjustItem.GetPropWordSpacing();
+           ( nSpacingMaximum > aAdjustItem.GetPropWordSpacing() ||
+           nSpacingMaximum != 100 );
     const bool bWordSpacingMinimum = bWordSpacing && ( bOldInterop ||
-           aAdjustItem.GetPropWordSpacingMinimum() < aAdjustItem.GetPropWordSpacing() );
+           aAdjustItem.GetPropWordSpacingMinimum() < aAdjustItem.GetPropWordSpacing() ||
+           aAdjustItem.GetPropWordSpacingMinimum() != 100 );
+
+    // "less hyphenation"-level:
+    // 0.0 -> force less hyphenation (break at spaces between minimum and maximum word spacing)
+    // 1.0 -> force hyphenation, i.e. better spacing
+    // 0.5 -> interoperability mode (set also 75% minimum and 150% maximum word spacing)
+    float fLevel = rInf.GetTextFrame()->GetTextNodeForParaProps()->
+                            GetSwAttrSet().GetHyphenZone().GetLevel() / 100.0;
 
     if ( ( bInteropSmartJustify || bWordSpacing || bWordSpacingMaximum || bWordSpacingMinimum ) &&
          // tdf#164499 no shrinking in tabulated line
@@ -594,41 +700,163 @@ bool SwTextPortion::Format_( SwTextFormatInfo &rInf )
             static constexpr OUStringLiteral STR_BLANK = u"          ";
             sal_Int16 nSpaceWidth = rInf.GetTextSize(STR_BLANK).Width();
             sal_Int32 nRealSpaces = rInf.GetLineSpaceCount( pGuess->BreakPos() );
-            float fSpaceNormal = (rInf.GetLineWidth() - (rInf.GetBreakWidth() - nRealSpaces * nSpaceWidth/10.0))/nRealSpaces;
 
             bool bOrigHyphenated = pGuess->HyphWord().is() &&
                         pGuess->BreakPos() > rInf.GetLineStart();
+
+            // GetBreakWidth() doesn't contain the length of the hyphen, so
+            // add it in the case of hyphenation
+            // Note: it seems, kerning is missing before the hyphen in the
+            // text layout, so it doesn't need to measure the full line + hyphen
+            static constexpr OUString STR_HYPHEN = u"-"_ustr;
+            const SwTwips nHyphenWidth = rInf.GetTextSize(STR_HYPHEN).Width();
+
+            float fSpaceNormal = ( rInf.GetLineWidth() - ( rInf.GetBreakWidth() -
+                                                            nRealSpaces * nSpaceWidth/10.0 +
+                                                            ( bOrigHyphenated ? nHyphenWidth : 0)
+                                                         ) ) / nRealSpaces;
 
             // calculate available word spacing for letter spacing, and for the word spacing indicator
             SetSpacing(rInf, *pGuess, nRealSpaces, nSpaceWidth);
 
             // calculate line breaking with desired word spacing, also
-            // if the desired word spacing is 100%, but there is a greater
-            // maximum word spacing, and the word is hyphenated at the desired
-            // word spacing: to skip hyphenation, if the maximum word spacing allows it
-            if ( bWordSpacing || ( bWordSpacingMaximum && bOrigHyphenated ) )
+            // skip hyphenation, if the maximum word spacing allows it
+            // TODO complete it, when the desired word spacing is not 100%
+            if ( bWordSpacing )
             {
-                pGuess.emplace();
-                bFull = !pGuess->Guess( *this, rInf, Height(), nSpacesInLine, aAdjustItem.GetPropWordSpacing(), nSpaceWidth );
-                sal_Int32 nSpacesInLine2 = rInf.GetLineSpaceCount( pGuess->BreakPos() );
-                if ( aAdjustItem.GetPropLetterSpacingMinimum() < 0 || rInf.GetBreakWidth() <= rInf.GetLineWidth() )
+                std::optional<SwTextGuess> pGuess2(std::in_place);
+                std::optional<SwTextGuess> pGuess3(std::in_place);
+
+                // hyphenation slider, when 0.0 < fLevel < 0.5,
+                // enlarge both desired and maximum word spacing:
+                // map desired word spacing into (desired, original maximum) range
+                // map maximum word spacing into (original maximum, original maximum + 100) range
+                // allowing to remove very large word spacing or too much hyphenation
+                // using only the hyphenation slider
+                sal_Int32 nWeightedSpacing = fLevel >= 0.5
+                        ? aAdjustItem.GetPropWordSpacing()
+                        : aAdjustItem.GetPropWordSpacing() * fLevel * 2 +
+                                   aAdjustItem.GetPropWordSpacingMaximum() * (0.5 - fLevel) * 2;
+                // add a full extra space, when fLevel = 0.0 (max. Fewer hyphens)
+                sal_Int32 nExtraWordSpacing = fLevel >= 0.5
+                        ? 0
+                        : (0.5 - fLevel) * 200;
+
+                // FIXME no need for pGuess2, if the desired word space is 100%
+                bool bFull2 = !pGuess2->Guess( *this, rInf, Height(), nSpacesInLine,
+                                nWeightedSpacing, nSpaceWidth, nExtraWordSpacing );
+                // perhaps it's possible to skip hyphenation
+                bool bOrigHyphenated2 = pGuess2->HyphWord().is() &&
+                        pGuess2->BreakPos() > rInf.GetLineStart();
+
+                // possible compound splitting in the same word before the hyphenation
+                if ( bOrigHyphenated2 && pGuess2->HyphWord()->getHyphenationPos() >= 4 )
+                    pGuess3->Guess( *this, rInf, Height(), nSpacesInLine,
+                                    // fix this heuristics!!!
+                                (nWeightedSpacing+aAdjustItem.GetPropWordSpacingMaximum())/2, nSpaceWidth, nExtraWordSpacing );
+
+                bool bOrigHyphenated3 = pGuess3->HyphWord().is() &&
+                        pGuess3->BreakPos() > rInf.GetLineStart();
+
+                // perhaps there is a compound splitting in the same word before the plain hyphenation
+                bool bPossibleCompoundSplit = bOrigHyphenated3 &&
+                        aAdjustItem.GetCompoundBased() &&
+                        pGuess3->HyphWord()->getHyphenationPos() < pGuess2->HyphWord()->getHyphenationPos() &&
+                        pGuess3->HyphWord()->getWord().equals(pGuess2->HyphWord()->getWord());
+
+                if ( !bOrigHyphenated2 &&
+                                // try to remove hyphenation in interoperability mode or
+                                // allow desired word spacing
+                                ( ( bOrigHyphenated && fLevel <= 0.5 ) || fLevel > 0.5 ||
+                                      aAdjustItem.GetPropWordSpacing() == nSpacingMaximum ) &&
+                                  ( aAdjustItem.GetPropLetterSpacingMinimum() < 0 ||
+                                        rInf.GetBreakWidth() <= rInf.GetLineWidth() ) )
                 {
-                    fSpaceNormal = (rInf.GetLineWidth() - (rInf.GetBreakWidth() - nSpacesInLine2 * nSpaceWidth/10.0))/nSpacesInLine2;
-                    SetSpacing(rInf, *pGuess, nSpacesInLine2, nSpaceWidth);
+                    sal_Int32 nSpacesInLine2 = rInf.GetLineSpaceCount( pGuess2->BreakPos() );
+                    float fSpaceNormal2 = nSpacesInLine2 > 0
+                            ? ( rInf.GetLineWidth() - ( rInf.GetBreakWidth() -
+                                                             nSpacesInLine2 * nSpaceWidth/10.0 +
+                                                            ( bOrigHyphenated2 ? nHyphenWidth : 0)
+                                                         ) ) / nSpacesInLine2
+                            // no remaining space, only the space after the single word
+                            : 1;
+                    float z1NotWeighted = ( nSpaceWidth/10.0 +
+                                        ( fSpaceNormal2 - nSpaceWidth/10.0) ) / (nSpaceWidth/10.0);
+                    // skip hyphenation/desired spacing, if spacing doesn't exceed the maximum
+                    // word spacing, except if maximum word spacing is not different from the
+                    // desired one
+                    // FIXME if the desired word spacing is not 100%, and maximum word spacing
+                    // is not the same, but minimum word spacing is, the fallback is still 100%
+                    if ( ( z1NotWeighted <= ( nSpacingMaximum + nExtraWordSpacing )/100.0 ||
+                                    aAdjustItem.GetPropWordSpacing() == nSpacingMaximum ) &&
+                         // skip hyphenation only if it's not compound splitting
+                         ( !bOrigHyphenated || !IsCompoundSplit(rInf, *pGuess) ) &&
+                         // skip hyphenation for another hyphenation only, if that is a compound splitting
+                         ( !bOrigHyphenated2 || IsCompoundSplit(rInf, *pGuess2) ) )
+                    {
+                        pGuess.emplace();
+                        pGuess = std::move(pGuess2);
+                        SetSpacing(rInf, *pGuess, nSpacesInLine2, nSpaceWidth);
+                        fSpaceNormal = fSpaceNormal2;
+                        bOrigHyphenated = bOrigHyphenated2;
+                        bFull = bFull2;
+                    }
+                }
+
+                // check compound
+                if ( bOrigHyphenated && bPossibleCompoundSplit &&
+                                // try to remove hyphenation in interoperability mode or
+                                // allow desired word spacing
+                                ( ( bOrigHyphenated && fLevel <= 0.5 ) || fLevel > 0.5 ||
+                                      aAdjustItem.GetPropWordSpacing() == nSpacingMaximum ) &&
+                                  ( aAdjustItem.GetPropLetterSpacingMinimum() < 0 ||
+                                        rInf.GetBreakWidth() <= rInf.GetLineWidth() ) )
+                {
+                    sal_Int32 nSpacesInLine3 = rInf.GetLineSpaceCount( pGuess3->BreakPos() );
+                    float fSpaceNormal3 = nSpacesInLine3 > 0
+                            ? ( rInf.GetLineWidth() - ( rInf.GetBreakWidth() -
+                                                             nSpacesInLine3 * nSpaceWidth/10.0 +
+                                                            ( bOrigHyphenated3 ? nHyphenWidth : 0)
+                                                         ) ) / nSpacesInLine3
+                            // no remaining space, only the space after the single word
+                            : 1;
+                    float z1NotWeighted = ( nSpaceWidth/10.0 +
+                                        ( fSpaceNormal3 - nSpaceWidth/10.0) ) / (nSpaceWidth/10.0);
+                    // skip hyphenation/desired spacing, if spacing doesn't exceed the maximum
+                    // word spacing, except if maximum word spacing is not different from the
+                    // desired one
+                    // FIXME if the desired word spacing is not 100%, and maximum word spacing
+                    // is not the same, but minimum word spacing is, the fallback is still 100%
+                    if ( ( z1NotWeighted <= ( nSpacingMaximum + nExtraWordSpacing )/100.0 ||
+                                    aAdjustItem.GetPropWordSpacing() == nSpacingMaximum ) &&
+                         // skip hyphenation only if it's not compound splitting
+                         ( !bOrigHyphenated || !IsCompoundSplit(rInf, *pGuess) ) &&
+                         // skip hyphenation for another hyphenation only, if that is a compound splitting
+                         ( !bOrigHyphenated3 || IsCompoundSplit(rInf, *pGuess3) ) )
+                    {
+                        pGuess.emplace();
+                        pGuess = std::move(pGuess3);
+                        SetSpacing(rInf, *pGuess, nSpacesInLine3, nSpaceWidth);
+                        fSpaceNormal = fSpaceNormal3;
+                        bOrigHyphenated = bOrigHyphenated3;
+                        bFull = bFull2;
+                    }
                 }
             }
 
             sal_Int32 nSpacesInLineShrink = 0;
-            // TODO if both maximum word spacing or minimum word spacing can disable hyphenation, prefer the last one
+            // shrink the line
             if ( bWordSpacingMinimum )
             {
                 std::optional<SwTextGuess> pGuess2(std::in_place);
                 SwTwips nOldExtraSpace = rInf.GetExtraSpace();
                 // break the line after the hyphenated word, if it's possible
-                // (hyphenation is disabled in Guess(), when called with GetPropWordSpacingMinimum())
                 sal_uInt16 nMinimum = bOldInterop ? 75 : aAdjustItem.GetPropWordSpacingMinimum();
                 bool bFull2 = !pGuess2->Guess( *this, rInf, Height(), nSpacesInLine, nMinimum, nSpaceWidth );
                 nSpacesInLineShrink = rInf.GetLineSpaceCount( pGuess2->BreakPos() );
+                bool bShrunkHyphenated = pGuess2->HyphWord().is() &&
+                                 pGuess2->BreakPos() > rInf.GetLineStart();
+
                 if ( pGuess2->BreakWidth() > nOldWidth )
                 {
                     // instead of the maximum shrinking, break after the word which was hyphenated before
@@ -639,48 +867,113 @@ bool SwTextPortion::Format_( SwTextFormatInfo &rInf )
                     for (; j > i && rInf.GetText()[i] == CH_BLANK; --j);
                     sal_Int32 nOldBreakTrim = i;
                     sal_Int32 nOldBreak = j - i;
-                    for (; i < j; ++i)
+                    // try to find a better break point, i.e. nearer to the normal space
+                    // * if maximum shrinking adds at least a new word to the line,
+                    // * or it results a different hyphenation in the same word.
+                    // I.e. skip the search, when maximum shrinking removes a hyphenation.
+                    const bool bNewBreak = nSpacesInLineShrink > nSpacesInLine ||
+                            bShrunkHyphenated || fLevel > 0.5;
+                    // check i == j to update maximum shrinking TODO re-use the first result?
+                    // FIXME Greek can hyphenate after the first letter, too. Is first ++i OK?
+                    for (++i; i <= j && bNewBreak; ++i)
                     {
                         sal_Unicode cChar = rInf.GetText()[i];
-                        // first space after the hyphenated word, and it's not the chosen one
-                        if ( cChar == CH_BLANK )
+                        // search for the first space or for the first optimized hyphenation
+                        if ( cChar == CH_BLANK || nSpacesInLineShrink == nSpacesInLine )
                         {
                             // using a weighted word spacing, try to break the line after the hyphenated word
                             sal_Int32 nNewBreak = i - nOldBreakTrim;
                             SwTwips nWeightedSpacing = nMinimum * (1.0 * nNewBreak/nOldBreak) +
                                    aAdjustItem.GetPropWordSpacing() * (1.0 * (nOldBreak - nNewBreak)/nOldBreak);
                             std::optional<SwTextGuess> pGuess3(std::in_place);
-                            pGuess3->Guess( *this, rInf, Height(), nSpacesInLineShrink-1, nWeightedSpacing, nSpaceWidth );
 
-                            sal_Int32 nSpacesInLineShrink2 = rInf.GetLineSpaceCount( pGuess3->BreakPos() );
-                            if ( nSpacesInLineShrink2 == nSpacesInLineShrink )
-                            {
-                                nNewBreak = i - nOldBreakTrim - 1;
-                                nWeightedSpacing = nMinimum * (1.0 * nNewBreak/nOldBreak) +
-                                    aAdjustItem.GetPropWordSpacing() * (1.0 * (nOldBreak - nNewBreak)/nOldBreak);
-                                pGuess3->Guess( *this, rInf, Height(), nSpacesInLineShrink-1, nWeightedSpacing, nSpaceWidth );
-                            }
+                            // more spaces in the line at maximum shrinking -> call with lower space count,
+                            // except at re-calculation of the maximum shrinking
+                            sal_Int32 nLessSpaces =
+                                ( nSpacesInLineShrink > nSpacesInLine && i != j ) ? 1 : 0;
+                            pGuess3->Guess( *this, rInf, Height(),
+                                nSpacesInLineShrink - nLessSpaces, nWeightedSpacing, nSpaceWidth );
+
+                            // the same break yet, skip investigation
+                            if ( pGuess->BreakPos() == pGuess3->BreakPos() )
+                                    continue;
 
                             if ( pGuess3->BreakWidth() > nOldWidth )
                             {
                                 pGuess2.emplace();
                                 pGuess2 = std::move(pGuess3);
+                                // not shrinking and maximal shrinking have the same space count:
+                                // the new break point is a better hyphenation (or maximum
+                                // shrinking again), stop the search, otherwise search for the
+                                // space.
+                                // For example: "lim-itations" (not shrinking), "limitati-ons"
+                                // (maximum shrinking), "limi-tations" (optimized shrinking:
+                                // first break point after normal spacing, maybe it's not optimal,
+                                // but much better, than maximum shrinking or not shrinking at all)
+                                if ( nSpacesInLineShrink == nSpacesInLine )
+                                     break;
                             }
-                            break;
+
+                            // found a better break between words
+                            if ( cChar == CH_BLANK )
+                               break;
                         }
                     }
 
                     nSpacesInLineShrink = rInf.GetLineSpaceCount( pGuess2->BreakPos() );
-                    if ( rInf.GetBreakWidth() > rInf.GetLineWidth() || bIsPortion )
+                    bShrunkHyphenated = pGuess2->HyphWord().is() &&
+                                 pGuess2->BreakPos() > rInf.GetLineStart();
+
+                    if ( rInf.GetBreakWidth() + (bShrunkHyphenated ? nHyphenWidth : 0) > rInf.GetLineWidth() || bIsPortion )
                     {
                         float fExpansionWeight = static_cast<float>(1/1.7);
+
+                        SwTwips nHyphenShrunk = bShrunkHyphenated ? nHyphenWidth : 0;
+
                         float fSpaceShrunk = nSpacesInLineShrink > 0
-                                ? (rInf.GetLineWidth() - (rInf.GetBreakWidth() - nSpacesInLineShrink * nSpaceWidth/10.0))/nSpacesInLineShrink
+                                ? ( rInf.GetLineWidth() - ( rInf.GetBreakWidth() + nHyphenShrunk -
+                                    nSpacesInLineShrink * nSpaceWidth/10.0 ) ) / nSpacesInLineShrink
                                 : 1;
+
+                        // shrunk (z0) and weighted expanded (z1) space ratios
                         float z0 = (nSpaceWidth/10.0)/fSpaceShrunk;
                         float z1 = (nSpaceWidth/10.0+((fSpaceNormal-nSpaceWidth/10.0)*fExpansionWeight))/(nSpaceWidth/10.0);
+                        float z1NotWeighted = ( nSpaceWidth/10.0 +
+                                        ( fSpaceNormal - nSpaceWidth/10.0) ) / (nSpaceWidth/10.0);
+                        // true, if the pGuess2 hyphenation is inside the second or third etc. compound constituent
+                        bool bCompoundSplitBefore = false;
+                        // always shrink at average and lower hyphenation level,
+                        // if it removes a non-compound word splitting hyphenation
+                        bool bRemoveHyphenation = bOrigHyphenated && fLevel <= 0.5 &&
+                            ( !bShrunkHyphenated || IsCompoundSplit(rInf, *pGuess2, &bCompoundSplitBefore) ||
+                                // if shrinking results in a non-compound splitting hyphenation
+                                // inside the second or third etc. constituent of a compound word,
+                                // always shrink the line to show bigger part of that non-first constituent
+                                // (no need to check pGuess for bCompoundSplitBefore, too, because shrinking
+                                // doesn't skip a compound splitting position between pGuess and pGuess2)
+                                ( bCompoundSplitBefore && !IsCompoundSplit(rInf, *pGuess) ) );
+
+                        // Prefer shrinking, if 1) this is a portion OR,
                         // TODO shrink line portions only if needed
-                        if ( z1 >= z0 || bIsPortion )
+                        if ( bIsPortion ||
+                            // 2) NOT shrinking would result very large spacing ( >150% ) OR
+                            // 3) shrinking removes (worse) hyphenation OR ...
+                            z1NotWeighted > nSpacingMaximum/100.0 || bRemoveHyphenation ||
+                            // ... 4) * shrinking results better (weighted) spacing AND
+                            //        * doesn't result in an extra hyphenation AND
+                            //        * no losing of compound splitting
+                            ( z1 >= z0 && !( !bOrigHyphenated && bShrunkHyphenated ) &&
+                              !( bOrigHyphenated && bShrunkHyphenated && IsCompoundSplit(rInf, *pGuess) &&
+                                      !IsCompoundSplit(rInf, *pGuess2) ) ) ||
+                            // 5) or allow more and more hyphenation choosing better and better spacing
+                            // when shrinking results in an extra hyphenation
+                            ( z1 >= z0 && !bOrigHyphenated && bShrunkHyphenated && (
+                                ( fLevel > 0.5 && z1 * ( fLevel - 0.5 ) >= z0 * ( 1 - fLevel ) ) ||
+                                // except compound splitting, which is equally good,
+                                // than no hyphenation, so always choose that,
+                                // if it results in better spacing
+                                IsCompoundSplit(rInf, *pGuess2) )
+                            ) )
                         {
                             pGuess = std::move(pGuess2);
                             SetSpacing(rInf, *pGuess, nSpacesInLineShrink, nSpaceWidth);
@@ -985,8 +1278,8 @@ void SwTextPortion::FormatEOL( SwTextFormatInfo &rInf )
     Width( Width() - nBlankSize );
     rInf.X( rInf.X() - nBlankSize );
     SetLen( GetLen() - nHoleLen );
-    SwHolePortion* pHole = new SwHolePortion(*this);
-    pHole->SetBlankWidth(nBlankSize);
+    SwHolePortion* pHole = new SwHolePortion(*this, IsPaintTrailingSpaceDecorations(rInf));
+    pHole->SetBlankWidth(gfx::Length::twip(nBlankSize));
     pHole->SetLen(nHoleLen);
     Insert( pHole );
 
@@ -1014,47 +1307,35 @@ SwPositiveSize SwTextPortion::GetTextSize( const SwTextSizeInfo &rInf ) const
     return aSize;
 }
 
+void SwTextPortion::PaintDecorations(const SwTextPaintInfo& rInf) const
+{
+    rInf.DrawBackBrush(*this);
+    rInf.DrawBorder(*this);
+
+    rInf.DrawCSDFHighlighting(*this);
+
+    // do we have to repaint a post it portion?
+    if (rInf.OnWin() && mpNextPortion && !mpNextPortion->Width())
+        mpNextPortion->PrePaint(rInf, this);
+}
+
+void SwTextPortion::PaintText(const SwTextPaintInfo& rInf, const bool bWrong) const
+{
+    const bool bGrammarCheck = rInf.GetGrammarCheckList() != nullptr;
+    const bool bSmartTags = rInf.GetSmartTags() != nullptr;
+
+    if (bWrong || bSmartTags || bGrammarCheck)
+        rInf.DrawMarkedText(*this, rInf.GetLen(), bWrong, bSmartTags, bGrammarCheck);
+    else
+        rInf.DrawText(*this, rInf.GetLen());
+}
+
 void SwTextPortion::Paint( const SwTextPaintInfo &rInf ) const
 {
-    if (rInf.OnWin() && TextFrameIndex(1) == rInf.GetLen()
-        && CH_TXT_ATR_FIELDEND == rInf.GetText()[sal_Int32(rInf.GetIdx())])
+    if( GetLen() )
     {
-        assert(false); // this is some debugging only code
-        rInf.DrawBackBrush( *this );
-        const OUString aText(CH_TXT_ATR_SUBST_FIELDEND);
-        rInf.DrawText(aText, *this, TextFrameIndex(0), TextFrameIndex(aText.getLength()));
-    }
-    else if (rInf.OnWin() && TextFrameIndex(1) == rInf.GetLen()
-        && CH_TXT_ATR_FIELDSTART == rInf.GetText()[sal_Int32(rInf.GetIdx())])
-    {
-        assert(false); // this is some debugging only code
-        rInf.DrawBackBrush( *this );
-        const OUString aText(CH_TXT_ATR_SUBST_FIELDSTART);
-        rInf.DrawText(aText, *this, TextFrameIndex(0), TextFrameIndex(aText.getLength()));
-    }
-    else if( GetLen() )
-    {
-        rInf.DrawBackBrush( *this );
-        rInf.DrawBorder( *this );
-
-        rInf.DrawCSDFHighlighting(*this);
-
-        // do we have to repaint a post it portion?
-        if( rInf.OnWin() && mpNextPortion && !mpNextPortion->Width() )
-            mpNextPortion->PrePaint( rInf, this );
-
-        auto const* pWrongList = rInf.GetpWrongList();
-        auto const* pGrammarCheckList = rInf.GetGrammarCheckList();
-        auto const* pSmarttags = rInf.GetSmartTags();
-
-        const bool bWrong = nullptr != pWrongList;
-        const bool bGrammarCheck = nullptr != pGrammarCheckList;
-        const bool bSmartTags = nullptr != pSmarttags;
-
-        if ( bWrong || bSmartTags || bGrammarCheck )
-            rInf.DrawMarkedText( *this, rInf.GetLen(), bWrong, bSmartTags, bGrammarCheck );
-        else
-            rInf.DrawText( *this, rInf.GetLen() );
+        PaintDecorations(rInf);
+        PaintText(rInf, rInf.GetpWrongList() != nullptr);
     }
 }
 
@@ -1244,7 +1525,7 @@ SwPositiveSize SwTextInputFieldPortion::GetTextSize( const SwTextSizeInfo &rInf 
 }
 
 SwHolePortion::SwHolePortion(const SwTextPortion& rPor, bool bShowUnderline)
-    : m_nBlankWidth( 0 )
+    : m_nBlankWidth( 0_emu )
     , m_bShowUnderline(bShowUnderline)
 {
     SetLen( TextFrameIndex(1) );
@@ -1277,11 +1558,7 @@ void SwHolePortion::Paint( const SwTextPaintInfo &rInf ) const
     if( !rInf.GetOut() )
         return;
 
-    bool bPDFExport = rInf.GetVsh()->GetViewOptions()->IsPDFExport();
-
-    // #i16816# export stuff only needed for tagged pdf support
-    if (bPDFExport && !SwTaggedPDFHelper::IsExportTaggedPDF( *rInf.GetOut()) )
-        return;
+    const bool bPDFExport = rInf.GetVsh()->GetViewOptions()->IsPDFExport();
 
     // #i68503# the hole must have no decoration for a consistent visual appearance
     const SwFont* pOrigFont = rInf.GetFont();
@@ -1334,8 +1611,8 @@ void SwHolePortion::dumpAsXml(xmlTextWriterPtr pWriter, const OUString& rText, T
     dumpAsXmlAttributes(pWriter, rText, nOffset);
     nOffset += GetLen();
 
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("blank-width"),
-                                      BAD_CAST(OString::number(m_nBlankWidth).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("blank-width-twips"),
+                                      BAD_CAST(OString::number(m_nBlankWidth.as_twip<SwTwips>()).getStr()));
 
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("show-underline"),
                                       BAD_CAST(OString::boolean(m_bShowUnderline).getStr()));

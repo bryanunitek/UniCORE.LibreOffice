@@ -20,7 +20,7 @@
 
 #include <svx/svxdlg.hxx>
 
-//AbstractDialogFactory_Impl implementations
+// AbstractDialogFactory_Impl implementation
 class AbstractDialogFactory_Impl : public SvxAbstractDialogFactory
 {
 public:
@@ -85,10 +85,9 @@ public:
                                                                      const SfxItemSet* pAttr,
                                                                      const SdrView* pSdrView,
                                                                      bool bSizeTabPage) override;
-    virtual VclPtr<AbstractSpellDialog>  CreateSvxSpellDialog(
-                            weld::Window* pParent,
-                            SfxBindings* pBindings,
-                            svx::SpellDialogChildWindow* pSpellChildWindow ) override;
+    virtual VclPtr<AbstractSpellDialog>
+    CreateSvxSpellDialog(weld::Window* pParent, SfxBindings* pBindings,
+                         svx::SpellDialogChildWindow& rSpellChildWindow) override;
 
     virtual VclPtr<VclAbstractDialog> CreateActualizeProgressDialog(weld::Widget* pParent, GalleryTheme* pThm) override;
     virtual VclPtr<AbstractTitleDialog> CreateTitleDialog(weld::Widget* pParent, const OUString& rOldText) override;
@@ -223,11 +222,6 @@ public:
     virtual VclPtr<AbstractDiagramDialog> CreateDiagramDialog(
         weld::Window* pParent,
         SdrObjGroup& rDiagram) override;
-
-    virtual VclPtr<AbstractQueryDialog> CreateQueryDialog(
-        weld::Window* pParent,
-        const OUString& sTitle, const OUString& sText, const OUString& sQuestion,
-        bool bShowAgain) override;
 
 #ifdef _WIN32
     virtual VclPtr<VclAbstractDialog> CreateFileExtCheckDialog(weld::Window* pParent,

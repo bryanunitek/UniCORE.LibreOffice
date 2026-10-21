@@ -2408,7 +2408,8 @@ SwHTMLWriter& OutHTML_SwTextNode( SwHTMLWriter& rWrt, const SwContentNode& rNode
         aEndPosLst.OutStartAttrs( rWrt, nStrPos + nOffset );
     }
 
-    bool bWriteBreak = (HtmlTokenId::PREFORMTXT_ON != rWrt.m_nLastParaToken);
+    // tdf#167445 Empty nodes don't need <br> elements
+    bool bWriteBreak = (HtmlTokenId::PREFORMTXT_ON != rWrt.m_nLastParaToken && !rStr.isEmpty());
     if (bWriteBreak && (pNd->GetNumRule() || rWrt.mbReqIF))
     {
         // One line-break is exactly one <br> in the ReqIF case.
@@ -3326,6 +3327,8 @@ const SwAttrFnTab aHTMLAttrFnTab = {
 /* RES_CHRATR_SCRIPT_HINT */        nullptr,
 /* RES_CHRATR_OPTICAL_SIZING */     OutHTML_CSS1Attr,
 /* RES_CHRATR_FONT_VARIATIONS */    OutHTML_CSS1Attr,
+/* RES_CHRATR_CJK_FONT_VARIATIONS */ OutHTML_CSS1Attr,
+/* RES_CHRATR_CTL_FONT_VARIATIONS */ OutHTML_CSS1Attr,
 
 /* RES_TXTATR_REFMARK */            nullptr,
 /* RES_TXTATR_TOXMARK */            nullptr,
@@ -3438,7 +3441,7 @@ const SwAttrFnTab aHTMLAttrFnTab = {
 /* RES_GRFATR_GAMMA */              nullptr,
 /* RES_GRFATR_INVERT */             nullptr,
 /* RES_GRFATR_TRANSPARENCY */       nullptr,
-/* RES_GRFATR_DRWAMODE */           nullptr,
+/* RES_GRFATR_DRAWMODE */           nullptr,
 /* RES_GRFATR_DUMMY3 */             nullptr,
 /* RES_GRFATR_VISIBLE */            nullptr,
 /* RES_GRFATR_DUMMY5 */             nullptr,

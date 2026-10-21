@@ -56,8 +56,9 @@
 #include <fmtpdsc.hxx>
 #include <fmtrowsplt.hxx>
 #include <frmatr.hxx>
-#include <../../core/inc/rootfrm.hxx>
+#include <rootfrm.hxx>
 #include <doc.hxx>
+#include <charformats.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentStylePoolAccess.hxx>
@@ -1520,6 +1521,16 @@ void WW8Export::AppendBookmark( const OUString& rName )
     m_pBkmks->Append( nSttCP, rName );
 }
 
+void WW8Export::AppendBookmarkStart(const OUString& rName)
+{
+    AppendBookmark(rName);
+}
+
+void WW8Export::AppendBookmarkEnd(const OUString& rName, bool /*bIsFinal*/)
+{
+    AppendBookmark(rName);
+}
+
 void WW8Export::AppendBookmarkEndWithCorrection( const OUString& rName )
 {
     sal_uInt64 nEndCP = Fc2Cp( Strm().Tell() );
@@ -2389,7 +2400,8 @@ void WW8AttributeOutput::TablePositioning(const SwFrameFormat* pFlyFormat)
             nTDxaAbs = -8;
             break;
         default:
-            nTDxaAbs = pFlyFormat->GetHoriOrient().GetPos();
+            nTDxaAbs = MakeSafePositioningValue(
+                pFlyFormat->GetHoriOrient().getPosition().as_twip<SwTwips>());
             break;
     }
     m_rWW8Export.InsUInt16(NS_sprm::TDxaAbs::val);
@@ -2412,7 +2424,8 @@ void WW8AttributeOutput::TablePositioning(const SwFrameFormat* pFlyFormat)
             nTDyaAbs = -12;
             break;
         default:
-            nTDyaAbs = pFlyFormat->GetVertOrient().GetPos();
+            nTDyaAbs = MakeSafePositioningValue(
+                pFlyFormat->GetVertOrient().getPosition().as_twip<SwTwips>());
             break;
     }
     m_rWW8Export.InsUInt16(NS_sprm::TDyaAbs::val);
@@ -2502,7 +2515,7 @@ void WW8AttributeOutput::TableDefinition(const ww8::WW8TableNodeInfoInner::Point
                 break;
 
             default:
-                nTableOffset = rHori.GetPos();
+                nTableOffset = rHori.getPosition().as_twip<SwTwips>();
                 const SvxLRSpaceItem& rLRSp = pFormat->GetLRSpace();
                 nTableOffset += rLRSp.ResolveLeft();
 

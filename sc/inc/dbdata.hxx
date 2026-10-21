@@ -89,6 +89,11 @@ struct TableColumnAttributes
     std::optional<OUString> maTotalsRowLabel = std::nullopt;
     std::optional<OUString> maTotalsFunction = std::nullopt;
     std::optional<OUString> maCustomFunction = std::nullopt;
+    // Whether the totals row cell for this column holds any value at all, whether or
+    // not that value ended up producing a label or a function above. A column whose
+    // totals row cell is empty is not the same as a column whose cell holds content
+    // that this class chose not to describe as a label or a function.
+    bool mbHasContent = false;
 };
 
 // xmlColumnPr attributes
@@ -220,6 +225,7 @@ public:
     void        MoveTo(SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
                        SCCOL nUpdateCol = -1);
     void        SetByRow(bool bByR)             { bByRow = bByR; }
+    bool        IsByRow() const                 { return bByRow; }
     bool        HasHeader() const               { return bHasHeader; }
     void        SetHeader(bool bHasH)           { bHasHeader = bHasH; }
     bool        HasTotals() const               { return bHasTotals; }
@@ -236,7 +242,7 @@ public:
     const OUString& GetTableType() const           { return aTableType; }
 
     void        SetContainer( ScDBDataContainerBase* pContainer ) { mpContainer = pContainer; }
-    /** Returns header row range if has headers, else invalid range. */
+    /** Returns header row range if it has headers, else invalid range. */
     ScRange     GetHeaderArea() const;
     void        StartTableColumnNamesListener();
     void        EndTableColumnNamesListener();
@@ -254,7 +260,7 @@ public:
 
     /** Refresh/update the column names with the header row's cell contents
         within the given range. */
-    void RefreshTableColumnNames( ScDocument& rDoc, const ScRange& rRange );
+    void RefreshTableColumnNames( ScDocument& rDoc, const ScRangeList& rRangeList );
 
     /** Finds the column named rName and returns the corresponding offset
         within the table.
@@ -265,8 +271,8 @@ public:
      */
     sal_Int32   GetColumnNameOffset( const OUString& rName ) const;
 
-    /** Returns table column name if nCol is within column range and name
-        is stored, else empty string. */
+    /** Returns table column name if nCol is within column range and the name
+        is stored, else an empty string. */
     const OUString & GetTableColumnName( SCCOL nCol ) const;
 
     OUString GetSourceString() const;

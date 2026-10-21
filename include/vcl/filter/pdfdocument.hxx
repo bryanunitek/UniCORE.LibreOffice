@@ -223,15 +223,10 @@ public:
     const OString& GetValue() const;
     SAL_DLLPRIVATE sal_uInt64 GetLocation() const;
     sal_uInt64 GetLength() const { return m_aValue.getLength(); }
-
-    void writeString(OStringBuffer& rBuffer) override
-    {
-        rBuffer.append("/");
-        rBuffer.append(m_aValue);
-    }
+    void writeString(OStringBuffer& rBuffer) override;
 };
 
-/// Dictionary object: a set key-value pairs.
+/// Dictionary object: a set of key-value pairs.
 class VCL_DLLPUBLIC PDFDictionaryElement final : public PDFElement
 {
     /// Key-value pairs when the dictionary is a nested value.
@@ -313,7 +308,7 @@ class XRefEntry
      * stored.
      */
     sal_uInt64 m_nOffset = 0;
-    /// Are changed as part of an incremental update?.
+    /// Changed as part of an incremental update.
     bool m_bDirty = false;
 
 public:
@@ -546,11 +541,13 @@ public:
     SAL_DLLPRIVATE void ReadXRef(SvStream& rStream);
     SAL_DLLPRIVATE void ReadXRefStream(SvStream& rStream);
     SAL_DLLPRIVATE static void SkipWhitespace(SvStream& rStream);
-    /// Instead of all whitespace, just skip CR and NL characters.
-    SAL_DLLPRIVATE static void SkipLineBreaks(SvStream& rStream);
+    /// Skip one end of line, which is CR, or NL, or CR followed by NL.
+    SAL_DLLPRIVATE static void SkipEndOfLine(SvStream& rStream);
     SAL_DLLPRIVATE size_t GetObjectOffset(size_t nIndex) const;
     const std::vector<std::unique_ptr<PDFElement>>& GetElements() const;
     std::vector<PDFObjectElement*> GetPages();
+    /// Every object of the document, those an object stream holds included.
+    std::vector<PDFObjectElement*> GetObjects();
     PDFObjectElement* GetCatalog();
     /// Remember the end location of an EOF token.
     SAL_DLLPRIVATE void PushBackEOF(size_t nOffset);
@@ -591,8 +588,12 @@ public:
     SAL_DLLPRIVATE bool updateObject(sal_Int32 n) override;
     /// See vcl::PDFObjectContainer::writeBuffer().
     SAL_DLLPRIVATE bool writeBufferBytes(const void* pBuffer, sal_uInt64 nBytes) override;
+    /// See vcl::PDFObjectContainer::appendStringObject(); this container has no cipher.
+    SAL_DLLPRIVATE void appendStringObject(OStringBuffer& rLine, std::string_view aBytes,
+                                           sal_Int32 nObject) override;
     void checkAndEnableStreamEncryption(sal_Int32 /*nObject*/) override {}
     void disableStreamEncryption() override {}
+    sal_uInt64 calculateStreamSize(sal_uInt64 const nDataSize) const override { return nDataSize; }
 };
 
 /// The trailer singleton is at the end of the doc.

@@ -56,7 +56,11 @@
 
 void WeldEditView::SetText(const OUString& rStr) { GetEditEngine()->SetText(rStr); }
 
-OUString WeldEditView::GetText() const { return GetEditEngine()->GetText(); }
+OUString WeldEditView::GetText() const
+{
+    EditEngine* pEditEngine = GetEditEngine();
+    return pEditEngine ? GetEditEngine()->GetText() : OUString();
+}
 
 void WeldEditView::SetModifyHdl(const Link<LinkParamNone*, void>& rLink)
 {
@@ -563,7 +567,7 @@ public:
 
     virtual void UpdateData() override
     {
-        // would possibly only by needed if the XText interface is implemented
+        // would possibly only be needed if the XText interface is implemented
         // and its text needs to be updated.
     }
     virtual SfxBroadcaster& GetBroadcaster() const override
@@ -933,7 +937,7 @@ IMPL_LINK(WeldTextForwarder, NotifyHdl, EENotify&, rNotify, void)
         if (rNotify.eNotificationType == EE_NOTIFY_PROCESSNOTIFICATIONS
             && !pEditEngine->IsUpdateLayout())
         {
-            // tdf#143088 an UpdateMode of false will just to on to cause
+            // tdf#143088 an UpdateMode of false will just go on to cause
             // AccessibleTextHelper_Impl::GetTextForwarder to throw an
             // exception as a Frozen EditEngine is considered Invalid so return
             // early instead
@@ -1468,8 +1472,8 @@ void WeldTextForwarder::CopyText(const SvxTextForwarder& rSource)
     EditEngine* pEditEngine = m_rEditAcc.GetEditEngine();
     if (pEditEngine && pSourceEditEngine)
     {
-        std::unique_ptr<EditTextObject> pNewTextObject = pSourceEditEngine->CreateTextObject();
-        pEditEngine->SetText(*pNewTextObject);
+        EditTextObject aNewTextObject = pSourceEditEngine->CreateTextObject();
+        pEditEngine->SetText(aNewTextObject);
     }
 }
 

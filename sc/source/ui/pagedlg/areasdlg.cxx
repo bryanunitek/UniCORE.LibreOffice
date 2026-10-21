@@ -144,7 +144,7 @@ void ScPrintAreasDlg::Close()
 
 bool ScPrintAreasDlg::IsTableLocked() const
 {
-    //  Printing areas are per table, therefore it makes no sense,
+    //  Printing areas are per table, therefore it makes no sense
     //  to switch the table during input
 
     return true;
@@ -389,13 +389,13 @@ void ScPrintAreasDlg::Impl_FillLists()
 
     // Get ranges and remember in ListBoxen
 
-    ScRangeName* pRangeNames = rDoc.GetRangeName();
+    ScRangeName& rRangeNames = rDoc.GetRangeName();
 
-    if (!pRangeNames || pRangeNames->empty())
+    if (rRangeNames.empty())
         // No range names to process.
         return;
 
-    for (const auto& rEntry : *pRangeNames)
+    for (const auto& rEntry : rRangeNames)
     {
         if (!rEntry.second->HasType(ScRangeData::Type::AbsArea   )
             && !rEntry.second->HasType(ScRangeData::Type::RefArea)

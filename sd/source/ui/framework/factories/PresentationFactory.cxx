@@ -32,7 +32,6 @@ namespace com::sun::star::uno { class XComponentContext; }
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::drawing::framework;
 
 
 namespace sd::framework {
@@ -47,12 +46,12 @@ class PresentationView : public AbstractView
 {
 public:
     explicit PresentationView (const rtl::Reference<ResourceId>& rxViewId)
-        : mxResourceId(rxViewId) {};
+        : mxResourceId(rxViewId) {}
 
     // XView
 
     virtual rtl::Reference<ResourceId> getResourceId() override
-    { return mxResourceId; };
+    { return mxResourceId; }
 
     virtual bool isAnchorOnly() override
     { return false; }
@@ -61,7 +60,7 @@ private:
     rtl::Reference<ResourceId> mxResourceId;
 };
 
-} // end of anonymous namespace.
+} // end of anonymous namespace
 
 //===== PresentationFactory ===================================================
 

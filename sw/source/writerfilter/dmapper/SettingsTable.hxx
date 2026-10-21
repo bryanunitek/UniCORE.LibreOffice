@@ -46,7 +46,7 @@ public:
     SettingsTable(const DomainMapper& rDomainMapper);
     virtual ~SettingsTable() override;
 
-    //returns default TabStop in 1/100th mm
+    /// Returns default TabStop in 1/100th mm.
     int GetDefaultTabStop() const;
 
     /// Automatically update styles from document template?
@@ -123,7 +123,7 @@ private:
     // Table
     virtual void lcl_entry(const writerfilter::Reference<Properties>::Pointer_t& ref) override;
 
-    int m_nDefaultTabStop;
+    sal_uInt16 m_nDefaultTabStop;
 
     bool m_bRecordChanges;
     bool m_bShowInsDelChanges;

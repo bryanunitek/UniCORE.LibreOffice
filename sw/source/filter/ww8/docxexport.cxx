@@ -24,6 +24,7 @@
 #include "docxattributeoutput.hxx"
 #include "docxsdrexport.hxx"
 #include "docxhelper.hxx"
+#include "NamespaceAdjustmentHandler.hxx"
 
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
@@ -40,7 +41,11 @@
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/text/XTextFieldsSupplier.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
-#include <com/sun/star/xml/xslt/XSLTTransformer.hpp>
+#include <com/sun/star/xml/xpath/XPathAPI.hpp>
+#include <com/sun/star/xml/dom/XNode.hpp>
+#include <com/sun/star/xml/dom/XNodeList.hpp>
+#include <com/sun/star/xml/xpath/XXPathObject.hpp>
+#include <databindingnamespaces.hxx>
 
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
@@ -74,6 +79,7 @@
 #include <fmtline.hxx>
 #include <fmtpdsc.hxx>
 #include <frmfmt.hxx>
+#include <frameformats.hxx>
 #include <section.hxx>
 #include <ftninfo.hxx>
 #include <pagedesc.hxx>
@@ -231,6 +237,25 @@ void DocxExport::AppendBookmark( const OUString& rName )
     std::vector< OUString > aEnds { rName };
 
     m_pAttrOutput->WriteBookmarks_Impl( aStarts, aEnds );
+}
+
+void DocxExport::AppendBookmarkStart(const OUString& rName)
+{
+    std::vector<OUString> aStarts{ rName };
+    std::vector<OUString> aEnds{};
+
+    m_pAttrOutput->WriteBookmarks_Impl(aStarts, aEnds);
+}
+
+void DocxExport::AppendBookmarkEnd(const OUString& rName, bool bIsFinal)
+{
+    std::vector<OUString> aStarts{};
+    std::vector<OUString> aEnds{ rName };
+
+    if (bIsFinal)
+        m_pAttrOutput->WriteFinalBookmarks_Impl(aStarts, aEnds);
+    else
+        m_pAttrOutput->WriteBookmarks_Impl(aStarts, aEnds);
 }
 
 void DocxExport::AppendAnnotationMarks( const SwWW8AttrIter& rAttrs, sal_Int32 nCurrentPos, sal_Int32 nLen )
@@ -711,6 +736,8 @@ ErrCode DocxExport::ExportDocument_Impl()
 
     WriteCustomXml();
 
+    WriteWebSettings();
+
     WriteEmbeddings();
 
     if (m_bDocm)
@@ -1167,6 +1194,8 @@ void DocxExport::WriteDocVars(const sax_fastparser::FSHelperPtr& pFS)
 static auto
 WriteCompat(SwDoc const& rDoc, ::sax_fastparser::FSHelperPtr const& rpFS) -> void
 {
+    // NOTE: officeotron complains if these are placed in the 'wrong order'
+
     const IDocumentSettingAccess& rIDSA = rDoc.getIDocumentSettingAccess();
     if (!rIDSA.get(DocumentSettingId::ADD_EXT_LEADING))
     {
@@ -1191,6 +1220,8 @@ WriteCompat(SwDoc const& rDoc, ::sax_fastparser::FSHelperPtr const& rpFS) -> voi
     {
         rpFS->singleElementNS(XML_w, XML_adjustLineHeightInTable);
     }
+    if (rIDSA.get(DocumentSettingId::PARA_SPACE_MAX))
+        rpFS->singleElementNS(XML_w, XML_doNotUseHTMLParagraphAutoSpacing);
     if (rIDSA.get(DocumentSettingId::DO_NOT_BREAK_WRAPPED_TABLES))
     {
         // Map the DoNotBreakWrappedTables compat flag to <w:doNotBreakWrappedTables>.
@@ -1822,75 +1853,51 @@ void DocxExport::WriteGlossary()
     }
 }
 
-namespace {
-    class XsltTransformListener : public ::cppu::WeakImplHelper<io::XStreamListener>
+static OUString lcl_GetStoreItemID(const uno::Reference<xml::dom::XDocument>& xDocumentProps)
+{
+    if (!xDocumentProps.is())
+        return OUString();
+
+    uno::Reference<xml::xpath::XXPathAPI> xXPathAPI
+        = xml::xpath::XPathAPI::create(comphelper::getProcessComponentContext());
+    xXPathAPI->registerNS(u"ds"_ustr,
+                          u"http://schemas.openxmlformats.org/officeDocument/2006/customXml"_ustr);
+
+    try
     {
-    public:
-        XsltTransformListener() : m_bDone(false) {}
-
-        void wait() {
-            std::unique_lock<std::mutex> g(m_mutex);
-            m_cond.wait(g, [this]() { return m_bDone; });
-        }
-
-    private:
-        std::mutex m_mutex;
-        std::condition_variable m_cond;
-        bool m_bDone;
-
-        virtual void SAL_CALL disposing(const lang::EventObject&) noexcept override {}
-        virtual void SAL_CALL started() noexcept override {}
-        virtual void SAL_CALL closed() noexcept override { notifyDone(); }
-        virtual void SAL_CALL terminated() noexcept override { notifyDone(); }
-        virtual void SAL_CALL error(const uno::Any& e) override
-        {
-            notifyDone(); // set on error too, otherwise main thread waits forever
-            SAL_WARN("sw.ww8", e);
-        }
-
-        void notifyDone() {
-            std::scoped_lock<std::mutex> g(m_mutex);
-            m_bDone = true;
-            m_cond.notify_all();
-        }
-    };
+        return xXPathAPI->eval(xDocumentProps, u"string(/ds:datastoreItem/@ds:itemID)"_ustr)
+            ->getString();
+    }
+    catch (uno::Exception const&)
+    {
+        TOOLS_WARN_EXCEPTION("sw.ww8", "custom xml store id");
+        return OUString();
+    }
 }
 
-static void lcl_UpdateXmlValues(const SdtData& sdtData, const uno::Reference<css::io::XInputStream>& xInputStream, const uno::Reference<css::io::XOutputStream>& xOutputStream)
+static void lcl_UpdateXmlValues(const SdtData& rSdtData,
+                                const uno::Reference<xml::dom::XDocument>& xDocument)
 {
-    uno::Sequence<uno::Any> aArgs{
-    // XSLT transformation stylesheet:
-    //  - write all elements as is
-    //  - but if element matches sdtData.xpath, replace its text content by sdtData.xpath
-    uno::Any(beans::NamedValue(u"StylesheetText"_ustr, uno::Any(OUString("<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
-<xsl:stylesheet\
-    xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\"\
-    " + sdtData.namespaces + "\
-    version=\"1.0\">\
-  <xsl:template match=\"@* | node()\">\
-    <xsl:copy>\
-      <xsl:apply-templates select=\"@* | node()\"/>\
-    </xsl:copy>\
-  </xsl:template>\
-  <xsl:template match = \"" + sdtData.xpath + "\">\
-    <xsl:copy>\
-      <xsl:text>" + sdtData.data + "</xsl:text>\
-    </xsl:copy>\
-  </xsl:template>\
-</xsl:stylesheet>\
-"))))
-    };
+    uno::Reference<xml::xpath::XXPathAPI> xXPathAPI
+        = xml::xpath::XPathAPI::create(comphelper::getProcessComponentContext());
+    sw::RegisterDataBindingNamespaces(rSdtData.namespaces, xXPathAPI);
 
-    css::uno::Reference<css::xml::xslt::XXSLTTransformer> xTransformer =
-        css::xml::xslt::XSLTTransformer::create(comphelper::getProcessComponentContext(), aArgs);
-    xTransformer->setInputStream(xInputStream);
-    xTransformer->setOutputStream(xOutputStream);
-
-    rtl::Reference<XsltTransformListener> xListener = new XsltTransformListener();
-    xTransformer->addListener(xListener);
-
-    xTransformer->start();
-    xListener->wait();
+    try
+    {
+        uno::Reference<xml::dom::XNodeList> xNodes
+            = xXPathAPI->eval(xDocument, rSdtData.xpath)->getNodeList();
+        for (sal_Int32 nNode = 0; nNode < xNodes->getLength(); ++nNode)
+        {
+            uno::Reference<xml::dom::XNode> xNode = xNodes->item(nNode);
+            while (uno::Reference<xml::dom::XNode> xChild = xNode->getFirstChild())
+                xNode->removeChild(xChild);
+            xNode->appendChild(xDocument->createTextNode(rSdtData.data));
+        }
+    }
+    catch (uno::Exception const&)
+    {
+        TOOLS_WARN_EXCEPTION("sw.ww8", "custom xml value at " << rSdtData.xpath);
+    }
 }
 
 void DocxExport::WriteCustomXml()
@@ -1924,49 +1931,38 @@ void DocxExport::WriteCustomXml()
                     oox::getRelationship(Relationship::CUSTOMXML),
                     Concat2View("../customXml/item"+OUString::number(j+1)+".xml" ));
 
-            uno::Reference< xml::sax::XSAXSerializable > serializer( customXmlDom, uno::UNO_QUERY );
-            uno::Reference< xml::sax::XWriter > writer = xml::sax::Writer::create( comphelper::getProcessComponentContext() );
-
             xCustomXmlItemOutStream = GetFilter().openFragmentStream(
                 "customXml/item" + OUString::number(j + 1) + ".xml", u"application/xml"_ustr);
-            if (m_SdtData.size())
+
+            uno::Reference<xml::dom::XDocument> xItemDom = customXmlDom;
+            const OUString aStoreItemID = lcl_GetStoreItemID(customXmlDomProps);
+            if (!aStoreItemID.isEmpty())
             {
-                // There are some SDT blocks data with data bindings which can update some custom xml values
-                rtl::Reference< comphelper::UNOMemoryStream > xMemStream = new comphelper::UNOMemoryStream();
-
-                writer->setOutputStream(xMemStream->getOutputStream());
-
-                serializer->serialize(writer, uno::Sequence< beans::StringPair >());
-
-                uno::Reference< io::XStream > xXSLTInStream = xMemStream;
-                rtl::Reference< comphelper::UNOMemoryStream > xXSLTOutStream;
-                // Apply XSLT transformations for each SDT data binding
-                // Seems it is not possible to do this as one transformation: each data binding
-                // can have different namespaces, but with conflicting names (ns0, ns1, etc..)
-                for (size_t i = 0; i < m_SdtData.size(); i++)
+                // A data-bound content control can hold a value the user has edited since the
+                // document was loaded, so write the current values into the stored XML. Each
+                // value goes to the item its own data binding names. The edit goes to a copy,
+                // which leaves the document model as it is.
+                uno::Reference<xml::dom::XDocument> xCopy;
+                for (const SdtData& rSdtData : m_SdtData)
                 {
-                    if (i == m_SdtData.size() - 1)
-                    {
-                        // last transformation
-                        lcl_UpdateXmlValues(
-                            m_SdtData[i], xXSLTInStream->getInputStream(), xCustomXmlItemOutStream);
-                    }
-                    else
-                    {
-                        xXSLTOutStream = new comphelper::UNOMemoryStream();
-                        lcl_UpdateXmlValues(m_SdtData[i], xXSLTInStream->getInputStream(), xXSLTOutStream->getOutputStream());
-                        // Use previous output as an input for next run
-                        xXSLTInStream.set( xXSLTOutStream );
-                    }
+                    if (rSdtData.storeItemID != aStoreItemID)
+                        continue;
+
+                    if (!xCopy.is())
+                        xCopy.set(customXmlDom->cloneNode(true), uno::UNO_QUERY_THROW);
+
+                    lcl_UpdateXmlValues(rSdtData, xCopy);
                 }
 
+                if (xCopy.is())
+                    xItemDom = xCopy;
             }
-            else
-            {
-                writer->setOutputStream(xCustomXmlItemOutStream);
 
-                serializer->serialize(writer, uno::Sequence< beans::StringPair >());
-            }
+            uno::Reference<xml::sax::XSAXSerializable> xSerializer(xItemDom, uno::UNO_QUERY_THROW);
+            uno::Reference<xml::sax::XWriter> xWriter
+                = xml::sax::Writer::create(comphelper::getProcessComponentContext());
+            xWriter->setOutputStream(xCustomXmlItemOutStream);
+            xSerializer->serialize(xWriter, uno::Sequence<beans::StringPair>());
         }
 
         if (customXmlDomProps.is())
@@ -1983,6 +1979,40 @@ void DocxExport::WriteCustomXml()
                     Concat2View("itemProps"+OUString::number(j+1)+".xml" ));
         }
     }
+}
+
+void DocxExport::WriteWebSettings()
+{
+    uno::Reference<beans::XPropertySetInfo> xPropSetInfo = m_xTextDoc->getPropertySetInfo();
+    if (!xPropSetInfo->hasPropertyByName(UNO_NAME_MISC_OBJ_INTEROPGRABBAG))
+        return;
+
+    css::uno::Reference<css::xml::dom::XDocument> xWebSettingsDom;
+    css::uno::Sequence<beans::PropertyValue> propList;
+    m_xTextDoc->getPropertyValue(UNO_NAME_MISC_OBJ_INTEROPGRABBAG) >>= propList;
+    auto pProp = std::find_if(std::cbegin(propList), std::cend(propList),
+                              [](const beans::PropertyValue& rProp)
+                              { return rProp.Name == "OOXWebSettings"; });
+    if (pProp != std::cend(propList))
+        pProp->Value >>= xWebSettingsDom;
+
+    if (!xWebSettingsDom.is())
+        return;
+
+    m_rFilter.addRelation(m_pDocumentFS->getOutputStream(),
+                          oox::getRelationship(oox::Relationship::WEBSETTINGS),
+                          u"webSettings.xml");
+
+    uno::Reference<xml::sax::XSAXSerializable> xSerializer(xWebSettingsDom,
+                                                            uno::UNO_QUERY_THROW);
+    uno::Reference<xml::sax::XWriter> xWriter
+        = xml::sax::Writer::create(comphelper::getProcessComponentContext());
+    xWriter->setOutputStream(GetFilter().openFragmentStream(
+        u"word/webSettings.xml"_ustr,
+        u"application/vnd.openxmlformats-officedocument.wordprocessingml.webSettings+xml"_ustr));
+    xSerializer->serialize(
+        uno::Reference<xml::sax::XDocumentHandler>(new NamespaceAdjustmentHandler(m_rFilter,
+            xWriter)), css::uno::Sequence<beans::StringPair>());
 }
 
 void DocxExport::WriteVBA()

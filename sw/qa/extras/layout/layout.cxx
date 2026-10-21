@@ -12,6 +12,7 @@
 #include <osl/process.h>
 #include <comphelper/scopeguard.hxx>
 #include <comphelper/propertysequence.hxx>
+#include <config_fonts.h>
 #include <vcl/scheduler.hxx>
 #include <svx/svddef.hxx>
 
@@ -2264,8 +2265,10 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter, testNoLineBreakAtSlash)
 
     // the line break was between  "Foostrasse 13/c/" and "2"
     assertXPath(pLayout, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout", 2);
-    assertXPath(pLayout, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[1]/child::*", "type",
-                u"PortionType::Para");
+    assertXPath(pLayout, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[1]/child::*[1]",
+                "type", u"PortionType::Text");
+    assertXPath(pLayout, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[1]/child::*[2]",
+                "type", u"PortionType::Hole");
     assertXPath(pLayout, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[2]/child::*[1]",
                 "type", u"PortionType::Text");
     assertXPath(pLayout, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[2]/child::*[2]",
@@ -3623,7 +3626,7 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter, testForcepoint91) { createSwWebDoc("forcepo
 //just care it doesn't crash/assert
 CPPUNIT_TEST_FIXTURE(SwLayoutWriter, testForcepoint92)
 {
-#if defined(HAVE_MORE_FONTS) && HAVE_MORE_FONTS != 0
+#if HAVE_MORE_FONTS
     // This file doesn't open in Word, and seems to be corrupt.
     // The fix for tdf#129808 caused this test to start aborting on font fallback
     // due to empty font names. It's unclear what should be done to repair this

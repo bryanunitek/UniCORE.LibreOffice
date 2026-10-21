@@ -38,7 +38,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 using ::std::vector;
 
 namespace sdext::presenter {
@@ -723,6 +722,6 @@ void Block::Update (
 
 } // end of anonymous namespace
 
-} // end of namespace ::sdext::presenter
+} // end of namespace sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

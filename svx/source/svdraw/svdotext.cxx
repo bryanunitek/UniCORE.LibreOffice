@@ -20,6 +20,7 @@
 
 #include <comphelper/string.hxx>
 #include <svl/stritem.hxx>
+#include <svx/svdetc.hxx>
 #include <svx/svdotext.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/svdoutl.hxx>
@@ -185,7 +186,7 @@ void SdrTextObj::NbcSetText(const OUString& rStr)
 {
     SdrOutliner& rOutliner=ImpGetDrawOutliner();
     rOutliner.SetStyleSheet( 0, GetStyleSheet());
-    rOutliner.SetText(rStr,rOutliner.GetParagraph( 0 ));
+    rOutliner.SetText(rStr, 0);
     std::optional<OutlinerParaObject> pNewText=rOutliner.CreateParaObject();
     NbcSetOutlinerParaObject(std::move(pNewText));
     mbTextSizeDirty=true;
@@ -277,9 +278,9 @@ bool SdrTextObj::IsAutoGrowWidth() const
     const SfxItemSet& rSet = GetObjectItemSet();
     bool bRet = rSet.Get(SDRATTR_TEXT_AUTOGROWWIDTH).GetValue();
 
-    bool bInEditMOde = IsInEditMode();
+    bool bInEditMode = IsInEditMode();
 
-    if(!bInEditMOde && bRet)
+    if(!bInEditMode && bRet)
     {
         SdrTextAniKind eAniKind = rSet.Get(SDRATTR_TEXT_ANIKIND).GetValue();
 
@@ -413,15 +414,15 @@ bool SdrTextObj::HasTextImpl( SdrOutliner const * pOutliner )
     bool bRet=false;
     if(pOutliner)
     {
-        Paragraph* p1stPara=pOutliner->GetParagraph( 0 );
+        sal_Int32 n1stPara=0;
         sal_Int32 nParaCount=pOutliner->GetParagraphCount();
-        if(p1stPara==nullptr)
+        if(n1stPara>=nParaCount)
             nParaCount=0;
 
         if(nParaCount==1)
         {
             // if it is only one paragraph, check if that paragraph is empty
-            if( pOutliner->GetText(p1stPara).isEmpty() )
+            if( pOutliner->GetText(n1stPara).isEmpty() )
                 nParaCount = 0;
         }
 
@@ -1054,7 +1055,7 @@ OUString SdrTextObj::TakeObjNamePlural() const
     return sName;
 }
 
-rtl::Reference<SdrObject> SdrTextObj::CloneSdrObject(SdrModel& rTargetModel) const
+rtl::Reference<SdrObject> SdrTextObj::implCloneSdrObject(SdrModel& rTargetModel) const
 {
     return new SdrTextObj(rTargetModel, *this);
 }
@@ -1619,7 +1620,7 @@ void SdrTextObj::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, const b
         GeoStat aGeoStat;
 
         // #i78696#
-        // fRotate is matematically correct, but aGeoStat.nRotationAngle is
+        // fRotate is mathematically correct, but aGeoStat.nRotationAngle is
         // mirrored -> mirror value here
         aGeoStat.m_nRotationAngle = NormAngle36000(Degree100(basegfx::fround(-basegfx::rad2deg<100>(fRotate))));
         aGeoStat.RecalcSinCos();
@@ -1639,7 +1640,7 @@ bool SdrTextObj::IsReallyEdited() const
     return mpEditingOutliner && mpEditingOutliner->IsModified();
 }
 
-// moved inlines here form hxx
+// moved inlines here from hxx
 
 tools::Long SdrTextObj::GetEckenradius() const
 {
@@ -2008,6 +2009,11 @@ rtl::Reference<SdrObject> SdrTextObj::getFullDragClone() const
  }
 
 /* End chaining code */
+
+std::optional<Color> SdrTextObj::GetActiveTextBackgroundColor(const SdrText* /*pSdrText*/) const
+{
+    return GetDraftFillColor(GetMergedItemSet());
+}
 
 /** returns the currently active text. */
 SdrText* SdrTextObj::getActiveText() const

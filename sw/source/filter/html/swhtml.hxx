@@ -19,6 +19,8 @@
 #ifndef INCLUDED_SW_SOURCE_FILTER_HTML_SWHTML_HXX
 #define INCLUDED_SW_SOURCE_FILTER_HTML_SWHTML_HXX
 
+#include <config_java.h>
+
 #include <sfx2/sfxhtml.hxx>
 #include <svl/listener.hxx>
 #include <svl/macitem.hxx>
@@ -35,6 +37,8 @@
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/form/XFormComponent.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/awt/XControlContainer.hpp>
+#include <vcl/vclptr.hxx>
 
 #include <memory>
 #include <utility>
@@ -44,7 +48,7 @@
 #include <set>
 
 class SfxMedium;
-class SfxViewFrame;
+class WorkWindow;
 class SdrObject;
 class SvxMacroTableDtor;
 class SwDoc;
@@ -54,6 +58,7 @@ class SwStartNode;
 class SwFormatColl;
 class SwField;
 class SwHTMLForm_Impl;
+class SwApplet_Impl;
 struct SwHTMLFootEndNote_Impl;
 class HTMLTableCnts;
 class SwNumRule;
@@ -128,6 +133,9 @@ struct HTMLAttrTable
     HTMLAttr* pCharBox;
     HTMLAttr* pOpticalSizing;
     HTMLAttr* pFontVariations;
+    HTMLAttr* pFontVariationsCJK;
+    HTMLAttr* pFontVariationsCTL;
+    HTMLAttr* pCharHidden;
 };
 
 class HTMLAttr
@@ -397,6 +405,8 @@ class SwHTMLParser : public SfxHTMLParser, public SvtListener
     //onto them until parsing is done
     std::vector<std::unique_ptr<SwTableBox>> m_aOrphanedTableBoxes;
 
+    std::unique_ptr<SwApplet_Impl> m_pAppletImpl; // current applet
+
     std::unique_ptr<SwCSS1Parser> m_pCSS1Parser;   // Style-Sheet-Parser
     std::unique_ptr<SwHTMLNumRuleInfo> m_pNumRuleInfo;
     std::vector<SwPending>  m_vPendingStack;
@@ -476,7 +486,6 @@ class SwHTMLParser : public SfxHTMLParser, public SvtListener
     bool m_bInFootEndNoteAnchor : 1;
     bool m_bInFootEndNoteSymbol : 1;
     bool m_bIgnoreHTMLComments : 1;
-    bool m_bRemoveHidden : 1; // the filter implementation might set the hidden flag
 
     bool m_bBodySeen : 1;
     bool m_bReadingHeaderOrFooter : 1;
@@ -490,7 +499,10 @@ class SwHTMLParser : public SfxHTMLParser, public SvtListener
     /// the names corresponding to the DOCINFO field subtypes INFO[1-4]
     OUString m_InfoNames[4];
 
-    SfxViewFrame* m_pTempViewFrame;
+    // A hidden window, and the control container on it, in which a form control is realized to
+    // measure its size when the document has no view.
+    VclPtr<WorkWindow> m_xControlSizeWindow;
+    uno::Reference<css::awt::XControlContainer> m_xControlSizeContainer;
 
     bool m_bXHTML = false;
     bool m_bReqIF = false;
@@ -684,7 +696,7 @@ private:
     // <SPACER>
     void InsertSpacer();
 
-    // Inserting graphics
+    // Inserting graphics, plug-ins and applets
 
     // search image maps and link with graphic nodes
     ImageMap *FindImageMap( std::u16string_view rURL ) const;
@@ -726,9 +738,19 @@ private:
     void GetDefaultScriptType( ScriptType& rType,
                                OUString& rTypeStr ) const;
 
-    // the actual insert methods for <IMG>, <EMBED> and <PARAM>
+    // the actual insert methods for <IMG>, <EMBED>, <APPLET> and <PARAM>
     void InsertImage();     // htmlgrin.cxx
     bool InsertEmbed();     // htmlplug.cxx
+
+#if HAVE_FEATURE_JAVA
+    void NewObject();   // htmlplug.cxx
+#endif
+    void EndObject();       // link CommandLine with applet (htmlplug.cxx)
+#if HAVE_FEATURE_JAVA
+    void InsertApplet();    // htmlplug.cxx
+#endif
+    void EndApplet();       // link CommandLine with applet (htmlplug.cxx)
+    void InsertParam();     // htmlplug.cxx
 
     void InsertFloatingFrame();
 

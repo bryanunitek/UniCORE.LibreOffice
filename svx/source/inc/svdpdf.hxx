@@ -29,6 +29,7 @@
 #include <vcl/virdev.hxx>
 #include <vcl/gfxlink.hxx>
 #include <vcl/graph.hxx>
+#include <svdimportbase.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/xdash.hxx>
 
@@ -81,39 +82,13 @@ struct EmbeddedFontInfo
 };
 
 // Helper Class to import PDF
-class ImpSdrPdfImport final
+class ImpSdrPdfImport final : public ImpSdrImportBase
 {
-    std::vector<rtl::Reference<SdrObject>> maTmpList;
-
-    ScopedVclPtr<VirtualDevice> mpVD;
-    tools::Rectangle maScaleRect;
     size_t mnMapScalingOfs; // from here on, not edited with MapScaling
-    std::unique_ptr<SfxItemSet> mpLineAttr;
-    std::unique_ptr<SfxItemSet> mpFillAttr;
-    std::unique_ptr<SfxItemSet> mpTextAttr;
-    SdrModel* mpModel;
     std::shared_ptr<ImportedFontMap> mxImportedFonts;
-    SdrLayerID mnLayer;
-    sal_Int32 mnLineWidth;
     static constexpr css::drawing::LineCap gaLineCap = css::drawing::LineCap_BUTT;
-    XDash maDash;
     std::optional<Color> moFillColor;
     std::optional<Bitmap> moFillPattern;
-
-    bool mbMov;
-    bool mbSize;
-    Point maOfs;
-    double mfScaleX;
-    double mfScaleY;
-    double maScaleX;
-    double maScaleY;
-
-    bool mbFntDirty;
-
-    // to optimize (PenNULL,Brush,DrawPoly),(Pen,BrushNULL,DrawPoly) -> two-in-one
-    bool mbLastObjWasPolyWithoutLine;
-    bool mbNoLine;
-    bool mbNoFill;
 
     std::unique_ptr<vcl::pdf::PDFiumDocument> mpPdfDocument;
     int mnPageCount;
@@ -130,10 +105,8 @@ class ImpSdrPdfImport final
 
     std::shared_ptr<vcl::pdf::PDFium> mpPDFium;
 
-    Color getStrokeColor(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
-                         std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage);
-    Color getFillColor(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
-                       std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage);
+    Color getStrokeColor(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject);
+    Color getFillColor(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject);
 
     void ImportPdfObject(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
                          std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
@@ -141,21 +114,16 @@ class ImpSdrPdfImport final
                          int nPageObjectIndex);
     void ImportForm(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
                     std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
-                    std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage,
-                    int nPageObjectIndex);
-    void ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
-                     int nPageObjectIndex);
-    void ImportPath(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
-                    std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage, int nPageObjectIndex);
+                    std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage);
+    void ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject);
+    void ImportPath(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject);
     void ImportText(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
-                    std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
-                    std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage,
-                    int nPageObjectIndex);
+                    std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage);
     void InsertTextObject(const Point& rPos, const Size& rSize, const OUString& rStr,
                           bool bInvisible);
 
     void SetupPageScale(const double dPageWidth, const double dPageHeight);
-    void SetAttributes(SdrObject* pObj, bool bForceTextAttr = false);
+    void SetAttributes(SdrObject* pObj, bool bForceTextAttr = false) override;
     void InsertObj(SdrObject* pObj, bool bScale = true);
     void MapScaling();
 
@@ -167,9 +135,6 @@ class ImpSdrPdfImport final
     basegfx::B2DPolyPolygon GetClip(const std::unique_ptr<vcl::pdf::PDFiumClipPath>& rClipPath,
                                     const basegfx::B2DHomMatrix& rPathMatrix,
                                     const basegfx::B2DHomMatrix& rTransform);
-
-    // #i73407# reformulation to use new B2DPolygon classes
-    bool CheckLastPolyLineAndFillMerge(const basegfx::B2DPolyPolygon& rPolyPolygon);
 
     void DoObjects(SvdProgressInfo* pProgrInfo, sal_uInt32* pActionsToReport, int nPageIndex);
 

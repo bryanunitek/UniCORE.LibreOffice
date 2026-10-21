@@ -114,6 +114,7 @@ enum SwDocumentSettingsPropertyHandles
     HANDLE_USE_OLD_PRINTER_METRICS,
     HANDLE_PROTECT_FORM,
     HANDLE_MS_WORD_COMP_TRAILING_BLANKS,
+    HANDLE_MS_WORD_COMP_MIN_TEXT_WRAP_GAP,
     HANDLE_MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY,
     HANDLE_TABS_RELATIVE_TO_INDENT,
     HANDLE_RSID,
@@ -169,6 +170,7 @@ enum SwDocumentSettingsPropertyHandles
     HANDLE_MS_WORD_COMP_GRID_METRICS,
     HANDLE_NO_CLIPPING_WITH_WRAP_POLYGON,
     HANDLE_MS_WORD_UL_TRAIL_SPACE,
+    HANDLE_LINE_SPACING_AS_GAP_BELOW,
     HANDLE_BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES,
     HANDLE_FORCE_TOP_ALIGNMENT_IN_CELL_WITH_FLOATING_ANCHOR,
     HANDLE_ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT,
@@ -236,6 +238,7 @@ static rtl::Reference<MasterPropertySetInfo> lcl_createSettingsInfo()
         { u"RsidRoot"_ustr, HANDLE_RSID_ROOT, cppu::UnoType<sal_Int32>::get(), 0},
         { u"ProtectForm"_ustr, HANDLE_PROTECT_FORM, cppu::UnoType<bool>::get(), 0},
         { u"MsWordCompTrailingBlanks"_ustr, HANDLE_MS_WORD_COMP_TRAILING_BLANKS, cppu::UnoType<bool>::get(), 0 },
+        { u"MsWordCompMinTextWrapGap"_ustr, HANDLE_MS_WORD_COMP_MIN_TEXT_WRAP_GAP, cppu::UnoType<bool>::get(), 0 },
         { u"MsWordCompMinLineHeightByFly"_ustr, HANDLE_MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY, cppu::UnoType<bool>::get(), 0 },
         { u"TabAtLeftIndentForParagraphsInList"_ustr, HANDLE_TAB_AT_LEFT_INDENT_FOR_PARA_IN_LIST, cppu::UnoType<bool>::get(), 0},
         { u"ModifyPasswordInfo"_ustr, HANDLE_MODIFYPASSWORDINFO, cppu::UnoType< cppu::UnoSequenceType<css::beans::PropertyValue> >::get(), 0},
@@ -288,6 +291,7 @@ static rtl::Reference<MasterPropertySetInfo> lcl_createSettingsInfo()
         { u"MsWordCompGridMetrics"_ustr, HANDLE_MS_WORD_COMP_GRID_METRICS, cppu::UnoType<bool>::get(), 0 },
         { u"NoClippingWithWrapPolygon"_ustr, HANDLE_NO_CLIPPING_WITH_WRAP_POLYGON, cppu::UnoType<bool>::get(), 0 },
         { u"MsWordUlTrailSpace"_ustr, HANDLE_MS_WORD_UL_TRAIL_SPACE, cppu::UnoType<bool>::get(), 0 },
+        { u"LineSpacingAsGapBelow"_ustr, HANDLE_LINE_SPACING_AS_GAP_BELOW, cppu::UnoType<bool>::get(), 0 },
         { u"BalanceSpacesAndIdeographicSpaces"_ustr, HANDLE_BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES, cppu::UnoType<bool>::get(), 0 },
         { u"ForceTopAlignmentInCellWithFloatingAnchor"_ustr, HANDLE_FORCE_TOP_ALIGNMENT_IN_CELL_WITH_FLOATING_ANCHOR, cppu::UnoType<bool>::get(), 0 },
         { u"AdjustTableLineHeightsToGridHeight"_ustr, HANDLE_ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT, cppu::UnoType<bool>::get(), 0 },
@@ -823,6 +827,12 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
             mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::MS_WORD_COMP_TRAILING_BLANKS, bTmp);
         }
         break;
+        case HANDLE_MS_WORD_COMP_MIN_TEXT_WRAP_GAP:
+        {
+            bool bTmp = *o3tl::doAccess<bool>(rValue);
+            mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::MS_WORD_COMP_MIN_TEXT_WRAP_GAP, bTmp);
+        }
+        break;
         case HANDLE_MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY:
         {
             bool bTmp = *o3tl::doAccess<bool>(rValue);
@@ -1242,6 +1252,13 @@ void SwXDocumentSettings::_setSingleValue( const comphelper::PropertyInfo & rInf
                                                        bTmp);
             }
             break;
+        case HANDLE_LINE_SPACING_AS_GAP_BELOW:
+            if (bool bTmp; rValue >>= bTmp)
+            {
+                mpDoc->getIDocumentSettingAccess().set(DocumentSettingId::LINE_SPACING_AS_GAP_BELOW,
+                                                       bTmp);
+            }
+            break;
         case HANDLE_BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES:
             if (bool bTmp; rValue >>= bTmp)
             {
@@ -1609,6 +1626,11 @@ void SwXDocumentSettings::_getSingleValue( const comphelper::PropertyInfo & rInf
             rValue <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::MS_WORD_COMP_TRAILING_BLANKS);
         }
         break;
+        case HANDLE_MS_WORD_COMP_MIN_TEXT_WRAP_GAP:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::MS_WORD_COMP_MIN_TEXT_WRAP_GAP);
+        }
+        break;
         case HANDLE_MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY:
         {
             rValue <<= mpDoc->getIDocumentSettingAccess().get(DocumentSettingId::MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY);
@@ -1891,6 +1913,12 @@ void SwXDocumentSettings::_getSingleValue( const comphelper::PropertyInfo & rInf
         {
             rValue <<= mpDoc->getIDocumentSettingAccess().get(
                 DocumentSettingId::MS_WORD_UL_TRAIL_SPACE);
+        }
+        break;
+        case HANDLE_LINE_SPACING_AS_GAP_BELOW:
+        {
+            rValue <<= mpDoc->getIDocumentSettingAccess().get(
+                DocumentSettingId::LINE_SPACING_AS_GAP_BELOW);
         }
         break;
         case HANDLE_BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES:

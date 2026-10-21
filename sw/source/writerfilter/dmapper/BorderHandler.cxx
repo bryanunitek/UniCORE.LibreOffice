@@ -21,6 +21,7 @@
 #include "PropertyMap.hxx"
 #include "ConversionHelper.hxx"
 #include <com/sun/star/table/BorderLine2.hpp>
+#include <algorithm>
 #include <o3tl/enumarray.hxx>
 #include <o3tl/enumrange.hxx>
 #include <ooxml/resourceids.hxx>
@@ -57,7 +58,8 @@ void BorderHandler::lcl_attribute(Id rName, const Value & rVal)
     {
         case NS_ooxml::LN_CT_Border_sz:
             //  width of a single line in 1/8 pt, max of 32 pt -> twip * 5 / 2.
-            m_nLineWidth = nIntValue * 5 / 2;
+            m_nLineWidth = std::clamp<sal_Int64>(sal_Int64(nIntValue) * 5 / 2, SAL_MIN_INT32,
+                                                 SAL_MAX_INT32);
             appendGrabBag(u"sz"_ustr, OUString::number(nIntValue));
         break;
         case NS_ooxml::LN_CT_Border_val:
@@ -104,35 +106,35 @@ void BorderHandler::lcl_sprm(Sprm & rSprm)
     {
         case NS_ooxml::LN_CT_TblBorders_top:
             pos = BorderPosition::Top;
-            aBorderPos = "top";
+            aBorderPos = u"top"_ustr;
             break;
         case NS_ooxml::LN_CT_TblBorders_start:
             pos = rtl ? BorderPosition::Right : BorderPosition::Left;
-            aBorderPos = "start";
+            aBorderPos = u"start"_ustr;
             break;
         case NS_ooxml::LN_CT_TblBorders_left:
             pos = BorderPosition::Left;
-            aBorderPos = "left";
+            aBorderPos = u"left"_ustr;
             break;
         case NS_ooxml::LN_CT_TblBorders_bottom:
             pos = BorderPosition::Bottom;
-            aBorderPos = "bottom";
+            aBorderPos = u"bottom"_ustr;
             break;
         case NS_ooxml::LN_CT_TblBorders_end:
             pos = rtl ? BorderPosition::Left : BorderPosition::Right;
-            aBorderPos = "end";
+            aBorderPos = u"end"_ustr;
             break;
         case NS_ooxml::LN_CT_TblBorders_right:
             pos = BorderPosition::Right;
-            aBorderPos = "right";
+            aBorderPos = u"right"_ustr;
             break;
         case NS_ooxml::LN_CT_TblBorders_insideH:
             pos = BorderPosition::Horizontal;
-            aBorderPos = "insideH";
+            aBorderPos = u"insideH"_ustr;
             break;
         case NS_ooxml::LN_CT_TblBorders_insideV:
             pos = BorderPosition::Vertical;
-            aBorderPos = "insideV";
+            aBorderPos = u"insideV"_ustr;
             break;
         default:
             return;

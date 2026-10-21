@@ -883,17 +883,19 @@ SwAnchoredObjList& SwTextFly::InitAnchoredObjList()
 
     const SwSortedObjs *pSorted = m_pPage->GetSortedObjs();
     const size_t nCount = pSorted ? pSorted->size() : 0;
-    // --> #108724# Page header/footer content doesn't have to wrap around
-    //              floating screen objects
-    //              which was added simply to be compatible with MS Office.
-    // MSO still allows text to wrap around in-table-flies in headers/footers/footnotes
-    const bool bFooterHeader = nullptr != m_pCurrFrame->FindFooterOrHeader();
+    const SwFrame* pCurrHeaderFooter = m_pCurrFrame->FindFooterOrHeader();
+    const bool bFooterHeader = nullptr != pCurrHeaderFooter;
     const IDocumentSettingAccess* pIDSA = &m_pCurrFrame->GetDoc().getIDocumentSettingAccess();
     // #i40155# - check, if frame is marked not to wrap
     const bool bAllowCompatWrap = m_pCurrFrame->IsInTab() && (bFooterHeader || m_pCurrFrame->IsInFootnote());
-    const bool bWrapAllowed = ( pIDSA->get(DocumentSettingId::USE_FORMER_TEXT_WRAPPING) ||
-                                    bAllowCompatWrap ||
-                                    (!m_pCurrFrame->IsInFootnote() && !bFooterHeader));
+    // Page header/footer content only wraps around floating screen objects in
+    // DOCX files written in compatibility mode 15 or newer.
+    const bool bWordCompatibility = !pIDSA->get(DocumentSettingId::TAB_OVER_MARGIN)
+                                    && pIDSA->get(DocumentSettingId::TAB_OVER_SPACING);
+    const bool bWrapAllowed
+        = (pIDSA->get(DocumentSettingId::USE_FORMER_TEXT_WRAPPING) || bAllowCompatWrap
+           || (!m_pCurrFrame->IsInFootnote() && !bFooterHeader)
+           || (bFooterHeader && bWordCompatibility));
 
     m_bOn = false;
 
@@ -924,14 +926,51 @@ SwAnchoredObjList& SwTextFly::InitAnchoredObjList()
             // #i20505# Do not consider oversized objects
             SwAnchoredObject* pAnchoredObj = (*pSorted)[ i ];
             assert(pAnchoredObj);
-            if ( !pAnchoredObj ||
-                 !rIDDMA.IsVisibleLayerId( pAnchoredObj->GetDrawObj()->GetLayer() ) ||
-                 !pAnchoredObj->ConsiderForTextWrap() ||
-                 ( mbIgnoreObjsInHeaderFooter && !bFooterHeader &&
-                   pAnchoredObj->GetAnchorFrame()->FindFooterOrHeader() ) ||
-                 ( bAllowCompatWrap && !pAnchoredObj->GetFrameFormat()->GetFollowTextFlow().GetValue() ) ||
-                 ( pAnchoredObj->DynCastFlyFrame()  && pAnchoredObj->DynCastFlyFrame()->IsSplitButNotYetMovedFollow() )
-               )
+
+            // #108724# - Text in a page header or footer used to never wrap around an
+            // object anchored there. A file in compatibility mode 15 wraps it around a
+            // picture or a shape that asks for wrapping at its side. A frame that holds text,
+            // which is how a DOCX paragraph with a w:framePr arrives, is only wrapped around
+            // by the paragraph it is anchored in, and an object laid out above and below the
+            // text, or behind or in front of it, still leaves the text where it is.
+            bool bSkipHdrFtrObj = bFooterHeader && !bAllowCompatWrap
+                                  && !pIDSA->get(DocumentSettingId::USE_FORMER_TEXT_WRAPPING);
+
+            if (bSkipHdrFtrObj
+                && pAnchoredObj->GetAnchorFrame()->FindFooterOrHeader() == pCurrHeaderFooter)
+            {
+                const SwFrameFormat* pObjectFormat = pAnchoredObj->GetFrameFormat();
+                const css::text::WrapTextMode eSurround
+                    = pObjectFormat->GetSurround().GetSurround();
+                // Everything that is not laid out above and below the object, or behind
+                // or in front of the text, leaves the text room at a side. "Largest side
+                // only" arrives as DYNAMIC and only picks its side while the line is
+                // being built.
+                const bool bSideWrap = eSurround != css::text::WrapTextMode_NONE
+                                       && eSurround != css::text::WrapTextMode_THROUGH;
+
+                const SwFlyFrame* pFly = pAnchoredObj->DynCastFlyFrame();
+                const bool bTextFrame = pFly && pFly->Lower() && !pFly->Lower()->IsNoTextFrame();
+                // The text of a shape comes with the shape itself, which is wrapped around
+                // on its own.
+                const bool bDrawTextBox
+                    = pFly && SwTextBoxHelper::isTextBox(pObjectFormat, RES_FLYFRMFMT);
+
+                if (bSideWrap && !bDrawTextBox
+                    && (!bTextFrame || pAnchoredObj->GetAnchorFrame() == m_pCurrFrame))
+                {
+                    bSkipHdrFtrObj = false;
+                }
+            }
+
+            if (!pAnchoredObj || !rIDDMA.IsVisibleLayerId(pAnchoredObj->GetDrawObj()->GetLayer())
+                || !pAnchoredObj->ConsiderForTextWrap() || bSkipHdrFtrObj
+                || (mbIgnoreObjsInHeaderFooter && !bFooterHeader
+                    && pAnchoredObj->GetAnchorFrame()->FindFooterOrHeader())
+                || (bAllowCompatWrap
+                    && !pAnchoredObj->GetFrameFormat()->GetFollowTextFlow().GetValue())
+                || (pAnchoredObj->DynCastFlyFrame()
+                    && pAnchoredObj->DynCastFlyFrame()->IsSplitButNotYetMovedFollow()))
             {
                 continue;
             }
@@ -1440,6 +1479,10 @@ SwRect SwTextFly::AnchoredObjToRect( const SwAnchoredObject* pAnchoredObj,
 // Wrap on both sides up to a frame width of 1.5cm
 #define FRAME_MAX 850
 
+// Word gives up a side narrower than 1/4 inch, measured from the column edge, when the
+// other side has that much room. With both sides narrow it wraps on both.
+#define WORD_TEXT_MIN 360
+
 css::text::WrapTextMode SwTextFly::GetSurroundForTextWrap( const SwAnchoredObject* pAnchoredObj ) const
 {
     const SwFrameFormat* pFormat = pAnchoredObj->GetFrameFormat();
@@ -1512,6 +1555,25 @@ css::text::WrapTextMode SwTextFly::GetSurroundForTextWrap( const SwAnchoredObjec
             else
                 eSurroundForTextWrap = nRight ? css::text::WrapTextMode_RIGHT: css::text::WrapTextMode_NONE;
         }
+    }
+
+    // Ask the format rather than eSurroundForTextWrap, because an optimal wrap
+    // which the branch above turned into a parallel one measures its sides
+    // against the paragraph and keeps that result.
+    if (css::text::WrapTextMode_PARALLEL == rFlyFormat.GetSurround()
+        && GetMaster()->GetDoc().getIDocumentSettingAccess().get(
+               DocumentSettingId::MS_WORD_COMP_MIN_TEXT_WRAP_GAP))
+    {
+        SwRectFnSet aRectFnSet(*m_pCurrFrame);
+        const SwRect& rObj(pAnchoredObj->GetObjRectWithSpaces());
+        const SwRect& rCol(m_pCurrFrame->getFrameArea());
+        const tools::Long nLeft = aRectFnSet.GetLeft(rObj) - aRectFnSet.GetLeft(rCol);
+        const tools::Long nRight = aRectFnSet.GetRight(rCol) - aRectFnSet.GetRight(rObj);
+        // If neither side has enough space, keep the wrap mode as PARALLEL
+        if (nLeft < WORD_TEXT_MIN && nRight >= WORD_TEXT_MIN)
+            eSurroundForTextWrap = css::text::WrapTextMode_RIGHT;
+        else if (nRight < WORD_TEXT_MIN && nLeft >= WORD_TEXT_MIN)
+            eSurroundForTextWrap = css::text::WrapTextMode_LEFT;
     }
 
     return eSurroundForTextWrap;

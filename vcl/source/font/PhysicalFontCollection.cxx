@@ -123,8 +123,8 @@ void PhysicalFontCollection::ImplInitGenericGlyphFallback() const
         "shree", "mangal", "",
         "raavi", "shruti", "tunga", "",
         "latha", "gautami", "kartika", "vrinda", "",
-        "shayyalmt", "naskmt", "scheherazade", "",
         "david", "nachlieli", "lucidagrande", "",
+        "shayyalmt", "naskmt", "Noto Naskh Arabic", "",
         "norasi", "angsanaupc", "",
         "khmerossystem", "",
         "muktinarrow", "",
@@ -360,6 +360,29 @@ PhysicalFontFamily* PhysicalFontCollection::ImplFindFontFamilyBySearchName(const
 PhysicalFontFamily* PhysicalFontCollection::FindFontFamily(std::u16string_view rFontName) const
 {
     return ImplFindFontFamilyBySearchName( GetEnglishSearchFontName( rFontName ) );
+}
+
+PhysicalFontFace* PhysicalFontCollection::FindFontFaceByLegacyName(std::u16string_view rFontName,
+                                                                   FontWeight eWeight,
+                                                                   FontItalic eItalic) const
+{
+    // Find the face name whose legacy family name matches and has the
+    // requested weight and width. To limit reading font names, we check only
+    // families whose family name matches partially. So if “DejaVu Sans
+    // Condensed" is requested, we try only faces with “DejaVu Sans” family
+    // name.
+    const OUString aSearchName = GetEnglishSearchFontName(rFontName);
+    for (sal_Int32 nLen = aSearchName.getLength() - 1; nLen > 2; --nLen)
+    {
+        auto it = maPhysicalFontFamilies.find(aSearchName.copy(0, nLen));
+        if (it == maPhysicalFontFamilies.end())
+            continue;
+        if (PhysicalFontFace* pFace
+            = it->second->FindFontFaceByLegacyName(aSearchName, eWeight, eItalic))
+            return pFace;
+    }
+
+    return nullptr;
 }
 
 std::tuple<PhysicalFontFamily*, bool>
@@ -1116,7 +1139,7 @@ PhysicalFontFamily* PhysicalFontCollection::FindFontFamily(FontSelectPattern& rF
                 return pFoundData;
         }
 
-        if (mpPreMatchHook && mpPreMatchHook->FindFontSubstitute(rFSD))
+        if (nTokenPos == -1 && mpPreMatchHook && mpPreMatchHook->FindFontSubstitute(rFSD))
         {
             rFSD.maSearchName = GetEnglishSearchFontName(rFSD.maSearchName);
         }
@@ -1202,7 +1225,7 @@ PhysicalFontFamily* PhysicalFontCollection::FindFontFamily(FontSelectPattern& rF
     if (!rFSD.maSearchName.isEmpty() && !comphelper::IsFuzzing())
     {
         // get fallback info using FontSubstConfiguration and
-        // the target name, it's shortened name and family name in that order
+        // the target name, its shortened name and family name in that order
         const utl::FontSubstConfiguration& rFontSubst = utl::FontSubstConfiguration::get();
         pFontAttr = rFontSubst.getSubstInfo(rFSD.maSearchName);
         if (!pFontAttr && (aSearchShortName != rFSD.maSearchName))
@@ -1262,7 +1285,7 @@ PhysicalFontFamily* PhysicalFontCollection::FindFontFamily(FontSelectPattern& rF
         {
             // use a font name from font fallback list to determine font attributes
             // get fallback info using FontSubstConfiguration and
-            // the target name, it's shortened name and family name in that order
+            // the target name, its shortened name and family name in that order
             const utl::FontSubstConfiguration& rFontSubst = utl::FontSubstConfiguration::get();
             pTempFontAttr = rFontSubst.getSubstInfo(rFSD.maSearchName);
 

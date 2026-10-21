@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-// Th current high-level preprocessor structure is:
+// The current high-level preprocessor structure is:
 //
 // if !HAVE_FEATURE_UI
 //   => STATIC_SAL_INSTANCE
@@ -321,9 +321,10 @@ void DestroySalInstance( SalInstance *pInst )
 void SalAbort( const OUString& rErrorText, bool bDumpCore )
 {
     if (GetSalInstance())
-        GetSalInstance()->BeforeAbort(rErrorText, bDumpCore);
+        GetSalInstance()->BeforeAbort();
 
 #if defined _WIN32
+    (void)bDumpCore;
     if( rErrorText.isEmpty() )
     {
         // make sure crash reporter is triggered

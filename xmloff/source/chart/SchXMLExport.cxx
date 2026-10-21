@@ -120,7 +120,7 @@ namespace
 {
     /**
      * Used to store a data point custom-label's fields and also the helper members that
-     * indicates whether this label's contents are sourced from a cell[range] and
+     * indicate whether this label's contents are sourced from a cell[range] and
      * the address of the cell[range] with guid of the CELLRANGE field.
      */
     struct CustomLabelData
@@ -147,7 +147,7 @@ namespace
         chart2::RelativePosition mCustomLabelPos; // loext:custom-label-pos-x and -y
 
         // There is no internal equivalent for <chart:data-label>. It will be generated on the fly
-        // on export. All about data label is hold in the data point.
+        // on export. All about data label is held in the data point.
         CustomLabelData   mCustomLabel; // <text:p> child element in <chart:data-label>
         OUString msDataLabelStyleName; // chart:style-name attribute in <chart:data-label>
 
@@ -1320,6 +1320,18 @@ void SchXMLExportHelper_Impl::parseDocument( Reference< chart::XChartDocument > 
                 mrExport.AddAttribute(XML_NAMESPACE_LO_EXT, XML_CLASS,
                         mrExport.GetNamespaceMap().GetQNameByKey(
                             XML_NAMESPACE_LO_EXT, GetXMLToken(XML_HISTOGRAM)));
+            }
+            else if (eXMLChartType == XML_CORRELATION_CIRCLE)
+            {
+                // A reader that does not know the correlation circle plot is
+                // left with points in a plane, which is the nearest thing the
+                // format has a name for.
+                mrExport.AddAttribute(XML_NAMESPACE_CHART, XML_CLASS,
+                        mrExport.GetNamespaceMap().GetQNameByKey(
+                            XML_NAMESPACE_CHART, GetXMLToken(XML_SCATTER)));
+                mrExport.AddAttribute(XML_NAMESPACE_LO_EXT, XML_CLASS,
+                        mrExport.GetNamespaceMap().GetQNameByKey(
+                            XML_NAMESPACE_LO_EXT, GetXMLToken(XML_CORRELATION_CIRCLE)));
             }
             else if( eXMLChartType != XML_TOKEN_INVALID )
             {
@@ -3007,8 +3019,13 @@ void SchXMLExportHelper_Impl::exportSeries(
                         {
                             bool bIsScatterChart = aChartType == "com.sun.star.chart2.ScatterChartType";
                             bool bIsBubbleChart = aChartType == "com.sun.star.chart2.BubbleChartType";
+                            // A correlation circle plot keeps its two dimension
+                            // columns where a bubble chart keeps its x and y
+                            // values, in a domain each.
+                            bool bHasTwoDomains = bIsBubbleChart
+                                || aChartType == "com.sun.star.chart2.CorrelationCircleChartType";
                             Reference< chart2::data::XDataSequence > xYValuesForBubbleChart;
-                            if( bIsBubbleChart )
+                            if( bHasTwoDomains )
                             {
                                 Reference< chart2::data::XLabeledDataSequence > xSequence( lcl_getDataSequenceByRole( aSeqCnt, u"values-y"_ustr ) );
                                 if( xSequence.is() )
@@ -3018,7 +3035,7 @@ void SchXMLExportHelper_Impl::exportSeries(
                                         xYValuesForBubbleChart = nullptr;
                                 }
                             }
-                            if( bIsScatterChart || bIsBubbleChart )
+                            if( bIsScatterChart || bHasTwoDomains )
                             {
                                 Reference< chart2::data::XLabeledDataSequence > xSequence( lcl_getDataSequenceByRole( aSeqCnt, u"values-x"_ustr ) );
                                 if( xSequence.is() )

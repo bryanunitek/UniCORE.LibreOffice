@@ -36,12 +36,10 @@ using namespace ::vcl;
 
 namespace accessibility {
 
-
 AccessibleGridControlHeader::AccessibleGridControlHeader(
-        const Reference< XAccessible >& rxParent,
-        svt::table::TableControl& rTable,
-        AccessibleTableControlObjType eObjType):
-        AccessibleGridControlTableBase( rxParent, rTable, eObjType )
+    const rtl::Reference<comphelper::OAccessible>& rpParent, svt::table::TableControl& rTable,
+    AccessibleTableControlObjType eObjType)
+    : AccessibleGridControlTableBase(rpParent, rTable, eObjType)
 {
     OSL_ENSURE( isRowBar() || isColumnBar(),
         "AccessibleGridControlHeaderBar - invalid object type" );
@@ -65,7 +63,7 @@ sal_Int64 SAL_CALL AccessibleGridControlHeader::getAccessibleIndexInParent()
     SolarMutexGuard aSolarGuard;
 
     ensureAlive();
-    if (m_eObjType == AccessibleTableControlObjType::ROWHEADERBAR && m_aTable.HasColHeader())
+    if (m_eObjType == AccessibleTableControlObjType::ROWHEADERBAR && m_rTable.HasColumnHeader())
         return 1;
     else
         return 0;
@@ -82,7 +80,7 @@ AccessibleGridControlHeader::getAccessibleAtPoint( const awt::Point& rPoint )
 
     sal_Int32 nRow = 0;
     sal_Int32 nColumnPos = 0;
-    bool bConverted = m_aTable.ConvertPointToCellAddress(nRow, nColumnPos,
+    bool bConverted = m_rTable.ConvertPointToCellAddress(nRow, nColumnPos,
                                                          vcl::unohelper::ConvertToVCLPoint(rPoint));
     return bConverted ? implGetChild( nRow, nColumnPos ) : Reference< XAccessible >();
 }
@@ -165,19 +163,12 @@ sal_Bool SAL_CALL AccessibleGridControlHeader::isAccessibleSelected(
     return false;
 }
 
-// XServiceInfo ---------------------------------------------------------------
-
-OUString SAL_CALL AccessibleGridControlHeader::getImplementationName()
-{
-    return u"com.sun.star.accessibility.AccessibleGridControlHeader"_ustr;
-}
-
 // internal virtual methods ---------------------------------------------------
 
 AbsoluteScreenPixelRectangle AccessibleGridControlHeader::implGetBoundingBoxOnScreen()
 {
-    AbsoluteScreenPixelRectangle aGridRect( m_aTable.GetWindowExtentsAbsolute() );
-    tools::Rectangle aHeaderRect (m_aTable.calcHeaderRect(isColumnBar()));
+    AbsoluteScreenPixelRectangle aGridRect(m_rTable.GetWindowExtentsAbsolute());
+    tools::Rectangle aHeaderRect(m_rTable.calcHeaderRect(isColumnBar()));
     if(isColumnBar())
         return AbsoluteScreenPixelRectangle(aGridRect.TopLeft(), Size(aGridRect.getOpenWidth(),aHeaderRect.getOpenHeight()));
     else
@@ -190,14 +181,16 @@ Reference< XAccessible > AccessibleGridControlHeader::implGetChild(
 {
     if (m_eObjType == AccessibleTableControlObjType::COLUMNHEADERBAR)
     {
-        rtl::Reference<AccessibleGridControlHeaderCell> pColHeaderCell = new AccessibleGridControlHeaderCell(nColumnPos, this, m_aTable,
-                                                                                                             AccessibleTableControlObjType::COLUMNHEADERCELL);
+        rtl::Reference<AccessibleGridControlHeaderCell> pColHeaderCell
+            = new AccessibleGridControlHeaderCell(nColumnPos, this, m_rTable,
+                                                  AccessibleTableControlObjType::COLUMNHEADERCELL);
         return pColHeaderCell;
     }
     else if (m_eObjType == AccessibleTableControlObjType::ROWHEADERBAR)
     {
-        rtl::Reference<AccessibleGridControlHeaderCell> pRowHeaderCell = new AccessibleGridControlHeaderCell(nRow, this, m_aTable,
-                                                                                                             AccessibleTableControlObjType::ROWHEADERCELL);
+        rtl::Reference<AccessibleGridControlHeaderCell> pRowHeaderCell
+            = new AccessibleGridControlHeaderCell(nRow, this, m_rTable,
+                                                  AccessibleTableControlObjType::ROWHEADERCELL);
         return pRowHeaderCell;
     }
     return nullptr;

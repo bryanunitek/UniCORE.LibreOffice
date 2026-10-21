@@ -54,7 +54,7 @@ using ::com::sun::star::lang::IndexOutOfBoundsException;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-ScAccessibleEditObject::ScAccessibleEditObject(const rtl::Reference<comphelper::OAccessible>& rpParent,
+ScAccessibleEditObject::ScAccessibleEditObject(const rtl::Reference<ScAccessibleDocument>& rpParent,
                                                EditView* pEditView, vcl::Window* pWin,
                                                const OUString& rName, const OUString& rDescription,
                                                EditObjectType eObjectType)
@@ -80,11 +80,9 @@ ScAccessibleEditObject::ScAccessibleEditObject(EditObjectType eObjectType)
 {
 }
 
-void ScAccessibleEditObject::InitAcc(
-        const rtl::Reference<comphelper::OAccessible>& rpParent,
-        EditView* pEditView,
-        const OUString& rName,
-        const OUString& rDescription)
+void ScAccessibleEditObject::InitAcc(const rtl::Reference<ScAccessibleDocument>& rpParent,
+                                     EditView* pEditView, const OUString& rName,
+                                     const OUString& rDescription)
 {
     SetParent(rpParent);
     mpEditView = pEditView;
@@ -92,14 +90,10 @@ void ScAccessibleEditObject::InitAcc(
     CreateTextHelper();
     SetName(rName);
     SetDescription(rDescription);
-    if( meObjectType == CellInEditMode)
+    if (meObjectType == CellInEditMode && rpParent.is())
     {
-        const ScAccessibleDocument* pAccDoc = static_cast<ScAccessibleDocument*>(rpParent.get());
-        if (pAccDoc)
-        {
-            m_pScDoc = pAccDoc->GetDocument();
-            m_curCellAddress =pAccDoc->GetCurCellAddress();
-        }
+        m_pScDoc = rpParent->GetDocument();
+        m_curCellAddress = rpParent->GetCurCellAddress();
     }
 }
 
@@ -501,20 +495,18 @@ tools::Rectangle ScAccessibleEditControlObject::GetBoundingBox()
 {
     tools::Rectangle aBounds( GetBoundingBoxOnScreen() );
 
-    uno::Reference<XAccessibleContext> xContext = getAccessibleContext();
-    if ( xContext.is() )
+    uno::Reference<XAccessible> xParent(getAccessibleParent());
+    if (xParent.is())
     {
-        uno::Reference< XAccessible > xParent( xContext->getAccessibleParent() );
-        if ( xParent.is() )
+        uno::Reference<XAccessibleComponent> xParentComponent(xParent->getAccessibleContext(),
+                                                              uno::UNO_QUERY);
+        if (xParentComponent.is())
         {
-            uno::Reference< XAccessibleComponent > xParentComponent( xParent->getAccessibleContext(), uno::UNO_QUERY );
-            if ( xParentComponent.is() )
-            {
-                Point aScreenLoc = aBounds.TopLeft();
-                awt::Point aParentScreenLoc = xParentComponent->getLocationOnScreen();
-                Point aPos( aScreenLoc.getX() - aParentScreenLoc.X, aScreenLoc.getY() - aParentScreenLoc.Y );
-                aBounds.SetPos( aPos );
-            }
+            Point aScreenLoc = aBounds.TopLeft();
+            awt::Point aParentScreenLoc = xParentComponent->getLocationOnScreen();
+            Point aPos(aScreenLoc.getX() - aParentScreenLoc.X,
+                       aScreenLoc.getY() - aParentScreenLoc.Y);
+            aBounds.SetPos(aPos);
         }
     }
 

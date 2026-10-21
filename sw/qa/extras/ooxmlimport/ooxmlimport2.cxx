@@ -18,9 +18,11 @@
 
 #include <swmodeltestbase.hxx>
 
+#include <com/sun/star/document/UpdateDocMode.hpp>
 #include <com/sun/star/document/XEmbeddedObjectSupplier2.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/task/XInteractionApprove.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
@@ -39,6 +41,7 @@
 #include <officecfg/Office/Common.hxx>
 #include <svl/documentlockfile.hxx>
 #include <vcl/BitmapReadAccess.hxx>
+#include <vcl/graph.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <xmloff/odffields.hxx>
 
@@ -203,6 +206,24 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf143475rotatedWord2007image)
 
     // Because LO made the same error on export, which inverts the import error, import-export-cycle
     // does not fail without the patch. Therefore no export test.
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf171176WrapDistanceDefault)
+{
+    // Given a docx document with a tightly wrapped VML image that does not specify explicit
+    // wrap distances (no o:wrapdist* attributes on the v:shape).
+    createSwDoc("tight-wrap-fromdoc-C12.docx");
+
+    // Word implicitly assumes a 9pt (318 1/100 mm) wrap distance on left and right sides in this case.
+    // Without the fix, the missing attributes were interpreted as an explicit distance of 0.
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(sal_Int32(318),
+                                 getProperty<sal_Int32>(getShape(1), u"LeftMargin"_ustr), 1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(sal_Int32(318),
+                                 getProperty<sal_Int32>(getShape(1), u"RightMargin"_ustr), 1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(sal_Int32(0),
+                                 getProperty<sal_Int32>(getShape(1), u"TopMargin"_ustr), 1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(sal_Int32(0),
+                                 getProperty<sal_Int32>(getShape(1), u"BottomMargin"_ustr), 1);
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf143219ContourWrapRotate)
@@ -703,14 +724,15 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf113946)
 {
     createSwDoc("tdf113946.docx");
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    // The document has a single short horizontal line anchored at the doc start.
+    // Verify the imported position matches the source posOffset (899795 EMU) exactly.
+    CPPUNIT_ASSERT_EQUAL(sal_Int64(899795),
+                         getProperty<sal_Int64>(getShape(1), u"VertOrientPositionEMU"_ustr));
+
+    xmlDocUniquePtr pXmlDoc2 = parseLayoutDump();
     OUString aTop
-        = getXPath(pXmlDoc, "/root/page/body/txt/anchored/SwAnchoredDrawObject/bounds", "top");
-    // tdf#106792 Checked loading of tdf113946.docx. Before the change, the expected
-    // value of this test was "1696". Opening the file shows a single short line anchored
-    // at the doc start. Only diff is that in 'old' version it is slightly rotated, in 'new'
-    // version line is strict horizontal. Checked against MSWord2013, there the line
-    // is also not rotated -> the change is to the better, correct the expected result here.
-    CPPUNIT_ASSERT_EQUAL(u"1695"_ustr, aTop);
+        = getXPath(pXmlDoc2, "/root/page/body/txt/anchored/SwAnchoredDrawObject/bounds", "top");
+    CPPUNIT_ASSERT_EQUAL(u"1696"_ustr, aTop);
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf121804)
@@ -754,9 +776,9 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf169843_set_letter_formula)
     createSwDoc("tdf169843.docx");
 
     // Without the fix in place, this test would have failed with
-    // - Expected: " " setR  " "
-    // - Actual  : " "R " "
-    CPPUNIT_ASSERT_EQUAL(u"\" \" setR  \" \""_ustr, getFormula(getRun(getParagraph(1), 1)));
+    // - Expected: bold {" " setR } " "
+    // - Actual  : bold { R} " "
+    CPPUNIT_ASSERT_EQUAL(u"bold {\" \" setR } \" \""_ustr, getFormula(getRun(getParagraph(1), 1)));
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf119200)
@@ -1491,6 +1513,21 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf165348_lockFileOnRepair)
     // DocumentLockFile::GetLockData succeeded.
     CPPUNIT_ASSERT_THROW(svt::DocumentLockFile(aTempURL).GetLockData(),
                          ucb::InteractiveAugmentedIOException);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testLinkedPictureNotReadOnLoad)
+{
+    // Given a document whose picture is only a link to a file next to it, loaded with link
+    // updates off:
+    loadFromFile(u"linked-picture.docx",
+                 { comphelper::makePropertyValue(u"UpdateDocMode"_ustr,
+                                                 sal_Int16(document::UpdateDocMode::NO_UPDATE)) });
+
+    // Then the linked file is not read, so the picture has no pixels:
+    auto xGraphic = getProperty<uno::Reference<graphic::XGraphic>>(getShape(1), u"Graphic"_ustr);
+    // Without the accompanying fix in place, this test would have failed, the import read the
+    // linked file and the picture was a bitmap.
+    CPPUNIT_ASSERT(Graphic(xGraphic).GetType() != GraphicType::Bitmap);
 }
 
 // tests should only be added to ooxmlIMPORT *if* they fail round-tripping in ooxmlEXPORT

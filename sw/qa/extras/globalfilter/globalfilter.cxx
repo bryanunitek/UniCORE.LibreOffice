@@ -320,7 +320,7 @@ void Test::testGraphicShape(TestFilter eFilterName)
     // download can proceed, then pump the event loop to let the
     // async download complete before export
     getSwDocShell()->getEmbeddedObjectContainer().setUserAllowsLinkUpdate(true);
-    getSwDoc()->GetEditShell()->GetLinkManager().UpdateAllLinks(false, nullptr, u""_ustr);
+    getSwDoc()->GetEditShell()->GetLinkManager().UpdateAllLinks(false, u""_ustr);
     Scheduler::ProcessEventsToIdle();
 
     // Export the document and import again for a check
@@ -328,7 +328,7 @@ void Test::testGraphicShape(TestFilter eFilterName)
 
     // allow link updates on the reloaded document too
     getSwDocShell()->getEmbeddedObjectContainer().setUserAllowsLinkUpdate(true);
-    getSwDoc()->GetEditShell()->GetLinkManager().UpdateAllLinks(false, nullptr, u""_ustr);
+    getSwDoc()->GetEditShell()->GetLinkManager().UpdateAllLinks(false, u""_ustr);
     Scheduler::ProcessEventsToIdle();
 
     // Check whether graphic exported well
@@ -1412,14 +1412,12 @@ CPPUNIT_TEST_FIXTURE(Test, testListLabelPDFExport)
         comphelper::InitPropertySequence({ { "PDFUACompliance", uno::Any(true) } }));
     aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
     skipValidation();
-    save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
+    save(TestFilter::PDF, aMediaDescriptor.getAsConstPropertyValueList());
 
-    // Parse the export result with pdfium.
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
-
-    // Non-NULL pPdfDocument means pdfium is available.
-    if (pPdfDocument != nullptr)
+    if (std::shared_ptr<vcl::pdf::PDFium> pPDFium
+        = vcl::pdf::PDFiumLibrary::get()) // This part will be skipped without PDFium
     {
+        auto pPdfDocument = parsePDFExport(pPDFium);
         // The document has one page.
         CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
         std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(/*nIndex=*/0);
@@ -1532,11 +1530,8 @@ CPPUNIT_TEST_FIXTURE(Test, testListLabelPDFExport)
     CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nLbl)>(6), nLblTJ + nLblTj);
 
     auto nL(0);
-    for (const auto& rDocElement : aDocument.GetElements())
+    for (auto* pObject0 : aDocument.GetObjects())
     {
-        auto pObject0 = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
-        if (!pObject0)
-            continue;
         auto pType0 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject0->Lookup("Type"_ostr));
         if (!pType0 || pType0->GetValue() != "StructElem")
         {
@@ -1802,6 +1797,10 @@ CPPUNIT_TEST_FIXTURE(Test, testTableOfContentLinksHaveContentSet)
     // TOC is expected to have alt. text set (written to /Contents key), PDF/UA conformance tests
     // will fail. TOC links can't be set by the user.
 
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+        return;
+
     createSwDoc("SimpleTOC.odt");
 
     // Let's update TOC first
@@ -1818,14 +1817,10 @@ CPPUNIT_TEST_FIXTURE(Test, testTableOfContentLinksHaveContentSet)
         comphelper::InitPropertySequence({ { "PDFUACompliance", uno::Any(true) } }));
     aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
     skipValidation();
-    save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
+    save(TestFilter::PDF, aMediaDescriptor.getAsConstPropertyValueList());
 
     // Parse the export result with pdfium.
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
-
-    // Non-NULL pPdfDocument means pdfium is available.
-    if (!pPdfDocument)
-        return;
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
 
     // The document has one page.
     CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
@@ -1881,7 +1876,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf143311)
         comphelper::InitPropertySequence({ { "PDFUACompliance", uno::Any(true) } }));
     aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
     skipValidation();
-    save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
+    save(TestFilter::PDF, aMediaDescriptor.getAsConstPropertyValueList());
 
     vcl::filter::PDFDocument aDocument;
     SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);

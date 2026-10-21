@@ -35,10 +35,8 @@
 #include <editeng/numitem.hxx>
 #include "tox.hxx"
 #include "frmfmt.hxx"
-#include "frameformats.hxx"
 #include "charfmt.hxx"
 #include "docary.hxx"
-#include "charformats.hxx"
 #include "pagedesc.hxx"
 #include "tblenum.hxx"
 #include "ndarr.hxx"
@@ -66,6 +64,7 @@ class SvxMacro;
 class SwAutoCompleteWord;
 class SwAutoCorrExceptWord;
 class SwCellFrame;
+class SwCharFormats;
 class SwCellStyleTable;
 class SwCursorShell;
 class SwCursor;
@@ -147,6 +146,8 @@ namespace sw {
     enum class RedlineMode;
     enum class FieldmarkMode;
     enum class ParagraphBreakMode;
+    template<class T> class FrameFormats;
+    typedef FrameFormats<::SwTableFormat*> TableFrameFormats;
     class MetaFieldManager;
     class UndoManager;
     class IShellCursorSupplier;
@@ -333,6 +334,7 @@ private:
     bool mbInWriterfilterImport  : 1;    //< TRUE: writerfilter import (DOCX,RTF)
     bool mbUpdateTOX             : 1;    //< TRUE: After loading document, update TOX.
     bool mbInLoadAsynchron       : 1;    //< TRUE: Document is in the process of being loaded asynchronously.
+    bool mbHasFillBitmapLinks    : 1;    //< TRUE: the fill-bitmap link tracker has registered links.
     bool mbIsAutoFormatRedline   : 1;    //< TRUE: Redlines are recorded by Autoformat.
     bool mbOLEPrtNotifyPending   : 1;    /**< TRUE: Printer has changed. At creation of View
                                                 notification of OLE-Objects PrtOLENotify() is required. */
@@ -806,8 +808,7 @@ public:
     SW_DLLPUBLIC SwCharFormat *MakeCharFormat(const UIName &rFormatName, SwCharFormat *pDerivedFrom);
     void       DelCharFormat(size_t nFormat, bool bBroadcast = false);
     void       DelCharFormat(SwCharFormat const * pFormat, bool bBroadcast = false);
-    SwCharFormat* FindCharFormatByName( const UIName& rName ) const
-        {   return mpCharFormatTable->FindFormatByName(rName); }
+    SW_DLLPUBLIC SwCharFormat* FindCharFormatByName( const UIName& rName ) const;
 
     // Formatcollections (styles)
     // TXT
@@ -1422,12 +1423,23 @@ public:
     // For Autotexts? (text modules) They have only one SVPersist at their disposal.
     SW_DLLPUBLIC SfxObjectShell* GetPersist() const;
 
+    /** The file name carried by the document shell, or an empty string while the shell has
+        no file name. */
+    SW_DLLPUBLIC OUString GetLinkReferer() const;
+
+    /** Whether a link in this document may be followed to the location it names. */
+    SW_DLLPUBLIC bool AllowAccessLink() const;
+
     // Pointer to storage of SfxDocShells. Can be 0!!!
     SW_DLLPUBLIC css::uno::Reference< css::embed::XStorage > GetDocStorage();
 
     // Query / set flag indicating if document is loaded asynchronously at this moment.
     bool IsInLoadAsynchron() const             { return mbInLoadAsynchron; }
     void SetInLoadAsynchron( bool bFlag )       { mbInLoadAsynchron = bFlag; }
+
+    // True while the fill-bitmap link tracker holds at least one link.
+    bool HasFillBitmapLinks() const            { return mbHasFillBitmapLinks; }
+    void SetHasFillBitmapLinks( bool bFlag )    { mbHasFillBitmapLinks = bFlag; }
 
     // For Drag&Move: (e.g. allow "moving" of RefMarks)
     bool IsCopyIsMove() const              { return mbCopyIsMove; }
@@ -1583,7 +1595,7 @@ public:
                                 const SfxItemSet* pSet );
     void SetFormatItemByAutoFormat( const SwPaM& rPam, const SfxItemSet& );
 
-    // Only for SW-textbloxks! Does not pay any attention to layout!
+    // Only for SW text blocks! Does not pay any attention to layout!
     void ClearDoc();        // Deletes all content!
 
     // Query /set data for PagePreview.

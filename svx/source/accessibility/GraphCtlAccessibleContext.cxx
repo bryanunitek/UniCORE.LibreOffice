@@ -81,12 +81,13 @@ SvxGraphCtrlAccessibleContext::SvxGraphCtrlAccessibleContext(GraphCtrl& rRepr)
     }
 }
 
-/** returns the XAccessible interface for a given SdrObject.
-    Multiple calls for the same SdrObject return the same XAccessible.
+/** returns the accessible shape for a given SdrObject.
+    Multiple calls for the same SdrObject return the same accessible.
 */
-Reference< XAccessible > SvxGraphCtrlAccessibleContext::getAccessible( const SdrObject* pObj )
+rtl::Reference<::accessibility::AccessibleShape>
+SvxGraphCtrlAccessibleContext::getAccessible(const SdrObject* pObj)
 {
-    Reference<XAccessible> xAccessibleShape;
+    rtl::Reference<::accessibility::AccessibleShape> pAccessibleShape;
 
     if( pObj )
     {
@@ -96,15 +97,14 @@ Reference< XAccessible > SvxGraphCtrlAccessibleContext::getAccessible( const Sdr
         if( iter != mxShapes.end() )
         {
             // if we already have one, return it
-            xAccessibleShape = (*iter).second.get();
+            pAccessibleShape = (*iter).second.get();
         }
         else
         {
             // create a new one and remember in our internal map
             Reference< XShape > xShape( Reference< XShape >::query( const_cast<SdrObject*>(pObj)->getUnoShape() ) );
 
-            css::uno::Reference<css::accessibility::XAccessible> xParent(getAccessibleParent());
-            AccessibleShapeInfo aShapeInfo (xShape,xParent);
+            AccessibleShapeInfo aShapeInfo(xShape, getAccessibleParentImpl());
             ::accessibility::AccessibleShapeTreeInfo aTreeInfo;
             aTreeInfo.SetSdrView(mpView);
             aTreeInfo.SetWindow(mpControl->GetDrawingArea()->get_ref_device().GetOwnerWindow());
@@ -112,7 +112,7 @@ Reference< XAccessible > SvxGraphCtrlAccessibleContext::getAccessible( const Sdr
             // Create accessible object that corresponds to the descriptor's shape.
             rtl::Reference<AccessibleShape> pAcc(ShapeTypeHandler::Instance().CreateAccessibleObject(
                 aShapeInfo, aTreeInfo));
-            xAccessibleShape = pAcc.get();
+            pAccessibleShape = pAcc.get();
             if (pAcc.is())
             {
                 pAcc->Init();
@@ -120,11 +120,12 @@ Reference< XAccessible > SvxGraphCtrlAccessibleContext::getAccessible( const Sdr
             mxShapes[pObj] = std::move(pAcc);
 
             // Create event and inform listeners of the object creation.
-            NotifyAccessibleEvent(AccessibleEventId::CHILD, Any(), Any(xAccessibleShape));
+            NotifyAccessibleEvent(AccessibleEventId::CHILD, Any(),
+                                  Any(uno::Reference<XAccessible>(pAccessibleShape)));
         }
     }
 
-    return xAccessibleShape;
+    return pAccessibleShape;
 }
 
 Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleAtPoint( const awt::Point& rPoint )
@@ -201,14 +202,20 @@ Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleCh
     return getAccessible( getSdrObject( nIndex ) );
 }
 
-Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleParent()
+rtl::Reference<comphelper::OAccessible>
+SvxGraphCtrlAccessibleContext::getAccessibleParentImpl() const
 {
-    ::SolarMutexGuard aGuard;
+    SolarMutexGuard aGuard;
 
     if( nullptr == mpControl )
         throw DisposedException();
 
     return mpControl->GetDrawingArea()->get_accessible_parent();
+}
+
+Reference<XAccessible> SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleParent()
+{
+    return getAccessibleParentImpl();
 }
 
 sal_Int16 SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleRole()
@@ -268,13 +275,9 @@ lang::Locale SAL_CALL SvxGraphCtrlAccessibleContext::getLocale()
 {
     ::SolarMutexGuard aGuard;
 
-    css::uno::Reference<css::accessibility::XAccessible> xParent(getAccessibleParent());
-    if (xParent.is())
-    {
-        Reference< XAccessibleContext > xParentContext( xParent->getAccessibleContext() );
-        if( xParentContext.is() )
-            return xParentContext->getLocale();
-    }
+    rtl::Reference<comphelper::OAccessible> pParent = getAccessibleParentImpl();
+    if (pParent.is())
+        return pParent->getLocale();
 
     //  No parent.  Therefore throw exception to indicate this cluelessness.
     throw IllegalAccessibleComponentStateException();
@@ -301,22 +304,6 @@ sal_Int32 SAL_CALL SvxGraphCtrlAccessibleContext::getBackground()
 {
     Color nColor = Application::GetSettings().GetStyleSettings().GetWindowColor();
     return static_cast<sal_Int32>(nColor);
-}
-
-// XServiceInfo
-OUString SAL_CALL SvxGraphCtrlAccessibleContext::getImplementationName()
-{
-    return u"com.sun.star.comp.ui.SvxGraphCtrlAccessibleContext"_ustr;
-}
-
-sal_Bool SAL_CALL SvxGraphCtrlAccessibleContext::supportsService( const OUString& sServiceName )
-{
-    return cppu::supportsService(this, sServiceName);
-}
-
-Sequence< OUString > SAL_CALL SvxGraphCtrlAccessibleContext::getSupportedServiceNames()
-{
-    return { u"com.sun.star.accessibility.AccessibleContext"_ustr };
 }
 
 // XAccessibleSelection
@@ -473,10 +460,9 @@ void SAL_CALL SvxGraphCtrlAccessibleContext::disposing()
     {
         for (const auto& rEntry : mxShapes)
         {
-            rtl::Reference<XAccessible> pAcc(rEntry.second);
-            Reference< XComponent > xComp( pAcc.get(), UNO_QUERY );
-            if( xComp.is() )
-                xComp->dispose();
+            rtl::Reference<::accessibility::AccessibleShape> pAcc(rEntry.second);
+            if (pAcc.is())
+                pAcc->dispose();
         }
 
         mxShapes.clear();
@@ -508,12 +494,15 @@ void SvxGraphCtrlAccessibleContext::Notify( SfxBroadcaster& /*rBC*/, const SfxHi
                 break;
 
             case SdrHintKind::ObjectInserted:
-                NotifyAccessibleEvent(AccessibleEventId::CHILD, uno::Any(),
-                                      Any(getAccessible(pSdrHint->GetObject())));
+                NotifyAccessibleEvent(
+                    AccessibleEventId::CHILD, uno::Any(),
+                    Any(uno::Reference<XAccessible>(getAccessible(pSdrHint->GetObject()))));
                 break;
             case SdrHintKind::ObjectRemoved:
-                NotifyAccessibleEvent(AccessibleEventId::CHILD,
-                                      Any(getAccessible(pSdrHint->GetObject())), uno::Any());
+                NotifyAccessibleEvent(
+                    AccessibleEventId::CHILD,
+                    Any(uno::Reference<XAccessible>(getAccessible(pSdrHint->GetObject()))),
+                    uno::Any());
                 break;
             case SdrHintKind::ModelCleared:
                 dispose();

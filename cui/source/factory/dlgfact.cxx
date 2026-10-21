@@ -97,10 +97,11 @@
 #include <DiagramDialog.hxx>
 #include <fileextcheckdlg.hxx>
 #include <TextColumnsPage.hxx>
-#include <querydialog.hxx>
 #include <welcomedlg.hxx>
 
 #include <MacroManagerDialog.hxx>
+
+#include <svtools/querydialog.hxx>
 
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::container;
@@ -241,7 +242,7 @@ VclPtr<SfxAbstractTabDialog> AbstractDialogFactory_Impl::CreateCustomizeTabDialo
     return VclPtr<CuiAbstractTabController_Impl<SvxConfigDialog>>::Create(std::move(xDlg1));
 }
 
-// TabDialog that use functionality of the drawing layer
+// TabDialog that uses functionality of the drawing layer
 VclPtr<SfxAbstractTabDialog> AbstractDialogFactory_Impl::CreateTextTabDialog(weld::Window* pParent,
                                             const SfxItemSet* pAttrSet,
                                             SdrView* pView)
@@ -251,7 +252,7 @@ VclPtr<SfxAbstractTabDialog> AbstractDialogFactory_Impl::CreateTextTabDialog(wel
 
 namespace
 {
-// AbstractSvxCaptionDialog implementations just forwards everything to the dialog
+// AbstractSvxCaptionDialog implementation just forwards everything to the dialog
 class AbstractSvxCaptionDialog_Impl final
     : public vcl::AbstractDialogImpl_Async<AbstractSvxCaptionDialog, SvxCaptionTabDialog>
 {
@@ -272,7 +273,7 @@ public:
 };
 }
 
-// TabDialog that use functionality of the drawing layer and add AnchorTypes -- for SvxCaptionTabDialog
+// TabDialog that uses functionality of the drawing layer and adds AnchorTypes -- for SvxCaptionTabDialog
 VclPtr<AbstractSvxCaptionDialog> AbstractDialogFactory_Impl::CreateCaptionDialog(weld::Window* pParent,
                                                                                  const SdrView* pView,
                                                                                  SvxAnchorIds nAnchorTypes)
@@ -455,12 +456,11 @@ public:
 };
 }
 
-VclPtr<AbstractSpellDialog> AbstractDialogFactory_Impl::CreateSvxSpellDialog(
-                        weld::Window* pParent,
-                        SfxBindings* pBindings,
-                        svx::SpellDialogChildWindow* pSpellChildWindow)
+VclPtr<AbstractSpellDialog>
+AbstractDialogFactory_Impl::CreateSvxSpellDialog(weld::Window* pParent, SfxBindings* pBindings,
+                                                 svx::SpellDialogChildWindow& rSpellChildWindow)
 {
-    return VclPtr<AbstractSpellDialog_Impl>::Create(pSpellChildWindow, pParent, pBindings);
+    return VclPtr<AbstractSpellDialog_Impl>::Create(rSpellChildWindow, pParent, pBindings);
 }
 
 VclPtr<VclAbstractDialog> AbstractDialogFactory_Impl::CreateActualizeProgressDialog(weld::Widget* pParent,
@@ -482,6 +482,7 @@ class AbstractScriptSelectorDialog_Impl final
 public:
     using AbstractDialogImpl_BASE::AbstractDialogImpl_BASE;
     OUString GetScriptURL() const override { return m_pDlg->GetScriptURL(); }
+    Reference<frame::XModel> GetScriptModel() const override { return m_pDlg->GetScriptModel(); }
     void SetRunLabel() override { m_pDlg->SetRunLabel(); }
 };
 }
@@ -501,6 +502,7 @@ class AbstractMacroManagerDialog_Impl final
 public:
     using AbstractDialogImpl_BASE::AbstractDialogImpl_BASE;
     OUString GetScriptURL() const override { return m_pDlg->GetScriptURL(); }
+    Reference<frame::XModel> GetScriptModel() const override { return m_pDlg->GetScriptModel(); }
     void LoadLastUsedMacro() const override { m_pDlg->LoadLastUsedMacro(); }
 };
 }
@@ -1547,28 +1549,5 @@ AbstractDialogFactory_Impl::CreateFileExtCheckDialog(weld::Window* pParent, cons
     return VclPtr<CuiAbstractController_Impl<FileExtCheckDialog>>::Create(pParent, sTitle, sMsg);
 }
 #endif
-
-namespace
-{
-class AbstractQueryDialog_Impl final
-    : public vcl::AbstractDialogImpl_Async<AbstractQueryDialog,
-                                           QueryDialog>
-{
-public:
-    using AbstractDialogImpl_BASE::AbstractDialogImpl_BASE;
-    bool DontShowAgain() const override { return m_pDlg->DontShowAgain(); }
-    void SetYesLabel(const OUString& sLabel) override { m_pDlg->SetYesLabel(sLabel); }
-    void SetNoLabel(const OUString& sLabel) override { m_pDlg->SetNoLabel(sLabel); }
-};
-}
-
-VclPtr<AbstractQueryDialog>
-AbstractDialogFactory_Impl::CreateQueryDialog(
-    weld::Window* pParent,
-    const OUString& sTitle, const OUString& sText, const OUString& sQuestion,
-    bool bShowAgain)
-{
-    return VclPtr<AbstractQueryDialog_Impl>::Create(pParent, sTitle, sText, sQuestion, bShowAgain);
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

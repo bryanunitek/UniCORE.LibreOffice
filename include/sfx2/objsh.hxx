@@ -25,6 +25,7 @@
 #include <comphelper/errcode.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <cppuhelper/weakref.hxx>
 
 #include <svl/poolitem.hxx>
 #include <sot/object.hxx>
@@ -101,6 +102,7 @@ namespace sfx { class IDocumentModelAccessor; }
 namespace sfx { class AccessibilityIssueCollection; }
 
 namespace com::sun::star::awt { class XWindow; }
+namespace com::sun::star::beans { class XPropertySet; }
 namespace com::sun::star::beans { struct PropertyValue; }
 namespace com::sun::star::document { struct CmisVersion; }
 namespace com::sun::star::document { class XDocumentProperties; }
@@ -170,6 +172,15 @@ enum class SfxObjectCreateMode
     INTERNAL
 };
 
+/// The macro state a document made by SfxObjectShell::DoInitNew starts with.
+enum class SfxNewDocumentMacros
+{
+    /// A document the user goes on to work in, so its macros are the user's own.
+    Allow,
+    /// A document that holds content from elsewhere, or one that only serves another operation.
+    Disallow
+};
+
 /*
     The class SfxObjectShell is the base class for SFx-objects, ie documents
     and parts of documents that can be integrated as separate objects
@@ -196,12 +207,14 @@ private:
     SfxMedium *                 pMedium;  // Description of the file for example
                                           // storage that contains the object
     SfxObjectCreateMode         eCreateMode;      // Purpose of the object
-    bool                        bHasName :1;      // sal_True  := existing object,
-                                                  // sal_False := new object
+    bool                        bHasName :1;      // true  := existing object,
+                                                  // false := new object
     bool                        bIsInGenerateThumbnail; //optimize thumbnail generate and store procedure to improve odt saving performance, i120030
     bool                        mbAvoidRecentDocs; ///< Avoid adding to the recent documents list, if not necessary.
     bool                        bRememberSignature; // Do we want to remember the signature.
     bool                        bPendingLinkUpdateInfobar;
+    std::vector<std::pair<css::uno::WeakReference<css::beans::XPropertySet>, OUString>>
+                                maDeferredFormControlImages;
 
     enum TriState               {undefined, yes, no};
     TriState                    mbContinueImportOnFilterExceptions = undefined; // try to import as much as possible
@@ -292,6 +305,10 @@ public:
     bool                        AcceptStateUpdate() const;
     bool                        IsHelpDocument() const;
 
+    // Whether the document's location lets its links update without asking. A document embedded
+    // in another one has no location of its own and is never in a trusted location.
+    bool                        IsTrustedLocationForUpdatingLinks() const;
+
     bool                        IsDocShared() const;
     OUString                    GetSharedFileURL() const;
     bool                        SwitchToShared( bool bShared, bool bSave );
@@ -314,7 +331,7 @@ public:
      * @return true if the initialization is successful, false otherwise.
      */
     void                        DoInitUnitTest();
-    bool                        DoInitNew();
+    bool                        DoInitNew(SfxNewDocumentMacros eMacros);
     bool                        DoLoad( SfxMedium* pMedium );
     bool                        DoLoadExternal( SfxMedium* pMed );
     bool                        DoSave();
@@ -343,6 +360,14 @@ public:
     void                        SetPendingLinkUpdateInfobar() { bPendingLinkUpdateInfobar = true; }
     void                        CheckPendingLinkUpdateInfobar();
     void                        ShowLinkUpdateInfobar();
+    void                        AddDeferredFormControlImage(
+                                    const css::uno::Reference<css::beans::XPropertySet>& rxControl,
+                                    const OUString& rURL);
+    const std::vector<std::pair<css::uno::WeakReference<css::beans::XPropertySet>, OUString>>&
+                                GetDeferredFormControlImages() const
+                                    { return maDeferredFormControlImages; }
+    void                        ClearDeferredFormControlImages()
+                                    { maDeferredFormControlImages.clear(); }
     virtual bool                LoadExternal( SfxMedium& rMedium );
     bool                        IsConfigOptionsChecked() const;
     void                        SetConfigOptionsChecked( bool bChecked );
@@ -426,7 +451,13 @@ public:
     */
     bool                        AdjustMacroMode();
 
+    /// whether macros from this document are already allowed to run, without asking
+    bool                        IsMacroExecutionAllowed() const;
+
     static bool                 UnTrustedScript(const OUString& rScriptURL);
+
+    /// Check if script URL whitelist exists, and if so, if current script url is part of it
+    static bool                 isScriptURLAllowed(const OUString& rScriptURL);
 
     static bool                 isScriptAccessAllowed(const css::uno::Reference<css::uno::XInterface>& rScriptContext);
 
@@ -519,7 +550,7 @@ public:
     // Naming Interface
     void                        SetTitle( const OUString& rTitle );
     /* Small non-zero values of nMaxLen don't mean length, but have a magic meaning:
-       0 (default)
+       0 (==SFX_TITLE_TITLE) (default)
        the title itself, as it is
 
        1 (==SFX_TITLE_FILENAME)
@@ -552,12 +583,12 @@ public:
        returns the Title just like MB now would
        display it in the History
 
-       10 bis USHRT_MAX
+       10 to USHRT_MAX
        provides the 'nMaxLength' of the logical
        file name including the path
        (remote => css::util::URL)
     */
-    OUString                    GetTitle( sal_uInt16 nMaxLen = 0 ) const;
+    OUString GetTitle(sal_uInt16 nMaxLen = SFX_TITLE_TITLE) const;
     void                        InvalidateName();  // Re-set to unnamed
 
 #if defined(_WIN32)
@@ -611,7 +642,7 @@ public:
                                 GetModel() const;
     // Only temporarily for the applications!
     void                        SetBaseModel( SfxBaseModel* pModel );
-    css::uno::Reference< css::frame::XModel3 > GetBaseModel() const;
+    rtl::Reference<SfxBaseModel> GetBaseModel() const;
     // Only temporarily for the applications!
 
     virtual css::uno::Sequence< OUString > GetEventNames();
@@ -702,7 +733,7 @@ public:
                                sal_Int32 nVersion,
                                bool bTemplate = false) const = 0;
 
-    // change recording and respective passwword protection for Writer and Calc
+    // change recording and respective password protection for Writer and Calc
     // slots available for Writer:  FN_REDLINE_ON, FN_REDLINE_ON
     // slots used for Calc:         FID_CHG_RECORD, SID_CHG_PROTECT
     virtual bool    IsChangeRecording(SfxViewShell* pViewShell = nullptr, bool bRecordAllViews = true) const;
@@ -741,6 +772,7 @@ public:
     SAL_DLLPRIVATE void InitOwnModel_Impl();
     SAL_DLLPRIVATE void BreakMacroSign_Impl( bool bBreakMacroSing );
     SAL_DLLPRIVATE void CheckSecurityOnLoading_Impl();
+    SAL_DLLPRIVATE bool DocumentUIConfigurationHasMacroCalls_Impl();
     SAL_DLLPRIVATE void CheckForBrokenDocSignatures_Impl();
     SAL_DLLPRIVATE void CheckEncryption_Impl( const css::uno::Reference< css::task::XInteractionHandler >& xHandler );
     SAL_DLLPRIVATE void SetModifyPasswordEntered( bool bEntered = true );

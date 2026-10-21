@@ -160,8 +160,7 @@ rtl::Reference<Content> Content::create(
     {
         // resource exists
 
-        sal_Int32 nLastSlash = aURL.lastIndexOf( '/' );
-        if ( ( nLastSlash + 1 ) == aURL.getLength() )
+        if ( aURL.endsWith('/') )
         {
             // Client explicitly requested a folder!
             if ( !aProps.bIsFolder )
@@ -179,8 +178,7 @@ rtl::Reference<Content> Content::create(
         bool bFolder = false;
 
         // Guess type according to URI.
-        sal_Int32 nLastSlash = aURL.lastIndexOf( '/' );
-        if ( ( nLastSlash + 1 ) == aURL.getLength() )
+        if ( aURL.endsWith('/') )
             bFolder = true;
 
         uno::Reference< ucb::XContentIdentifier > xId
@@ -1280,7 +1278,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
             // Do not set new title!
             aNewTitle.clear();
 
-            // Set error .
+            // Set error.
             aRetRange[ nTitlePos ] <<= uno::Exception(
                     u"Exchange failed!"_ustr,
                     getXWeak() );
@@ -1504,7 +1502,7 @@ void Content::insert(
     }
 
     OUString aNewURL = m_aUri.getParentUri();
-    if (1 + aNewURL.lastIndexOf('/') != aNewURL.getLength())
+    if (!aNewURL.endsWith('/'))
         aNewURL += "/";
     aNewURL += ::ucb_impl::urihelper::encodeSegment( m_aProps.aTitle );
     PackageUri aNewUri( aNewURL );
@@ -1720,7 +1718,7 @@ void Content::transfer(
     uno::Reference< ucb::XContentIdentifier > xId
         = new ::ucbhelper::ContentIdentifier( rInfo.SourceURL );
 
-    // Note: The static cast is okay here, because its sure that
+    // Note: The static cast is okay here, because it is sure that
     //       m_xProvider is always the PackageContentProvider.
     rtl::Reference< Content > xSource;
 
@@ -1759,7 +1757,7 @@ void Content::transfer(
             : getContentType( m_aUri.getScheme(), false );
     aContentInfo.Attributes = 0;
 
-    // Note: The static cast is okay here, because its sure that
+    // Note: The static cast is okay here, because it is sure that
     //       createNewContent always creates a Content.
     rtl::Reference< Content > xTarget
         = static_cast< Content * >( createNewContent( aContentInfo ).get() );
@@ -1909,7 +1907,7 @@ void Content::transfer(
     }
 
 
-    // 5) Destroy source ( when moving only ) .
+    // 5) Destroy source (when moving only).
 
 
     if ( !rInfo.MoveData )
@@ -2015,7 +2013,7 @@ void Content::queryChildren( ContentRefList& rChildren )
 
     OUString aURL = m_xIdentifier->getContentIdentifier();
 
-    OSL_ENSURE( aURL.lastIndexOf( '/' ) != ( aURL.getLength() - 1 ),
+    OSL_ENSURE( !aURL.endsWith('/'),
                 "Content::queryChildren - Invalid URL!" );
 
     aURL += "/";

@@ -129,7 +129,7 @@ SidebarController::SidebarController (
               *this)),
       maCurrentContext(OUString(), OUString()),
       maRequestedContext(OUString(), OUString()),
-      mnRequestedForceFlags(SwitchFlag_NoForce),
+      meRequestedForceFlags(SwitchFlag::NoForce),
       mbMinimumSidebarWidth(officecfg::Office::UI::Sidebar::General::MinimumWidth::get()),
       msCurrentDeckId(gsDefaultDeckId),
       maPropertyChangeForwarder(mpViewFrame, [this](){ return this->BroadcastPropertyChange(); }),
@@ -367,11 +367,10 @@ void SAL_CALL SidebarController::notifyContextChangeEvent (const css::ui::Contex
                                              // calling with held
                                              // solarmutex
 
+        // tdf#104892 - other context changes are batched into a single rebuild
+        // by the request above; only an application switch needs an immediate one
         bool bSwitchedApp = maRequestedContext.msApplication != maCurrentContext.msApplication;
-        // Happens on reattach of sidebar to frame or context change
-        // LOK performance impact: prevents to switch sidebar on every keypress in multi user case
-        // Allow when enters embedded OLE (eg. Math formula editor second time)
-        if (!comphelper::LibreOfficeKit::isActive() || bSwitchedApp)
+        if (bSwitchedApp)
             UpdateConfigurations();
     }
 }
@@ -406,7 +405,7 @@ void SAL_CALL SidebarController::statusChanged (const css::frame::FeatureStateEv
         if ( ! mbIsDocumentReadOnly)
             SwitchToDefaultDeck();
 
-        mnRequestedForceFlags |= SwitchFlag_ForceSwitch;
+        meRequestedForceFlags |= SwitchFlag::ForceSwitch;
         maContextChangeUpdate.RequestCall(); // async call, ok to call
                                              // with held solarmutex
     }
@@ -554,8 +553,7 @@ void SidebarController::SyncUpdate()
 
 void SidebarController::UpdateConfigurations()
 {
-    if (maCurrentContext == maRequestedContext
-        && mnRequestedForceFlags == SwitchFlag_NoForce)
+    if (maCurrentContext == maRequestedContext && meRequestedForceFlags == SwitchFlag::NoForce)
         return;
 
     bool bIsLOK = comphelper::LibreOfficeKit::isActive();
@@ -718,9 +716,8 @@ void SidebarController::SwitchToDefaultDeck()
 void SidebarController::SwitchToDeck (
     std::u16string_view rsDeckId)
 {
-    if (  msCurrentDeckId != rsDeckId
-        || ! mbIsDeckOpen.has_value()
-        || mnRequestedForceFlags!=SwitchFlag_NoForce)
+    if (msCurrentDeckId != rsDeckId || !mbIsDeckOpen.has_value()
+        || meRequestedForceFlags != SwitchFlag::NoForce)
     {
         std::shared_ptr<DeckDescriptor> xDeckDescriptor = mpResourceManager->GetDeckDescriptor(rsDeckId);
 
@@ -870,9 +867,9 @@ void SidebarController::SwitchToDeck (
 
     maFocusManager.Clear();
 
-    const bool bForceNewDeck ((mnRequestedForceFlags&SwitchFlag_ForceNewDeck)!=0);
-    const bool bForceNewPanels ((mnRequestedForceFlags&SwitchFlag_ForceNewPanels)!=0);
-    mnRequestedForceFlags = SwitchFlag_NoForce;
+    const bool bForceNewDeck(meRequestedForceFlags & SwitchFlag::ForceNewDeck);
+    const bool bForceNewPanels(meRequestedForceFlags & SwitchFlag::ForceNewPanels);
+    meRequestedForceFlags = SwitchFlag::NoForce;
 
     if (   msCurrentDeckId != rDeckDescriptor.msId
         || bForceNewDeck)
@@ -1094,7 +1091,7 @@ IMPL_LINK(SidebarController, WindowEventHandler, VclWindowEvent&, rEvent, void)
                 Theme::HandleDataChange();
                 UpdateTitleBarIcons();
                 mpParentWindow->Invalidate();
-                mnRequestedForceFlags |= SwitchFlag_ForceNewDeck | SwitchFlag_ForceNewPanels;
+                meRequestedForceFlags |= SwitchFlag::ForceNewDeck | SwitchFlag::ForceNewPanels;
                 maContextChangeUpdate.RequestCall();
                 break;
 

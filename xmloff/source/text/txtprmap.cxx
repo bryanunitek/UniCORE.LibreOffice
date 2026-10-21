@@ -96,6 +96,7 @@ XMLPropertyMapEntry constexpr aXMLParaPropMap[] =
     // for TextPropMap::SHAPE_PARA to not have these double for Shapes (which already have these)
     GMAP( PROP_FillStyle,                      XML_NAMESPACE_DRAW, XML_FILL,                   XML_SW_TYPE_FILLSTYLE, 0 ),
     GMAP( PROP_FillColor,                      XML_NAMESPACE_DRAW, XML_FILL_COLOR,             XML_TYPE_COLOR, 0 ),
+    MAP_EXT( PROP_FillComplexColor,            XML_NAMESPACE_LO_EXT, XML_FILL_COMPLEX_COLOR,   XML_TYPE_COMPLEX_COLOR|XML_TYPE_PROP_GRAPHIC|MID_FLAG_ELEMENT_ITEM, CTF_COMPLEX_COLOR ),
     GMAP( PROP_FillColor2,                     XML_NAMESPACE_DRAW, XML_SECONDARY_FILL_COLOR,   XML_TYPE_COLOR, 0 ),
     GMAP( PROP_FillGradientName,               XML_NAMESPACE_DRAW, XML_FILL_GRADIENT_NAME,     XML_TYPE_STYLENAME|MID_FLAG_NO_PROPERTY_IMPORT, CTF_FILLGRADIENTNAME ),
     GMAP( PROP_FillGradientStepCount,          XML_NAMESPACE_DRAW, XML_GRADIENT_STEP_COUNT,    XML_TYPE_NUMBER16, 0 ),
@@ -255,6 +256,8 @@ XMLPropertyMapEntry constexpr aXMLParaPropMap[] =
     MT_E( PROP_CharRelief, XML_NAMESPACE_STYLE, XML_FONT_RELIEF, XML_TYPE_TEXT_FONT_RELIEF, 0 ),
     MAP_EXT( PROP_CharOpticalSizing, XML_NAMESPACE_LO_EXT, XML_FONT_OPTICAL_SIZING, XML_TYPE_TEXT_FONT_OPTICAL_SIZING | XML_TYPE_PROP_TEXT, 0 ),
     MAP_EXT( PROP_CharFontVariations, XML_NAMESPACE_LO_EXT, XML_FONT_VARIATION_SETTINGS, XML_TYPE_STRING | XML_TYPE_PROP_TEXT, 0 ),
+    MAP_EXT( PROP_CharFontVariationsAsian, XML_NAMESPACE_LO_EXT, XML_FONT_VARIATION_SETTINGS_ASIAN, XML_TYPE_STRING | XML_TYPE_PROP_TEXT, 0 ),
+    MAP_EXT( PROP_CharFontVariationsComplex, XML_NAMESPACE_LO_EXT, XML_FONT_VARIATION_SETTINGS_COMPLEX, XML_TYPE_STRING | XML_TYPE_PROP_TEXT, 0 ),
     // RES_CHRATR_HIDDEN
     MT_E( PROP_CharHidden, XML_NAMESPACE_TEXT, XML_DISPLAY, XML_TYPE_TEXT_HIDDEN_AS_DISPLAY|MID_FLAG_SPECIAL_ITEM_IMPORT, CTF_TEXT_DISPLAY ),
     // RES_CHRATR_OVERLINE
@@ -356,6 +359,7 @@ XMLPropertyMapEntry constexpr aXMLParaPropMap[] =
     MP_E( PROP_ParaHyphenationKeep,             XML_NAMESPACE_FO,     XML_HYPHENATION_KEEP,              XML_TYPE_HYPHENATION_KEEP,                 0 ),
     MAP_EXT( PROP_ParaHyphenationKeepType,      XML_NAMESPACE_LO_EXT, XML_HYPHENATION_KEEP_TYPE,         XML_TYPE_HYPHENATION_KEEP_TYPE|XML_TYPE_PROP_PARAGRAPH,           0 ),
     MAP_EXT( PROP_ParaHyphenationKeepLine,      XML_NAMESPACE_LO_EXT, XML_HYPHENATION_KEEP_LINE,         XML_TYPE_BOOL|XML_TYPE_PROP_PARAGRAPH,          0 ),
+    MAP_EXT( PROP_ParaHyphenationLevel,         XML_NAMESPACE_LO_EXT, XML_HYPHENATION_LEVEL,             XML_TYPE_PERCENT16|XML_TYPE_PROP_TEXT,     0 ),
     // RES_PARATR_DROP
     MP_E( PROP_DropCapWholeWord,     XML_NAMESPACE_STYLE, XML_LENGTH,     MID_FLAG_SPECIAL_ITEM|XML_TYPE_BOOL,         CTF_DROPCAPWHOLEWORD ),
     MP_E( PROP_DropCapCharStyleName, XML_NAMESPACE_STYLE, XML_STYLE_NAME, MID_FLAG_SPECIAL_ITEM|XML_TYPE_STRING,       CTF_DROPCAPCHARSTYLE ),
@@ -496,6 +500,7 @@ XMLPropertyMapEntry constexpr aXMLParaPropMap[] =
     MAP_EXT( PROP_ParaScaleWidthMinimum, XML_NAMESPACE_LO_EXT, XML_TEXT_SCALE_MINIMUM, XML_TYPE_PROP_PARAGRAPH|XML_TYPE_PERCENT16, 0 ),
     MAP_EXT( PROP_ParaScaleWidthMaximum, XML_NAMESPACE_LO_EXT, XML_TEXT_SCALE_MAXIMUM, XML_TYPE_PROP_PARAGRAPH|XML_TYPE_PERCENT16, 0 ),
     MAP_EXT( PROP_ParaComposer, XML_NAMESPACE_LO_EXT, XML_PARAGRAPH_COMPOSER, XML_TYPE_PROP_PARAGRAPH|XML_TYPE_BOOL, 0 ),
+    MAP_EXT( PROP_ParaIsCompoundBased, XML_NAMESPACE_LO_EXT, XML_COMPOUND_BASED, XML_TYPE_PROP_PARAGRAPH|XML_TYPE_BOOL, 0 ),
 
     MT_ED( PROP_CharScriptHint, XML_NAMESPACE_STYLE, XML_SCRIPT_TYPE, XML_TYPE_TEXT_SCRIPT_TYPE|MID_FLAG_MERGE_PROPERTY, 0 ),
 
@@ -644,6 +649,8 @@ XMLPropertyMapEntry constexpr aXMLTextPropMap[] =
     MT_E( PROP_CharRelief, XML_NAMESPACE_STYLE, XML_FONT_RELIEF, XML_TYPE_TEXT_FONT_RELIEF, 0 ),
     MAP_EXT( PROP_CharOpticalSizing, XML_NAMESPACE_LO_EXT, XML_FONT_OPTICAL_SIZING, XML_TYPE_TEXT_FONT_OPTICAL_SIZING | XML_TYPE_PROP_TEXT, 0 ),
     MAP_EXT( PROP_CharFontVariations, XML_NAMESPACE_LO_EXT, XML_FONT_VARIATION_SETTINGS, XML_TYPE_STRING | XML_TYPE_PROP_TEXT, 0 ),
+    MAP_EXT( PROP_CharFontVariationsAsian, XML_NAMESPACE_LO_EXT, XML_FONT_VARIATION_SETTINGS_ASIAN, XML_TYPE_STRING | XML_TYPE_PROP_TEXT, 0 ),
+    MAP_EXT( PROP_CharFontVariationsComplex, XML_NAMESPACE_LO_EXT, XML_FONT_VARIATION_SETTINGS_COMPLEX, XML_TYPE_STRING | XML_TYPE_PROP_TEXT, 0 ),
     // RES_CHRATR_HIDDEN
     MT_E( PROP_CharHidden, XML_NAMESPACE_TEXT, XML_DISPLAY, XML_TYPE_TEXT_HIDDEN_AS_DISPLAY|MID_FLAG_SPECIAL_ITEM_IMPORT, CTF_TEXT_DISPLAY ),
     // RES_CHRATR_OVERLINE
@@ -868,7 +875,7 @@ XMLPropertyMapEntry constexpr aXMLFramePropMap[] =
     // RES_LAYOUT_SPLIT
     // not required
     // RES_CHAIN
-    // not required (exported at text:text-box element)
+    // not required (exported as text:text-box element)
     // RES_LINENUMBER
     // not required
     // RES_FTN_AT_TXTEND
@@ -932,6 +939,7 @@ XMLPropertyMapEntry constexpr aXMLFramePropMap[] =
     MAP_EXT( PROP_RelativeHeightRelation, XML_NAMESPACE_LO_EXT, XML_REL_HEIGHT_REL,          XML_TYPE_TEXT_VERTICAL_REL|XML_TYPE_PROP_GRAPHIC, CTF_RELHEIGHTREL),
     MG_E(PROP_TextVerticalAdjust,         XML_NAMESPACE_DRAW,   XML_TEXTAREA_VERTICAL_ALIGN, XML_TYPE_VERTICAL_ALIGN, 0),
     MAP_EXT(PROP_Decorative,              XML_NAMESPACE_LO_EXT, XML_DECORATIVE,              XML_TYPE_BOOL|XML_TYPE_PROP_GRAPHIC, 0),
+    MAP_EXT(PROP_HorizontalRule,          XML_NAMESPACE_LO_EXT, XML_HORIZONTAL_RULE,         XML_TYPE_BOOL|XML_TYPE_PROP_GRAPHIC, 0),
 
     M_END()
 };
@@ -1137,11 +1145,11 @@ static XMLPropertyMapEntry const *lcl_txtprmap_getMap( TextPropMap nType )
         pMap = aXMLTextPropMap;
         break;
     case TextPropMap::SHAPE_PARA:
-        // #i125045# use [21] instead of [1] for text props for Shapes, indices
-        // [1..20] contain the DrawingLayer FillStyle attributes corresponding to
+        // #i125045# use [22] instead of [1] for text props for Shapes, indices
+        // [1..21] contain the DrawingLayer FillStyle attributes corresponding to
         // [XATTR_FILL_FIRST .. XATTR_FILL_LAST] and would be double since Shapes
         // already contain these (usually in aXMLSDProperties)
-        pMap = &(aXMLParaPropMap[21]);
+        pMap = &(aXMLParaPropMap[22]);
         assert( pMap->meXMLName == XML_MARGIN && " shape para map changed" );
         break;
     case TextPropMap::PARA:

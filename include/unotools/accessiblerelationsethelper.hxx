@@ -64,7 +64,7 @@ public:
         the given index.
 
         @param nIndex
-            This index specifies the relatio to return.
+            This index specifies the relation to return.
 
         @return
             For a valid index, i.e. inside the range 0 to the number of
@@ -94,7 +94,7 @@ public:
             The type of the relation to return.
 
         @return
-            If a relation with the given type could be found than (a copy
+            If a relation with the given type could be found then (a copy
             of) this relation is returned.  Otherwise a relation with the
             type INVALID is returned.
     */

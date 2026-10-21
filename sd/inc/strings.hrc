@@ -35,6 +35,7 @@
 #define STR_SLIDE_SORTER_MODE                           NC_("STR_SLIDE_SORTER_MODE", "Slide Sorter")
 #define STR_NORMAL_MODE                                 NC_("STR_NORMAL_MODE", "Normal")
 #define STR_SLIDE_MASTER_MODE                           NC_("STR_SLIDE_MASTER_MODE", "Master Slide")
+// To translators: Outline refers to the outline mode to view an overview of the slides
 #define STR_OUTLINE_MODE                                NC_("STR_OUTLINE_MODE", "Outline")
 #define STR_NOTES_MODE                                  NC_("STR_NOTES_MODE", "Notes")
 #define STR_NOTES_MASTER_MODE                           NC_("STR_NOTES_MASTER_MODE", "Master Notes")
@@ -143,6 +144,8 @@
 #define STR_GOTO_SLIDE_DLG_TITLE                        NC_("STR_GOTO_SLIDE_DLG_TITLE", "Go to Slide")
 #define STR_CLICK_ACTION_BOOKMARK                       NC_("STR_CLICK_ACTION_BOOKMARK", "Go to page or object")
 #define STR_CLICK_ACTION_DOCUMENT                       NC_("STR_CLICK_ACTION_DOCUMENT", "Go to document")
+#define STR_CLICK_ACTION_INVISIBLE                      NC_("STR_CLICK_ACTION_INVISIBLE", "Hide object")
+#define STR_CLICK_ACTION_VANISH                         NC_("STR_CLICK_ACTION_VANISH", "Hide object with effect")
 #define STR_CLICK_ACTION_SOUND                          NC_("STR_CLICK_ACTION_SOUND", "Play audio")
 #define STR_CLICK_ACTION_VERB                           NC_("STR_CLICK_ACTION_VERB", "Start object action")
 #define STR_CLICK_ACTION_PROGRAM                        NC_("STR_CLICK_ACTION_PROGRAM", "Run program")
@@ -321,7 +324,7 @@
 #define STR_POOLSHEET_A0_HEADLINE                       NC_("STR_POOLSHEET_A0_HEADLINE", "Heading A0" )
 #define STR_POOLSHEET_A0_TEXT                           NC_("STR_POOLSHEET_A0_TEXT", "Text A0" )
 #define STR_POOLSHEET_GRAPHIC                           NC_("STR_POOLSHEET_GRAPHIC", "Graphic" )
-#define STR_POOLSHEET_SHAPES                            NC_("STR_POOLSHEET_GRAPHIC", "Shapes" )
+#define STR_POOLSHEET_SHAPES                            NC_("STR_POOLSHEET_SHAPES", "Shapes" )
 #define STR_POOLSHEET_LINES                             NC_("STR_POOLSHEET_LINES", "Lines" )
 #define STR_POOLSHEET_MEASURE                           NC_("STR_POOLSHEET_MEASURE", "Arrow Line" )
 #define STR_POOLSHEET_LINES_DASHED                      NC_("STR_POOLSHEET_LINES_DASHED", "Dashed Line" )
@@ -340,6 +343,7 @@
 
 #define STR_PSEUDOSHEET_TITLE                           NC_("STR_PSEUDOSHEET_TITLE", "Title" )
 #define STR_PSEUDOSHEET_SUBTITLE                        NC_("STR_PSEUDOSHEET_SUBTITLE", "Subtitle")
+// To translators: This is used in a style name and will be followed by a number for the outline level
 #define STR_PSEUDOSHEET_OUTLINE                         NC_("STR_PSEUDOSHEET_OUTLINE", "Outline" )
 #define STR_PSEUDOSHEET_BACKGROUNDOBJECTS               NC_("STR_PSEUDOSHEET_BACKGROUNDOBJECTS", "Background objects" )
 #define STR_PSEUDOSHEET_BACKGROUND                      NC_("STR_PSEUDOSHEET_BACKGROUND", "Background" )
@@ -462,7 +466,7 @@
 #define RID_SVXSTR_EDIT_GRAPHIC                         NC_("RID_SVXSTR_EDIT_GRAPHIC", "Link")
 
 #define RID_SVXSTR_MENU_NEXT                            NC_("RID_SVXSTR_MENU_NEXT", "~Next")
-#define RID_SVXSTR_MENU_PREV                            NC_("RID_SVXSTR_MENU_NEXT", "~Previous")
+#define RID_SVXSTR_MENU_PREV                            NC_("RID_SVXSTR_MENU_PREV", "~Previous")
 #define RID_SVXSTR_MENU_FIRST                           NC_("RID_SVXSTR_MENU_FIRST", "~First Slide")
 #define RID_SVXSTR_MENU_LAST                            NC_("RID_SVXSTR_MENU_LAST", "~Last Slide")
 
@@ -499,5 +503,8 @@
 #define STR_UNDO_REMOVE_SLIDE_SECTION                   NC_("STR_UNDO_REMOVE_SLIDE_SECTION", "Remove section")
 #define STR_UNDO_RENAME_SLIDE_SECTION                   NC_("STR_UNDO_RENAME_SLIDE_SECTION", "Rename section")
 #define STR_UNDO_MOVE_SLIDE_SECTION                     NC_("STR_UNDO_MOVE_SLIDE_SECTION", "Move section")
+#define STR_UNDO_REMOVE_SLIDE_SECTION_AND_SLIDES        NC_("STR_UNDO_REMOVE_SLIDE_SECTION_AND_SLIDES", "Remove section and slides")
+
+#define STR_SLIDE_PROPERTIES                            NC_("STR_SLIDE_PROPERTIES", "Slide Properties")
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

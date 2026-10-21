@@ -49,9 +49,7 @@
 #include <svl/itemset.hxx>
 #include <svx/strings.hrc>
 #include <svx/xfillit0.hxx>
-#include <svx/xflasit.hxx>
 #include <svx/xlineit0.hxx>
-#include <svx/xlnasit.hxx>
 #include <svx/xtextit0.hxx>
 #include <svx/xtable.hxx>
 #include <svx/dialmgr.hxx>
@@ -370,6 +368,11 @@ bool XColorItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId)
             if(!(rVal >>= nValue ))
                 return false;
 
+            // Assigning the color the item already holds keeps the theme reference. ODF writes
+            // a shape's fill on its graphic style and again on its paragraph style, and only
+            // the graphic one carries the reference.
+            if (nValue.GetRGBColor() != GetColorValue().GetRGBColor())
+                setComplexColor(model::ComplexColor());
             SetColorValue( nValue );
 
         }
@@ -1074,7 +1077,13 @@ bool XLineColorItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId)
             if(!(rVal >>= nValue ))
                 return false;
 
-            SetColorValue( Color(ColorTransparency, nValue) );
+            Color aColor(ColorTransparency, nValue);
+            // Assigning the color the item already holds keeps the theme reference. ODF writes
+            // a shape's fill on its graphic style and again on its paragraph style, and only
+            // the graphic one carries the reference.
+            if (aColor.GetRGBColor() != GetColorValue().GetRGBColor())
+                setComplexColor(model::ComplexColor());
+            SetColorValue( aColor );
             break;
         }
     }
@@ -1906,6 +1915,11 @@ bool XFillColorItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
             if(!(rVal >>= nValue ))
                 return false;
 
+            // Assigning the color the item already holds keeps the theme reference. ODF writes
+            // a shape's fill on its graphic style and again on its paragraph style, and only
+            // the graphic one carries the reference.
+            if (nValue.GetRGBColor() != GetColorValue().GetRGBColor())
+                setComplexColor(model::ComplexColor());
             SetColorValue( nValue );
 
         }
@@ -2814,65 +2828,6 @@ XFormTextHideFormItem::XFormTextHideFormItem(bool bHide) :
 XFormTextHideFormItem* XFormTextHideFormItem::Clone(SfxItemPool* /*pPool*/) const
 {
     return new XFormTextHideFormItem(*this);
-}
-
-// --- SetItems ---
-
-
-/// a line attribute set item
-XLineAttrSetItem::XLineAttrSetItem( SfxItemSet&& pItemSet ) :
-    SfxSetItem( XATTRSET_LINE, std::move(pItemSet))
-{
-}
-
-XLineAttrSetItem::XLineAttrSetItem( SfxItemPool* pItemPool ) :
-    SfxSetItem(XATTRSET_LINE,
-               SfxItemSet::makeFixedSfxItemSet<XATTR_LINE_FIRST, XATTR_LINE_LAST>(*pItemPool))
-{
-}
-
-XLineAttrSetItem::XLineAttrSetItem( const XLineAttrSetItem& rLineAttr ) :
-    SfxSetItem( rLineAttr )
-{
-}
-
-XLineAttrSetItem::XLineAttrSetItem( const XLineAttrSetItem& rLineAttr,
-                                    SfxItemPool* pItemPool) :
-    SfxSetItem( rLineAttr, pItemPool )
-{
-}
-
-XLineAttrSetItem* XLineAttrSetItem::Clone( SfxItemPool* pPool ) const
-{
-    return new XLineAttrSetItem( *this, pPool );
-}
-
-/// fill attribute set item
-XFillAttrSetItem::XFillAttrSetItem( SfxItemSet&& pItemSet ) :
-    SfxSetItem( XATTRSET_FILL, std::move(pItemSet))
-{
-}
-
-XFillAttrSetItem::XFillAttrSetItem( SfxItemPool* pItemPool ) :
-    SfxSetItem(XATTRSET_FILL,
-               SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(*pItemPool))
-{
-}
-
-XFillAttrSetItem::XFillAttrSetItem( const XFillAttrSetItem& rFillAttr ) :
-    SfxSetItem( rFillAttr )
-{
-}
-
-XFillAttrSetItem::XFillAttrSetItem( const XFillAttrSetItem& rFillAttr,
-                                    SfxItemPool* pItemPool ) :
-    SfxSetItem( rFillAttr, pItemPool )
-{
-}
-
-XFillAttrSetItem* XFillAttrSetItem::Clone( SfxItemPool* pPool ) const
-{
-    return new XFillAttrSetItem( *this, pPool );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

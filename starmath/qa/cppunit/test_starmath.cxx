@@ -118,7 +118,7 @@ void Test::setUp()
         SfxModelFlags::EMBEDDED_OBJECT |
         SfxModelFlags::DISABLE_EMBEDDED_SCRIPTS |
         SfxModelFlags::DISABLE_DOCUMENT_RECOVERY);
-    m_xDocShRef->DoInitNew();
+    m_xDocShRef->DoInitNew(SfxNewDocumentMacros::Disallow);
 
     SfxViewFrame *pViewFrame = SfxViewFrame::LoadHiddenDocument(*m_xDocShRef, SFX_INTERFACE_NONE);
 
@@ -127,7 +127,7 @@ void Test::setUp()
     m_pDispatcher.reset(new SfxDispatcher(pViewFrame));
     m_aBindings.SetDispatcher(m_pDispatcher.get());
     m_aBindings.EnterRegistrations();
-    m_pSmCmdBoxWindow.reset(VclPtr<SmCmdBoxWindow>::Create(&m_aBindings, nullptr, nullptr));
+    m_pSmCmdBoxWindow.reset(VclPtr<SmCmdBoxWindow>::Create(m_aBindings, nullptr, nullptr));
     m_aBindings.LeaveRegistrations();
     m_pViewShell = m_pSmCmdBoxWindow->GetView();
     CPPUNIT_ASSERT_MESSAGE("Should have a SmViewShell", m_pViewShell);

@@ -479,34 +479,7 @@ $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,com/sun/star/xml/xslt,\
 	XSLTTransformer \
 ))
 
-
-$(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/accessibility,\
-	AccessibleContext \
-))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt,\
-	AccessibleButton \
-	AccessibleCheckBox \
-	AccessibleComboBox \
-	AccessibleEdit \
-	AccessibleFixedText \
-	AccessibleList \
-	AccessibleListBox \
-	AccessibleMenu \
-	AccessibleMenuBar \
-	AccessibleMenuItem \
-	AccessibleMenuSeparator \
-	AccessiblePopupMenu \
-	AccessibleRadioButton \
-	AccessibleScrollBar \
-	AccessibleStatusBar \
-	AccessibleStatusBarItem \
-	AccessibleTabBar \
-	AccessibleTabBarPage \
-	AccessibleTabBarPageList \
-	AccessibleTabControl \
-	AccessibleTabPage \
-	AccessibleTextField \
-	AccessibleWindow \
 	AnimatedImagesControl \
 	AnimatedImagesControlModel \
 	RoadmapItem \
@@ -600,6 +573,7 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/chart,\
 	ChartTitle \
 	ChartTwoAxisXSupplier \
 	ChartTwoAxisYSupplier \
+	CorrelationCircleDiagram \
 	Diagram \
 	Dim3DDiagram \
 	DonutDiagram \
@@ -619,7 +593,7 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/chart2,\
 	ChartDocumentWrapper \
 	ChartType \
 	ChartTypeManager \
-	ChartTypeTemplate\
+	ChartTypeTemplate \
 	CoordinateSystem \
 	CoordinateSystemType \
 	DataPoint \
@@ -742,7 +716,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/document,\
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/drawing,\
 	AccessibleDrawDocumentView \
-	AccessibleImageBullet \
 	AppletShape \
 	Background \
 	BitmapTable \
@@ -2351,9 +2324,6 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/drawing,\
 	XSlideSorterSelectionSupplier \
 	XUniversalShapeDescriptor \
 ))
-$(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/drawing/framework,\
-	AnchorBindingMode \
-))
 $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/embed,\
 	Actions \
 	Aspects \
@@ -2405,6 +2375,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/embed,\
 	XInplaceObject \
 	XInsertObjectDialog \
 	XLinkCreator \
+	XLinkFactory \
 	XLinkageSupport \
 	XOLESimpleStorage \
 	XOptimizedStorage \
@@ -2921,6 +2892,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/presentation,\
 	XSlideShowListener \
     XSlideShowNavigationListener \
 	XSlideShowView \
+	XSoundReference \
 	XTransition \
 	XTransitionFactory \
 ))
@@ -3020,7 +2992,6 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/rendering,\
 	XMtfRenderer \
 	XParametricPolyPolygon2D \
 	XPolyPolygon2D \
-	XSimpleCanvas \
 	XSprite \
 	XSpriteCanvas \
 	XTextLayout \
@@ -3094,6 +3065,11 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/script/browse,\
 	BrowseNodeTypes \
 	XBrowseNode \
 	XBrowseNodeFactory \
+	XCopyableBrowseNode \
+	XCreatableBrowseNode \
+	XDeletableBrowseNode \
+	XEditableBrowseNode \
+	XRenamableBrowseNode \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/script/provider,\
 	ScriptErrorRaisedException \
@@ -3383,7 +3359,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/sheet,\
 	FunctionArgument \
 	FunctionCategory \
 	GeneralFunction \
-       GeneralFunction2 \
+	GeneralFunction2 \
 	GoalResult \
 	IconSetFormatEntry \
 	IconSetType \
@@ -4393,8 +4369,11 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,org/libreoffice/embindtest, \
     Template \
     XArgumentStore \
     XAttributes \
+    XPassthrough \
     XStringFactory \
     XTest \
+    theMethodToString \
+    thePassthrough \
     theSingleton \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,org/libreoffice/embindtest, \

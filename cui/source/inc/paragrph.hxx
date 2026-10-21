@@ -26,6 +26,7 @@
 #include <vcl/weld/Label.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/RadioButton.hxx>
+#include <vcl/weld/Scale.hxx>
 #include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/TriStateEnabled.hxx>
 
@@ -176,6 +177,9 @@ class SvxParaAlignTabPage : public SfxTabPage
     std::unique_ptr<weld::MetricSpinButton> m_xLetterSpacingMinimum;
     std::unique_ptr<weld::MetricSpinButton> m_xLetterSpacingMaximum;
 
+    /// compound-based hyphenation
+    std::unique_ptr<weld::CheckButton> m_xCompoundBased;
+
     /// glyph scaling
     std::unique_ptr<weld::Label> m_xLabelGlyphScaling;
     std::unique_ptr<weld::MetricSpinButton> m_xGlyphScalingMinimum;
@@ -263,6 +267,7 @@ private:
     bool                bPageBreak;
     bool                bHtmlMode;
     sal_uInt16          nStdPos;
+    sal_Int16           nHyphenLevel;
 
     // hyphenation
     std::unique_ptr<weld::CheckButton> m_xHyphenBox;
@@ -280,6 +285,9 @@ private:
     std::unique_ptr<weld::SpinButton> m_xMaxHyphenEdit;
     std::unique_ptr<weld::Label> m_xMinWordLabel;
     std::unique_ptr<weld::SpinButton> m_xMinWordLength;
+    std::unique_ptr<weld::Label> m_xBetterSpacingLabel;
+    std::unique_ptr<weld::Label> m_xLessHyphenLabel;
+    std::unique_ptr<weld::Scale> m_xSliderHyphen;
     std::unique_ptr<weld::Label> m_xHyphenZoneLabel;
     SvxRelativeField m_aHyphenZone;
     std::unique_ptr<weld::Label> m_xParagraphEndZoneLabel;

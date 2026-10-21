@@ -239,6 +239,7 @@ $(eval $(call gb_Module_add_check_targets,vcl,\
     CppunitTest_vcl_fontvariation \
     CppunitTest_vcl_text \
     CppunitTest_vcl_textlayout \
+    CppunitTest_vcl_treeview \
     CppunitTest_vcl_font_ttf_structure_test \
     CppunitTest_vcl_filters_test \
     CppunitTest_vcl_mnemonic \
@@ -306,6 +307,7 @@ ifneq (,$(filter PDFIUM,$(BUILD_TYPE)))
 $(eval $(call gb_Module_add_slowcheck_targets,vcl,\
     CppunitTest_vcl_pdfexport \
     CppunitTest_vcl_pdfexport2 \
+    CppunitTest_vcl_pdfexport3 \
     CppunitTest_vcl_pdf_encryption \
     CppunitTest_vcl_filter_ipdf \
 ))

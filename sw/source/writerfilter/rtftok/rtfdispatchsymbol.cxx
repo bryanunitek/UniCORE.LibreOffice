@@ -9,12 +9,15 @@
 
 #include "rtfdocumentimpl.hxx"
 
+#include <algorithm>
+
 #include <com/sun/star/io/WrongFormatException.hpp>
 #include <svl/lngmisc.hxx>
 
 #include <ooxml/resourceids.hxx>
 
 #include <sal/log.hxx>
+#include <swtypes.hxx>
 
 #include "rtfreferenceproperties.hxx"
 #include "rtfskipdestination.hxx"
@@ -142,6 +145,7 @@ RTFError RTFDocumentImpl::dispatchSymbol(RTFKeyword nKeyword)
                                         pCurrentBuffer->begin(), pCurrentBuffer->end(),
                                         [](auto const& it) {
                                             return ::std::get<0>(it) == RTFBufferTypes::PAR
+                                                   || ::std::get<0>(it) == RTFBufferTypes::CellEnd
                                                    || (::std::get<0>(it) == RTFBufferTypes::Props
                                                        && ::std::get<1>(it)->getSprms().find(
                                                               NS_ooxml::LN_inTbl)
@@ -337,20 +341,20 @@ RTFError RTFDocumentImpl::dispatchSymbol(RTFKeyword nKeyword)
                 // Adjust total width, which is done in the \cellx handler for normal cells.
                 m_TopLevelTableRow.nCurrentCellX += m_aStates.top().getTableRowWidthAfter();
 
-                int nCellCount = 0;
+                size_t nCellCount{ 0 };
                 for (Buf_t& i : m_aTableBufferStack.back())
                 {
                     if (RTFBufferTypes::CellEnd == std::get<0>(i))
                         ++nCellCount;
                 }
-                if (m_TopLevelTableRow.getCells() < o3tl::make_unsigned(nCellCount))
+                if (m_TopLevelTableRow.getCells() < nCellCount)
                 {
                     m_TopLevelTableRow.cellSprms.push_back(m_aStates.top().getTableCellSprms());
                     m_TopLevelTableRow.cellAttributes.push_back(
                         m_aStates.top().getTableCellAttributes());
                 }
 
-                if (m_TopLevelTableRow.getCells() >= o3tl::make_unsigned(nCellCount))
+                if (m_TopLevelTableRow.getCells() >= nCellCount)
                 {
                     Id aBorderIds[]
                         = { NS_ooxml::LN_CT_TcBorders_bottom, NS_ooxml::LN_CT_TcBorders_top,
@@ -377,7 +381,7 @@ RTFError RTFDocumentImpl::dispatchSymbol(RTFKeyword nKeyword)
                 //Overwrite font size attribute on fill cells
                 RTFValue::Pointer_t pFontSize;
                 RTFValue::Pointer_t pFontSizeCs;
-                int nCell = 1;
+                size_t nCell{ 1 };
                 for (Buf_t& rTableBufferElement : m_aTableBufferStack.back())
                 {
                     if (RTFBufferTypes::CellEnd == std::get<0>(rTableBufferElement))
@@ -429,14 +433,15 @@ RTFError RTFDocumentImpl::dispatchSymbol(RTFKeyword nKeyword)
             if (m_TopLevelTableRow.getCells() != 0)
             {
                 // If the right edge of the last cell (row width) is smaller than the width of some other row, mimic WW8TabDesc::CalcDefaults(): resize the last cell
-                const int MINLAY = 23; // sw/inc/swtypes.hxx, minimal possible size of frames.
-                if ((m_TopLevelTableRow.nCellXMax - m_TopLevelTableRow.nCurrentCellX) >= MINLAY)
+                const sal_Int64 nMissingWidth
+                    = sal_Int64(m_TopLevelTableRow.nCellXMax) - m_TopLevelTableRow.nCurrentCellX;
+                if (nMissingWidth >= MINLAY)
                 {
                     auto pXValueLast = m_aStates.top().getTableRowSprms().find(
                         NS_ooxml::LN_CT_TblGridBase_gridCol, false);
                     const int nXValueLast = pXValueLast ? pXValueLast->getInt() : 0;
-                    auto pXValue = new RTFValue(nXValueLast + m_TopLevelTableRow.nCellXMax
-                                                - m_TopLevelTableRow.nCurrentCellX);
+                    auto pXValue = new RTFValue(static_cast<int>(std::clamp<sal_Int64>(
+                        nXValueLast + nMissingWidth, SAL_MIN_INT32, SAL_MAX_INT32)));
                     m_aStates.top().getTableRowSprms().eraseLast(
                         NS_ooxml::LN_CT_TblGridBase_gridCol);
                     m_aStates.top().getTableRowSprms().set(NS_ooxml::LN_CT_TblGridBase_gridCol,

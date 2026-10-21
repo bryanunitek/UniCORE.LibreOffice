@@ -45,6 +45,7 @@
 #include <osl/diagnose.h>
 #include <o3tl/any.hxx>
 #include <svl/eitem.hxx>
+#include <svl/itempool.hxx>
 #include <svx/chrtitem.hxx>
 #include <svx/sdangitm.hxx>
 #include <svl/intitem.hxx>
@@ -72,6 +73,29 @@ ItemPropertyMapType & lcl_GetAxisPropertyMap()
         {SCHATTR_AXIS_LABEL_OVERLAP, {"TextOverlap",      0}}};
     return aAxisPropertyMap;
 };
+
+OUString lcl_getHistogramPropertyName(sal_uInt16 nWhichId)
+{
+    switch (nWhichId)
+    {
+        case SCHATTR_HISTOGRAM_FREQUENCY_TYPE:
+            return u"FrequencyType"_ustr;
+        case SCHATTR_HISTOGRAM_BIN_WIDTH:
+            return u"BinWidth"_ustr;
+        case SCHATTR_HISTOGRAM_BIN_COUNT:
+            return u"BinCount"_ustr;
+        case SCHATTR_HISTOGRAM_USE_UNDERFLOW_BIN:
+            return u"UseUnderflowBin"_ustr;
+        case SCHATTR_HISTOGRAM_UNDERFLOW_BIN_VALUE:
+            return u"UnderflowBinValue"_ustr;
+        case SCHATTR_HISTOGRAM_USE_OVERFLOW_BIN:
+            return u"UseOverflowBin"_ustr;
+        case SCHATTR_HISTOGRAM_OVERFLOW_BIN_VALUE:
+            return u"OverflowBinValue"_ustr;
+        default:
+            return OUString();
+    }
+}
 
 } // anonymous namespace
 
@@ -158,6 +182,30 @@ void AxisItemConverter::FillSpecialItem( sal_uInt16 nWhichId, SfxItemSet & rOutI
 {
     if( !m_xAxis.is() )
         return;
+
+    const OUString aHistogramProperty = lcl_getHistogramPropertyName(nWhichId);
+
+    if (!aHistogramProperty.isEmpty())
+    {
+        rtl::Reference<::chart::ChartType> xHistogramType
+            = AxisHelper::getHistogramChartTypeOfAxis(m_xAxis, m_xChartDoc);
+
+        if (!xHistogramType.is())
+        {
+            return;
+        }
+
+        std::unique_ptr<SfxPoolItem> pItem(
+            GetItemPool().GetUserOrPoolDefaultItem(nWhichId).Clone());
+
+        if (pItem
+            && pItem->PutValue(xHistogramType->getPropertyValue(aHistogramProperty), 0))
+        {
+            pItem->SetWhich(nWhichId);
+            rOutItemSet.Put(std::move(pItem));
+        }
+        return;
+    }
 
     const chart2::ScaleData      aScale( m_xAxis->getScaleData() );
     const chart2::IncrementData& rIncrement( aScale.IncrementData );
@@ -349,7 +397,7 @@ void AxisItemConverter::FillSpecialItem( sal_uInt16 nWhichId, SfxItemSet & rOutI
         case SCHATTR_AXIS_CROSSING_MAIN_AXIS_NUMBERFORMAT:
         {
             //read only item
-            //necessary tp display the crossing value with an appropriate format
+            //necessary to display the crossing value with an appropriate format
 
             rtl::Reference< BaseCoordinateSystem > xCooSys( AxisHelper::getCoordinateSystemOfAxis(
                 m_xAxis, m_xChartDoc->getFirstChartDiagram() ) );
@@ -465,6 +513,32 @@ bool AxisItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxItemSet 
     if( !m_xAxis.is() )
         return false;
 
+    const OUString aHistogramProperty = lcl_getHistogramPropertyName(nWhichId);
+
+    if (!aHistogramProperty.isEmpty())
+    {
+        rtl::Reference<::chart::ChartType> xHistogramType
+            = AxisHelper::getHistogramChartTypeOfAxis(m_xAxis, m_xChartDoc);
+
+        if (!xHistogramType.is())
+        {
+            return false;
+        }
+
+        uno::Any aNewValue;
+        rItemSet.Get(nWhichId).QueryValue(aNewValue);
+
+        if (xHistogramType->getPropertyValue(aHistogramProperty)
+            == aNewValue)
+        {
+            return false;
+        }
+
+        xHistogramType->setPropertyValue(
+            aHistogramProperty, aNewValue);
+        return true;
+    }
+
     chart2::ScaleData     aScale( m_xAxis->getScaleData() );
 
     bool bSetScale    = false;
@@ -484,7 +558,7 @@ bool AxisItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxItemSet 
             break;
 
         case SCHATTR_AXIS_MAX:
-            // only if auto if false
+            // only if auto is false
             if( ! (rItemSet.Get( SCHATTR_AXIS_AUTO_MAX ).GetValue() ))
             {
                 rItemSet.Get( nWhichId ).QueryValue( aValue );
@@ -507,7 +581,7 @@ bool AxisItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxItemSet 
             break;
 
         case SCHATTR_AXIS_MIN:
-            // only if auto if false
+            // only if auto is false
             if( ! (rItemSet.Get( SCHATTR_AXIS_AUTO_MIN ).GetValue() ))
             {
                 rItemSet.Get( nWhichId ).QueryValue( aValue );
@@ -583,7 +657,7 @@ bool AxisItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxItemSet 
             break;
 
         case SCHATTR_AXIS_STEP_MAIN:
-            // only if auto if false
+            // only if auto is false
             if( !lcl_isAutoMajor(rItemSet) )
             {
                 rItemSet.Get( nWhichId ).QueryValue( aValue );
@@ -623,7 +697,7 @@ bool AxisItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxItemSet 
                     bSetScale = true;
                 }
             }
-            // else SCHATTR_AXIS_STEP_MAIN must have some value
+            // else SCHATTR_AXIS_STEP_HELP must have some value
             break;
 
         case SCHATTR_AXIS_HELP_TIME_UNIT:

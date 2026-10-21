@@ -38,8 +38,8 @@ void sc::TableContentCopier::performCopy(const ScMarkData* pOnlyMarked, ScCloneF
     if (pNames)
         pNames->CopyUsedNames(mnSourceTabNo, nPreviousSourceTabNo, mnTargetTabNo, mrDoc, mrDoc,
                               bGlobalNamesToLocal);
-    mrDoc.GetRangeName()->CopyUsedNames(-1, nPreviousSourceTabNo, mnTargetTabNo, mrDoc, mrDoc,
-                                        bGlobalNamesToLocal);
+    mrDoc.GetRangeName().CopyUsedNames(-1, nPreviousSourceTabNo, mnTargetTabNo, mrDoc, mrDoc,
+                                       bGlobalNamesToLocal);
 
     sc::CopyToDocContext aCopyDocCxt(mrDoc);
     if (mrDoc.pDBCollection)
@@ -72,7 +72,7 @@ void sc::TableContentCopier::performCopy(const ScMarkData* pOnlyMarked, ScCloneF
     mpTargetTab->SetPageStyle(mpSourceTab->GetPageStyle());
     mpTargetTab->SetPendingRowHeights(mpSourceTab->IsPendingRowHeights());
 
-    // Copy the custom print range if exists.
+    // Copy the custom print range if it exists.
     mpTargetTab->CopyPrintRange(*mpSourceTab);
 
     // Copy the RTL settings
@@ -91,17 +91,14 @@ void sc::TableContentCopier::updateReferencesAfterTabInsertion(
     sc::RefUpdateInsertTabContext& rContext)
 {
     mpTargetTab->UpdateInsertTabAbs(mnTargetTabNo);
-    mpTargetTab->AdjustRelativeTabRefs(mnSourceTabNo, mnTargetTabNo, sc::TargetTabState::Inserted);
     mpSourceTab->UpdateInsertTab(rContext);
     mpSourceTab->UpdateCompile();
 }
 
-void sc::TableContentCopier::recompileTargetFormulas()
+sc::TableContentCopier::~TableContentCopier()
 {
     //  maybe already compiled in Clone, but used names need recompilation
     mpTargetTab->UpdateCompile(true);
 }
-
-sc::TableContentCopier::~TableContentCopier() { recompileTargetFormulas(); }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

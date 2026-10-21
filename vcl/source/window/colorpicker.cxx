@@ -172,7 +172,7 @@ void ColorFieldControl::UpdateBitmap()
     sal_uInt8* pRGB_Vert = maRGB_Vert.data();
     sal_uInt16* pPercent_Vert = maPercent_Vert.data();
 
-        // this has been unlooped for performance reason, please do not merge back!
+        // this has been unrolled for performance reasons, please do not merge back!
 
     sal_uInt16 y = nHeight,x;
 
@@ -391,7 +391,7 @@ void ColorFieldControl::SetValues(sal_uInt16 nBaseValue, ColorMode eMode, double
 
     mnBaseValue = nBaseValue;
     meMode = eMode;
-    mdX = x;
+    mdX = IsRTLEnabled() ? 1 - x : x;
     mdY = y;
 
     if (bUpdateBitmap)
@@ -399,6 +399,14 @@ void ColorFieldControl::SetValues(sal_uInt16 nBaseValue, ColorMode eMode, double
     UpdatePosition();
     if (bUpdateBitmap)
         Invalidate();
+}
+
+double ColorFieldControl::GetX() const
+{
+    if (IsRTLEnabled())
+        return 1 - mdX;
+
+    return mdX;
 }
 
 void ColorFieldControl::UpdatePosition()
@@ -409,7 +417,6 @@ void ColorFieldControl::UpdatePosition()
 
 ColorSliderControl::ColorSliderControl()
     : meMode( DefaultMode )
-    , mnLevel( 0 )
     , mdValue( -1.0 )
 {
 }
@@ -445,7 +452,7 @@ void ColorSliderControl::UpdateBitmap()
     sal_uInt16 nHue, nSat, nBri;
     maColor.RGBtoHSB(nHue, nSat, nBri);
 
-    // this has been unlooped for performance reason, please do not merge back!
+    // this has been unrolled for performance reasons, please do not merge back!
 
     switch (meMode)
     {
@@ -511,7 +518,6 @@ void ColorSliderControl::ChangePosition(tools::Long nY)
     else if (nY > nHeight)
         nY = nHeight;
 
-    mnLevel = nY;
     mdValue = double(nHeight - nY) / double(nHeight);
 }
 
@@ -559,6 +565,7 @@ void ColorSliderControl::Resize()
 {
     CustomWidgetController::Resize();
     UpdateBitmap();
+    maResizeHdl.Call(*this);
 }
 
 void ColorSliderControl::Modify()
@@ -573,7 +580,6 @@ void ColorSliderControl::SetValue(const Color& rColor, ColorMode eMode, double d
     {
         maColor = rColor;
         mdValue = dValue;
-        mnLevel = static_cast<sal_Int16>((1.0-dValue) * GetOutputSizePixel().Height());
         meMode = eMode;
         if (bUpdateBitmap)
             UpdateBitmap();
@@ -607,9 +613,13 @@ ColorPickerDialog::ColorPickerDialog(weld::Window* pParent, const Color& rColor,
     , m_xMFYellow(m_xBuilder->weld_metric_spin_button(u"yellowSpinbutton"_ustr, FieldUnit::PERCENT))
     , m_xMFKey(m_xBuilder->weld_metric_spin_button(u"keySpinbutton"_ustr, FieldUnit::PERCENT))
     , meMode( DefaultMode )
+    , maUpdateMarkersIdle("ColorPickerDialog maUpdateMarkersIdle")
 {
     m_aColorField.SetModifyHdl( LINK( this, ColorPickerDialog, ColorFieldControlModifydl ) );
     m_aColorSlider.SetModifyHdl( LINK( this, ColorPickerDialog, ColorSliderControlModifyHdl ) );
+    m_aColorSlider.SetResizeHdl(LINK(this, ColorPickerDialog, ColorSliderResizeHdl));
+    maUpdateMarkersIdle.SetPriority(TaskPriority::POST_PAINT);
+    maUpdateMarkersIdle.SetInvokeHandler(LINK(this, ColorPickerDialog, UpdateMarkersHdl));
 
     int nMargin = (m_xFISliderLeft->get_preferred_size().Height() + 1) / 2;
     m_xColorSlider->set_margin_top(nMargin);
@@ -640,6 +650,9 @@ ColorPickerDialog::ColorPickerDialog(weld::Window* pParent, const Color& rColor,
     m_xRBSaturation->connect_toggled( aLink2 );
     m_xRBBrightness->connect_toggled( aLink2 );
 
+    // tdf#108295 - set the initial focus explicitly to the first input field
+    m_xMFRed->grab_focus();
+
     if (eDialogMode == vcl::ColorPickerMode::Modify)
         m_xColorPrevious->show();
 
@@ -669,6 +682,9 @@ void ColorPickerDialog::SetColor(const Color& rColor)
     RGBtoCMYK(mdRed, mdGreen, mdBlue, mdCyan, mdMagenta, mdYellow, mdKey);
 
     update_color();
+
+    // tdf#108295 - select the first field content so a new value can be typed directly
+    m_xMFRed->select_region(0, -1);
 }
 
 void ColorPickerDialog::update_color( UpdateFlags n )
@@ -755,12 +771,12 @@ void ColorPickerDialog::update_color( UpdateFlags n )
         }
     }
 
+    // tdf#171730 - always sync slider markers with current slider level
+    m_xFISliderLeft->set_margin_top(m_aColorSlider.GetLevel());
+    m_xFISliderRight->set_margin_top(m_aColorSlider.GetLevel());
+
     if (n & UpdateFlags::Hex) // update hex
-    {
-        m_xFISliderLeft->set_margin_top(m_aColorSlider.GetLevel());
-        m_xFISliderRight->set_margin_top(m_aColorSlider.GetLevel());
         m_xEDHex->SetColor(aColor);
-    }
     m_aColorPreview.SetColor(aColor);
 }
 
@@ -826,6 +842,18 @@ IMPL_LINK_NOARG(ColorPickerDialog, ColorSliderControlModifyHdl, ColorSliderContr
     }
 
     update_color(UpdateFlags::All & ~UpdateFlags::ColorSlider);
+}
+
+IMPL_LINK_NOARG(ColorPickerDialog, ColorSliderResizeHdl, ColorSliderControl&, void)
+{
+    // tdf#171730 - update slider markers after the layout is done
+    maUpdateMarkersIdle.Start();
+}
+
+IMPL_LINK_NOARG(ColorPickerDialog, UpdateMarkersHdl, Timer*, void)
+{
+    m_xFISliderLeft->set_margin_top(m_aColorSlider.GetLevel());
+    m_xFISliderRight->set_margin_top(m_aColorSlider.GetLevel());
 }
 
 IMPL_LINK(ColorPickerDialog, ColorModifyMetricHdl, weld::MetricSpinButton&, rEdit, void)

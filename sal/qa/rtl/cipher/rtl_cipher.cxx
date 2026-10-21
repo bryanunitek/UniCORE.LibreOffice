@@ -46,7 +46,7 @@ public:
     void create_002()
         {
             rtlCipher aCipher = rtl_cipher_create(rtl_Cipher_AlgorithmInvalid, rtl_Cipher_ModeECB);
-            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provide wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provides wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
         }
     void create_003()
         {
@@ -61,7 +61,7 @@ public:
     void create_004()
         {
             rtlCipher aCipher = rtl_cipher_create(rtl_Cipher_AlgorithmInvalid, rtl_Cipher_ModeCBC);
-            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provide wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provides wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
         }
     void create_005()
         {
@@ -72,22 +72,22 @@ public:
     void create_006()
         {
             rtlCipher aCipher = rtl_cipher_create(rtl_Cipher_AlgorithmInvalid, rtl_Cipher_ModeStream);
-            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provide wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provides wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
         }
     void create_007()
         {
             rtlCipher aCipher = rtl_cipher_create(rtl_Cipher_AlgorithmBF, rtl_Cipher_ModeInvalid);
-            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provide wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provides wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
         }
     void create_008()
         {
             rtlCipher aCipher = rtl_cipher_create(rtl_Cipher_AlgorithmInvalid, rtl_Cipher_ModeInvalid);
-            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provide wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provides wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
         }
 
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(create);
     CPPUNIT_TEST(create_001);
@@ -134,12 +134,12 @@ public:
     void createBF_004()
         {
             rtlCipher aCipher = rtl_cipher_createBF(rtl_Cipher_ModeInvalid);
-            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provide wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("create provides wrong object.", static_cast<rtlCipher>(nullptr), aCipher);
             // rtl_cipher_destroy(aCipher);
         }
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(createBF);
     CPPUNIT_TEST(createBF_001);
@@ -284,7 +284,7 @@ public:
         }
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(decode);
     CPPUNIT_TEST(decode_001);
@@ -301,7 +301,7 @@ public:
         }
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(decodeBF);
     CPPUNIT_TEST(decodeBF_001);
@@ -324,7 +324,7 @@ public:
         }
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(destroy);
     CPPUNIT_TEST(destroy_001);
@@ -349,7 +349,7 @@ public:
         }
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(destroyBF);
     CPPUNIT_TEST(destroyBF_001);
@@ -421,7 +421,7 @@ public:
 
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(encode);
     CPPUNIT_TEST(encode_001);
@@ -437,7 +437,7 @@ public:
         }
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(encodeBF);
     CPPUNIT_TEST(encodeBF_001);
@@ -555,7 +555,7 @@ public:
         }
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(init);
     CPPUNIT_TEST(init_001);
@@ -576,7 +576,7 @@ public:
 
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(initBF);
     CPPUNIT_TEST(initBF_001);

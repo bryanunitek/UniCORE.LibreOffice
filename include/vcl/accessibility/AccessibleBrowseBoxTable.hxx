@@ -28,9 +28,8 @@
 class AccessibleBrowseBoxTable : public AccessibleBrowseBoxTableBase
 {
 public:
-    AccessibleBrowseBoxTable(
-        const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::vcl::IAccessibleTableProvider& rBrowseBox );
+    AccessibleBrowseBoxTable(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                             ::vcl::IAccessibleTableProvider& rBrowseBox);
 
 protected:
     virtual ~AccessibleBrowseBoxTable() override;
@@ -91,11 +90,6 @@ public:
 
     /** @return  TRUE, if the specified cell is selected. */
     virtual sal_Bool SAL_CALL isAccessibleSelected( sal_Int32 nRow, sal_Int32 nColumn ) override;
-
-    // XServiceInfo
-
-    /** @return  The name of this class. */
-    virtual OUString SAL_CALL getImplementationName() override;
 
 protected:
     // internal virtual methods

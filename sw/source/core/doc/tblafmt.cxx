@@ -23,16 +23,12 @@
 #include <doc.hxx>
 #include <tblafmt.hxx>
 #include <cellatr.hxx>
-#include <SwStyleNameMapper.hxx>
+#include <swtypes.hxx>
 #include <hintids.hxx>
 #include <fmtornt.hxx>
-#include <editsh.hxx>
-#include <fmtlsplt.hxx>
-#include <fmtrowsplt.hxx>
 #include <swmodule.hxx>
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
-#include <osl/thread.h>
 
 #include <editeng/adjustitem.hxx>
 #include <editeng/boxitem.hxx>
@@ -41,17 +37,13 @@
 #include <editeng/contouritem.hxx>
 #include <editeng/crossedoutitem.hxx>
 #include <editeng/fontitem.hxx>
-#include <editeng/formatbreakitem.hxx>
 #include <editeng/fhgtitem.hxx>
 #include <editeng/justifyitem.hxx>
 #include <editeng/legacyitem.hxx>
-#include <editeng/lineitem.hxx>
 #include <editeng/postitem.hxx>
 #include <editeng/shdditem.hxx>
 #include <editeng/udlnitem.hxx>
 #include <editeng/wghtitem.hxx>
-#include <svx/algitem.hxx>
-#include <svx/rotmodit.hxx>
 #include <unostyle.hxx>
 #include <names.hxx>
 
@@ -700,12 +692,12 @@ SwTableAutoFormat& SwTableAutoFormatTable::operator[](size_t const i)
 
 const SwTableAutoFormat* SwTableAutoFormatTable::GetData(size_t nIndex) const
 {
-    return &*m_pImpl->m_AutoFormats[nIndex];
+    return m_pImpl->m_AutoFormats[nIndex].get();
 }
 
 SwTableAutoFormat* SwTableAutoFormatTable::GetData(size_t nIndex)
 {
-    return &*m_pImpl->m_AutoFormats[nIndex];
+    return m_pImpl->m_AutoFormats[nIndex].get();
 }
 
 void SwTableAutoFormatTable::AddAutoFormat(const SwTableAutoFormat& rTableStyle)
@@ -849,7 +841,7 @@ void SwCellStyleTable::RemoveBoxFormat(const OUString& sName)
         m_aCellStyles.erase(iter);
         return;
     }
-    SAL_INFO("sw.core", "SwCellStyleTable::RemoveBoxFormat, format with given name doesn't exists");
+    SAL_INFO("sw.core", "SwCellStyleTable::RemoveBoxFormat, format with given name doesn't exist");
 }
 
 UIName SwCellStyleTable::GetBoxFormatName(const SwBoxAutoFormat& rBoxFormat) const

@@ -330,15 +330,7 @@ namespace
 {
     const Color& SanitizePaletteIndex(std::vector<Color> const & rvPalette, sal_uInt8 nIndex)
     {
-        if (nIndex >= rvPalette.size())
-        {
-            auto nSanitizedIndex = nIndex % rvPalette.size();
-            SAL_WARN_IF(nIndex != nSanitizedIndex, "filter.psd", "invalid colormap index: "
-                        << static_cast<unsigned int>(nIndex) << ", colormap len is: "
-                        << rvPalette.size());
-            nIndex = nSanitizedIndex;
-        }
-        return rvPalette[nIndex];
+        return vcl::bitmap::sanitizedPaletteColor(rvPalette, nIndex);
     }
 }
 
@@ -706,7 +698,7 @@ bool PSDReader::ImplReadBody()
 
     if (mbTransparent && m_rPSD.good())
     {
-        // the psd is 24 or 8 bit grafix + alpha channel
+        // the psd is 24 or 8 bit graphic + alpha channel
 
         nY = nX = 0;
         while ( nY < mpFileHeader->nRows )

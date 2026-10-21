@@ -81,6 +81,8 @@ class XMLImport : public cppu::WeakImplHelper<css::xml::sax::XDocumentHandler>
     std::map<OUString, librevenge::RVNGPropertyList> maTableStyles;
     std::map<OUString, librevenge::RVNGPropertyList> maAutomaticGraphicStyles;
     std::map<OUString, librevenge::RVNGPropertyList> maGraphicStyles;
+    std::map<OUString, librevenge::RVNGPropertyList> maAutomaticListStyles;
+    std::map<OUString, librevenge::RVNGPropertyList> maListStyles;
     std::map<OUString, librevenge::RVNGPropertyList> maPageLayouts;
     std::map<OUString, librevenge::RVNGPropertyList> maMasterStyles;
     librevenge::RVNGPropertyListVector maCoverImages;
@@ -88,6 +90,7 @@ class XMLImport : public cppu::WeakImplHelper<css::xml::sax::XDocumentHandler>
     librevenge::RVNGPropertyList maMetaData;
     const css::uno::Reference<css::uno::XComponentContext>& mxContext;
     css::uno::Reference<css::uri::XUriReferenceFactory> mxUriReferenceFactory;
+    /// Folder that popup images are read from, empty unless the export names one.
     OUString maMediaDir;
     bool mbIsInPageSpan;
     const std::vector<FixedLayoutPage>& mrPageMetafiles;
@@ -110,6 +113,7 @@ public:
     std::map<OUString, librevenge::RVNGPropertyList>& GetAutomaticRowStyles();
     std::map<OUString, librevenge::RVNGPropertyList>& GetAutomaticTableStyles();
     std::map<OUString, librevenge::RVNGPropertyList>& GetAutomaticGraphicStyles();
+    std::map<OUString, librevenge::RVNGPropertyList>& GetAutomaticListStyles();
     std::map<OUString, librevenge::RVNGPropertyList>& GetTextStyles();
     std::map<OUString, librevenge::RVNGPropertyList>& GetParagraphStyles();
     std::map<OUString, librevenge::RVNGPropertyList>& GetCellStyles();
@@ -117,6 +121,7 @@ public:
     std::map<OUString, librevenge::RVNGPropertyList>& GetRowStyles();
     std::map<OUString, librevenge::RVNGPropertyList>& GetTableStyles();
     std::map<OUString, librevenge::RVNGPropertyList>& GetGraphicStyles();
+    std::map<OUString, librevenge::RVNGPropertyList>& GetListStyles();
     std::map<OUString, librevenge::RVNGPropertyList>& GetPageLayouts();
     std::map<OUString, librevenge::RVNGPropertyList>& GetMasterStyles();
     const librevenge::RVNGPropertyListVector& GetCoverImages() const;
@@ -141,6 +146,10 @@ public:
     void SAL_CALL
     setDocumentLocator(const css::uno::Reference<css::xml::sax::XLocator>& xLocator) override;
 };
+
+/// The default media folder of a document: a folder beside it, named after it. Empty for a
+/// document with no URL.
+OUString GetDefaultMediaDir(const OUString& rDocumentURL);
 
 } // namespace writerperfect::exp
 

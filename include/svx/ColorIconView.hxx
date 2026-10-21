@@ -11,14 +11,16 @@
 
 #include <svx/IColorSet.hxx>
 #include <svx/svxdllapi.h>
+#include <tools/gen.hxx>
 #include <tools/link.hxx>
 #include <vcl/vclptr.hxx>
+#include <vcl/weld/IconView.hxx>
 
 class VirtualDevice;
 
 namespace weld
 {
-class IconView;
+class ItemView;
 class TreeIter;
 }
 
@@ -26,9 +28,11 @@ class SVXCORE_DLLPUBLIC ColorIconView : public IColorSet
 {
     std::unique_ptr<weld::IconView> m_pIconView;
 
-    Link<const Color&, void> m_aColorActivatedHdl;
+    Link<int, void> m_aColorActivatedHdl;
+    Link<const ColorIconView&, void> m_aSelectionChangedHdl;
 
     DECL_LINK(ItemActivatedHdl, const weld::TreeIter&, bool);
+    DECL_LINK(SelectionChangedHdl, weld::ItemView&, void);
 
 public:
     ColorIconView(std::unique_ptr<weld::IconView> pIconView);
@@ -47,10 +51,16 @@ public:
     void remove(int nIndex);
     virtual void clear() override;
 
-    void setColorActivatedHdl(const Link<const Color&, void>& rLink)
-    {
-        m_aColorActivatedHdl = rLink;
-    }
+    void grab_focus();
+
+    void set_sensitive(bool bSensitive);
+
+    void set_size_request(int nWidth, int nHeight);
+    Size get_size_request() const;
+
+    void set_help_id(const OUString& rName);
+
+    void setColorActivatedHdl(const Link<int, void>& rLink) { m_aColorActivatedHdl = rLink; }
 
 private:
     ScopedVclPtr<VirtualDevice> createIcon(const Color& rColor);

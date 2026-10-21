@@ -9,6 +9,8 @@
 
 #include "../helper/qahelper.hxx"
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <drawview.hxx>
+#include <drwlayer.hxx>
 #include <unotools/syslocaleoptions.hxx>
 #include <vcl/keycodes.hxx>
 #include <vcl/scheduler.hxx>
@@ -64,7 +66,7 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf142854_GridVisibilityImportXlsxInHeadl
 {
     // To avoid regression, in headless mode leave the bug tdf126541
     // It means Sheet based grid line visibility setting will overwrite the global setting.
-    // If there is only 1 sheet in the document, it will not result visible problems.
+    // If there is only 1 sheet in the document, it will not result in visible problems.
     createScDoc("tdf126541_GridOff.xlsx");
     ScDocument* pDoc = getScDoc();
     CPPUNIT_ASSERT(!pDoc->GetViewOptions().GetOption(sc::ViewOption::GRID));
@@ -916,8 +918,48 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf124820)
     pPattern->fillFontOnly(aFont);
 
     // Without the fix in place, this test would have failed here
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("font should be striked out", STRIKEOUT_SINGLE,
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("font should be struck out", STRIKEOUT_SINGLE,
                                  aFont.GetStrikeout());
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf170494_Validity_Cell_Function)
+{
+    createScDoc("tdf170494.ods");
+    ScDocument* pDoc = getScDoc();
+
+    insertStringToCell(u"A4"_ustr, u"2");
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, pDoc->GetString(ScAddress(0, 3, 0)));
+
+    insertStringToCell(u"A4"_ustr, u"3");
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 3
+    // - Actual  : 1
+    CPPUNIT_ASSERT_EQUAL(u"3"_ustr, pDoc->GetString(ScAddress(0, 3, 0)));
+
+    insertStringToCell(u"A8"_ustr, u"2");
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, pDoc->GetString(ScAddress(0, 7, 0)));
+
+    insertStringToCell(u"A8"_ustr, u"3");
+    CPPUNIT_ASSERT_EQUAL(u"3"_ustr, pDoc->GetString(ScAddress(0, 7, 0)));
+
+    insertStringToCell(u"A12"_ustr, u"2");
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, pDoc->GetString(ScAddress(0, 11, 0)));
+
+    insertStringToCell(u"A12"_ustr, u"3");
+    CPPUNIT_ASSERT_EQUAL(u"3"_ustr, pDoc->GetString(ScAddress(0, 11, 0)));
+
+    insertStringToCell(u"A16"_ustr, u"2");
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, pDoc->GetString(ScAddress(0, 15, 0)));
+
+    insertStringToCell(u"A16"_ustr, u"3");
+    CPPUNIT_ASSERT_EQUAL(u"3"_ustr, pDoc->GetString(ScAddress(0, 15, 0)));
+
+    insertStringToCell(u"A20"_ustr, u"2");
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, pDoc->GetString(ScAddress(0, 19, 0)));
+
+    insertStringToCell(u"A20"_ustr, u"3");
+    CPPUNIT_ASSERT_EQUAL(u"3"_ustr, pDoc->GetString(ScAddress(0, 19, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf132026)
@@ -1484,7 +1526,7 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf122232)
     createScDoc("tdf122232.ods");
     ScDocShell* pDocSh = getScDocShell();
 
-    //Start with from C6. Press tabulator to reach G6.
+    //Start from C6. Press tabulator to reach G6.
     checkCurrentCursorPosition(*pDocSh, u"C6");
 
     ScModelObj* pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
@@ -1670,7 +1712,25 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf151752)
     dispatchCommand(mxComponent, u".uno:Paste"_ustr, {});
 
     CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(0, 0, 0));
-    CPPUNIT_ASSERT_EQUAL(0.0, pDoc->GetValue(1, 0, 0));
+    // tdf#152327 - paste operation was silently dropped because the current sheet was deselected
+    CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(1, 0, 0));
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf152327_enter_data_after_select_unprotected_cells)
+{
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    // Select unprotected cells does not select any cells since all cells are protected by default
+    dispatchCommand(mxComponent, u".uno:SelectUnprotectedCells"_ustr, {});
+
+    insertStringToCell(u"A1"_ustr, u"1");
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 1
+    // - Actual  : 0
+    // i.e. the current tab was cleared and the cell value was silently dropped
+    CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(0, 0, 0));
 }
 
 CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf95306)
@@ -1913,7 +1973,7 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf149502_HangOnDeletingSheet1)
     uno::Sequence<beans::PropertyValue> aArgs(
         comphelper::InitPropertySequence({ { "Index", uno::Any(sal_uInt16(0)) } }));
 
-    // Before the fix in place, this test frozen here
+    // Before the fix in place, this test froze here
     dispatchCommand(mxComponent, u".uno:Remove"_ustr, aArgs);
 
     CPPUNIT_ASSERT_EQUAL(static_cast<SCTAB>(3), pDoc->GetTableCount());
@@ -2102,6 +2162,43 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testPasteAsLink)
                                  WEIGHT_NORMAL, aFont.GetWeightMaybeAskConfig());
 }
 
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf57274_paste_special_link_empty_cells)
+{
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    // Source range A1:A3 spans several rows including an empty cell in A2
+    insertStringToCell(u"A1"_ustr, u"1");
+    insertStringToCell(u"A3"_ustr, u"3");
+
+    goToCell(u"A1:A3"_ustr);
+    dispatchCommand(mxComponent, u".uno:Copy"_ustr, {});
+
+    // Paste Special with paste all and link
+    goToCell(u"B1"_ustr);
+    uno::Sequence<beans::PropertyValue> aArgs = comphelper::InitPropertySequence(
+        { { "Flags", uno::Any(u"A"_ustr) },
+          { "FormulaCommand", uno::Any(sal_uInt16(ScPasteFunc::NONE)) },
+          { "SkipEmptyCells", uno::Any(false) },
+          { "Transpose", uno::Any(false) },
+          { "AsLink", uno::Any(true) },
+          { "MoveMode", uno::Any(sal_uInt16(InsCellCmd::INS_NONE)) } });
+    dispatchCommand(mxComponent, u".uno:InsertContents"_ustr, aArgs);
+
+    CPPUNIT_ASSERT_EQUAL(u"=$Sheet1.$A$1"_ustr, pDoc->GetFormula(1, 0, 0)); // B1
+    // Without the fix in place, this test would have failed with
+    // - Expected: =$Sheet1.$A$2
+    // - Actual  :
+    // i.e. no reference was created for the empty source cell
+    CPPUNIT_ASSERT_EQUAL(u"=$Sheet1.$A$2"_ustr, pDoc->GetFormula(1, 1, 0)); // B2
+    CPPUNIT_ASSERT_EQUAL(0.0, pDoc->GetValue(1, 1, 0)); // B2
+    CPPUNIT_ASSERT_EQUAL(u"=$Sheet1.$A$3"_ustr, pDoc->GetFormula(1, 2, 0)); // B3
+
+    // The link to the previously empty cell must follow its source
+    insertStringToCell(u"A2"_ustr, u"2");
+    CPPUNIT_ASSERT_EQUAL(2.0, pDoc->GetValue(1, 1, 0)); // B2
+}
+
 CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf119659)
 {
     createScDoc();
@@ -2240,6 +2337,32 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf138710)
     dispatchCommand(mxComponent, u".uno:Undo"_ustr, {});
 
     CPPUNIT_ASSERT_EQUAL(u"Total"_ustr, pDoc->GetString(ScAddress(0, 0, 1)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf173608_relative_references_when_copying_sheets)
+{
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    insertStringToCell(u"A1"_ustr, u"1");
+    insertStringToCell(u"A2"_ustr, u"2");
+
+    insertNewSheet(*pDoc);
+
+    insertStringToCell(u"A1"_ustr, u"=$Sheet1.A1+1");
+    insertStringToCell(u"A2"_ustr, u"=Sheet1.A2+1");
+
+    CPPUNIT_ASSERT_EQUAL(u"2"_ustr, pDoc->GetString(ScAddress(0, 0, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"3"_ustr, pDoc->GetString(ScAddress(0, 1, 1)));
+
+    dispatchCommand(mxComponent, u".uno:DuplicateSheet"_ustr, {});
+    CPPUNIT_ASSERT_EQUAL(static_cast<SCTAB>(3), pDoc->GetTableCount());
+
+    CPPUNIT_ASSERT_EQUAL(u"2"_ustr, pDoc->GetString(ScAddress(0, 0, 2)));
+    // Without the fix in place, this test would have failed with
+    // - Expected: 4
+    // - Actual  : 3
+    CPPUNIT_ASSERT_EQUAL(u"4"_ustr, pDoc->GetString(ScAddress(0, 1, 2)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf128914)
@@ -2578,7 +2701,8 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testTdf159174)
     ScModelObj* pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
     uno::Reference<drawing::XDrawPage> xPage(pModelObj->getDrawPages()->getByIndex(0),
                                              uno::UNO_QUERY_THROW);
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), xPage->getCount());
+    // tdf#152327 - paste operation was silently dropped because the current sheet was deselected
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1), xPage->getCount());
 }
 
 CPPUNIT_TEST_FIXTURE(ScUiCalcTest, testKeyboardMergeRef)

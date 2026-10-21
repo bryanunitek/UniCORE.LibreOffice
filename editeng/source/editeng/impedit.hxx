@@ -626,6 +626,9 @@ private:
     Timer maStatusTimer;
     Size maLOKSpecialPaperSize;
 
+    // only valid when used from an Outliner
+    Outliner* mpOwner;
+
     Link<EditStatus&,void>         maStatusHdlLink;
     Link<EENotify&,void>           maNotifyHdl;
     Link<HtmlImportInfo&,void>     maHtmlImportHdl;
@@ -672,7 +675,7 @@ private:
 
     std::unique_ptr<EditUndoSetAttribs> CreateAttribUndo( EditSelection aSel, const SfxItemSet& rSet );
 
-    std::unique_ptr<EditTextObject> GetEmptyTextObject();
+    EditTextObject GetEmptyTextObject();
 
     std::tuple<const ParaPortion*, const EditLine*, tools::Long> GetPortionAndLine(Point aDocPos);
     EditPaM             GetPaM( Point aDocPos, bool bSmart = true );
@@ -685,8 +688,7 @@ private:
     void                ParaAttribsToCharAttribs( ContentNode* pNode );
     void                GetCharAttribs( sal_Int32 nPara, std::vector<EECharAttrib>& rLst ) const;
 
-    std::unique_ptr<EditTextObject>
-                        CreateTextObject(EditSelection aSelection, SfxItemPool*, bool bAllowBigObjects = false, sal_Int32 nBigObjStart = 0);
+    EditTextObject      CreateTextObject(EditSelection aSelection, SfxItemPool*, bool bAllowBigObjects = false, sal_Int32 nBigObjStart = 0);
     EditSelection       InsertTextObject( const EditTextObject&, EditPaM aPaM );
     EditSelection       PasteText( css::uno::Reference< css::datatransfer::XTransferable > const & rxDataObj, const OUString& rBaseURL, const EditPaM& rPaM, bool bUseSpecial, SotClipboardFormatId format = SotClipboardFormatId::NONE);
 
@@ -876,7 +878,7 @@ private:
     /// Obtains a view shell ID from the active EditView.
     ViewShellId CreateViewShellId();
 
-    ImpEditEngine(EditEngine* pEditEngine, SfxItemPool* pPool);
+    ImpEditEngine(EditEngine* pEditEngine, SfxItemPool* pPool, Outliner* pEngOwner = nullptr);
     void InitDoc(bool bKeepParaAttribs);
     EditDoc&                GetEditDoc()            { return maEditDoc; }
     const EditDoc&          GetEditDoc() const      { return maEditDoc; }
@@ -1037,9 +1039,9 @@ public:
     void            Write(SvStream& rOutput, EETextFormat eFormat, const EditSelection& rSel);
     OString         GetSimpleHtml() const;
 
-    std::unique_ptr<EditTextObject> CreateTextObject(sal_Int32 nPara, sal_Int32 nParas);
-    std::unique_ptr<EditTextObject> CreateTextObject();
-    std::unique_ptr<EditTextObject> CreateTextObject(const EditSelection& rSel);
+    EditTextObject CreateTextObject(sal_Int32 nPara, sal_Int32 nParas);
+    EditTextObject CreateTextObject();
+    EditTextObject CreateTextObject(const EditSelection& rSel);
     void            SetText( const EditTextObject& rTextObject );
     EditSelection   InsertText( const EditTextObject& rTextObject, EditSelection aSel );
 
@@ -1124,7 +1126,7 @@ public:
     EditPaM CreateEditPaM( const EPaM& rEPaM )
     {
         DBG_ASSERT( rEPaM.nPara < maEditDoc.Count(), "CreateEditPaM: invalid paragraph" );
-        DBG_ASSERT(maEditDoc.GetObject(rEPaM.nPara)->Len() >= rEPaM.nIndex, "CreateEditPaM: invalid Index");
+        DBG_ASSERT(maEditDoc.GetObject(rEPaM.nPara).Len() >= rEPaM.nIndex, "CreateEditPaM: invalid Index");
         return EditPaM(maEditDoc.GetObject(rEPaM.nPara), rEPaM.nIndex);
     }
 
@@ -1371,6 +1373,8 @@ public:
     bool PostKeyEvent( const KeyEvent& rKeyEvent, EditView* pEditView, vcl::Window const * pFrameWin );
     static bool IsSimpleCharInput( const KeyEvent& rKeyEvent );
     void RemoveParagraph( sal_Int32 nPara );
+
+    Outliner* GetOwner() { return mpOwner; }
 
 #ifdef DBG_UTIL
     void DumpData(bool bInfoBox);

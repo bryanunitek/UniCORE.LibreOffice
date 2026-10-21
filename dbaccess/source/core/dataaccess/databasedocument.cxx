@@ -70,6 +70,7 @@
 
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <framework/documentmacrocalls.hxx>
 #include <framework/titlehelper.hxx>
 #include <unotools/saveopt.hxx>
 #include <comphelper/diagnose_ex.hxx>
@@ -77,6 +78,9 @@
 
 #include <vcl/GraphicObject.hxx>
 #include <tools/urlobj.hxx>
+
+#include <algorithm>
+#include <ranges>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
@@ -140,6 +144,7 @@ ODatabaseDocument::ODatabaseDocument(const ::rtl::Reference<ODatabaseModelImpl>&
             ,m_aViewMonitor( m_aEventNotifier )
             ,m_eInitState( NotInitialized )
             ,m_bClosing( false )
+            ,m_bMacroCallsAllowed( false )
             ,m_bAllowDocumentScripting( false )
             ,m_bHasBeenRecovered( false )
             ,m_bEmbedded(false)
@@ -466,6 +471,9 @@ void SAL_CALL ODatabaseDocument::initNew(  )
 
     impl_setInitializing();
 
+    // A new document gets its macros from the user.
+    m_bMacroCallsAllowed = true;
+
     // create a temporary storage
     Reference< XStorage > xTempStor( ::comphelper::OStorageHelper::GetTemporaryStorage( m_pImpl->m_aContext ) );
 
@@ -546,22 +554,10 @@ namespace
 
         const Sequence< Reference< XComponent > > aComponents( xDatabaseUI->getSubComponents() );
 
-        bool isAnyModified = false;
-        for ( auto const & xComponent : aComponents )
-        {
-            Reference< XModifiable > xModify( xComponent, UNO_QUERY );
-            if ( xModify.is() )
-            {
-                isAnyModified = xModify->isModified();
-                continue;
-            }
-
-            // TODO: clarify: anything else to care for? Both the sub components with and without model
-            // should support the XModifiable interface, so I think nothing more is needed here.
-            OSL_FAIL( "lcl_hasAnyModifiedSubComponent_throw: anything left to do here?" );
-        }
-
-        return isAnyModified;
+        return std::ranges::any_of(aComponents, [](const Reference<XComponent>& xComp) {
+            Reference< XModifiable > xModify( xComp, UNO_QUERY );
+            return xModify.is() && xModify->isModified();
+        });
     }
 }
 
@@ -586,11 +582,8 @@ sal_Bool SAL_CALL ODatabaseDocument::wasModifiedSinceLastSave()
 
     try
     {
-        for (auto const& controller : m_aControllers)
-        {
-            if ( lcl_hasAnyModifiedSubComponent_throw(controller) )
-                return true;
-        }
+        if (std::ranges::any_of(m_aControllers, lcl_hasAnyModifiedSubComponent_throw))
+            return true;
     }
     catch( const Exception& )
     {
@@ -763,6 +756,10 @@ bool ODatabaseDocument::impl_attachResource( const OUString& i_rLogicalDocumentU
 
         _rDocGuard.clear();
         // <- SYNCHRONIZED
+
+        // decide the macro mode while the load arguments still hold the interaction handler
+        m_pImpl->checkMacrosOnLoading();
+
         m_aEventNotifier.notifyDocumentEvent( u"OnLoadFinished"_ustr, nullptr, Any() );
     }
 
@@ -815,7 +812,8 @@ void SAL_CALL ODatabaseDocument::connectController( const Reference< XController
         return;
 
     // check/adjust our macro mode.
-    m_pImpl->checkMacrosOnLoading();
+    m_bMacroCallsAllowed = m_pImpl->checkMacrosOnLoading() || m_bMacroCallsAllowed;
+    framework::setDocumentMacroCallsAllowed( m_xUIConfigurationManager, m_bMacroCallsAllowed );
 }
 
 void SAL_CALL ODatabaseDocument::disconnectController( const Reference< XController >& _xController )
@@ -1596,8 +1594,7 @@ void ODatabaseDocument::WriteThroughComponent( const Reference< XOutputStream >&
     Sequence<Any> aArgs( 1 + _rArguments.getLength() );
     auto pArgs = aArgs.getArray();
     pArgs[0] <<= xSaxWriter;
-    for ( sal_Int32 i = 0; i < _rArguments.getLength(); ++i )
-        pArgs[ i+1 ] = _rArguments[i];
+    std::ranges::copy(_rArguments, pArgs + 1);
 
     // get filter component
     Reference< XExporter > xExporter( m_pImpl->m_aContext->getServiceManager()->createInstanceWithArgumentsAndContext(rServiceName, aArgs, m_pImpl->m_aContext), UNO_QUERY_THROW );
@@ -1727,6 +1724,8 @@ Reference< XUIConfigurationManager2 > const & ODatabaseDocument::getUIConfigurat
     if ( !m_xUIConfigurationManager.is() )
     {
         m_xUIConfigurationManager = UIConfigurationManager::create( m_pImpl->m_aContext );
+
+        framework::setDocumentMacroCallsAllowed( m_xUIConfigurationManager, m_bMacroCallsAllowed );
 
         OUString aUIConfigFolderName( u"Configurations2"_ustr );
 

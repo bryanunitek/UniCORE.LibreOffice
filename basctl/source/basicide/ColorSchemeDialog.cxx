@@ -118,7 +118,7 @@ IMPL_LINK_NOARG(ColorSchemeDialog, OptionHdl, weld::Toggleable&, void)
     if (m_xUseScheme->get_active())
     {
         m_xSchemeList->set_sensitive(true);
-        // Always select a item to avoid having nothing selected
+        // Always select an item to avoid having nothing selected
         if (m_sSelectedSchemeId == DEFAULT_SCHEME)
         {
             // If the default color scheme was selected, then choose first entry in the list
@@ -137,7 +137,7 @@ IMPL_LINK_NOARG(ColorSchemeDialog, OptionHdl, weld::Toggleable&, void)
 IMPL_LINK_NOARG(ColorSchemeDialog, SelectHdl, weld::ItemView&, void)
 {
     // Apply the selected scheme only for the current ModulWinLayout for preview
-    // Only if the user presses OK the scheme will be applied to all ModulWinLayout(s)
+    // Only if the user presses OK will the scheme be applied to all ModulWinLayout(s)
     m_sSelectedSchemeId = m_xSchemeList->get_selected_id();
     m_pModulWinLayout->ApplyColorSchemeToCurrentWindow(m_sSelectedSchemeId);
 }

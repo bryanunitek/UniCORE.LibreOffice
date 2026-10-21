@@ -21,7 +21,6 @@
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <comphelper/OAccessible.hxx>
 #include <editeng/editengdllapi.h>
 #include <rtl/ref.hxx>
@@ -30,8 +29,7 @@ namespace utl { class AccessibleRelationSetHelper; }
 
 namespace accessibility {
 
-class EDITENG_DLLPUBLIC AccessibleContextBase
-    : public cppu::ImplInheritanceHelper<comphelper::OAccessible, css::lang::XServiceInfo>
+class EDITENG_DLLPUBLIC AccessibleContextBase : public comphelper::OAccessible
 {
 public:
     /** The origin of the accessible name or description.
@@ -43,9 +41,8 @@ public:
         NotSet
     };
 
-    AccessibleContextBase (
-        css::uno::Reference< css::accessibility::XAccessible> xParent,
-        const sal_Int16 aRole);
+    AccessibleContextBase(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                          const sal_Int16 aRole);
     virtual ~AccessibleContextBase() override;
 
 
@@ -151,8 +148,8 @@ public:
         getAccessibleChild (sal_Int64 nIndex) override;
 
     /// Return a reference to the parent.
-    virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL
-        getAccessibleParent() override;
+    virtual css::uno::Reference<css::accessibility::XAccessible>
+        SAL_CALL getAccessibleParent() override final;
 
     /// Return this object's role.
     virtual sal_Int16 SAL_CALL
@@ -198,21 +195,6 @@ public:
     */
     virtual sal_Int32 SAL_CALL getBackground() override;
 
-    //=====  XServiceInfo  ====================================================
-
-    /** Returns an identifier for the implementation of this object.
-    */
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    /** Return whether the specified service is supported by this class.
-    */
-    virtual sal_Bool SAL_CALL
-        supportsService (const OUString& sServiceName) override final;
-
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
     /** Check whether or not the object has been disposed (or is in the
         state of being disposed).
 
@@ -220,6 +202,8 @@ public:
         of being disposed. Otherwise, FALSE is returned.
     */
     bool IsDisposed() const;
+
+    rtl::Reference<comphelper::OAccessible> implGetAccessibleParent();
 
 protected:
     /** The state set.
@@ -253,7 +237,7 @@ protected:
 
 private:
     /// Reference to the parent object.
-    css::uno::Reference< css::accessibility::XAccessible> mxParent;
+    rtl::Reference<comphelper::OAccessible> mpParent;
 
     /** Description of this object.  This is not a constant because it can
         be set from the outside.  Furthermore, it changes according to the

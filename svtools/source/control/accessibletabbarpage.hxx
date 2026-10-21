@@ -22,14 +22,12 @@
 #include "accessibletabbarbase.hxx"
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
 
 namespace accessibility
 {
 
-class AccessibleTabBarPage final
-    : public cppu::ImplInheritanceHelper<AccessibleTabBarBase, css::lang::XServiceInfo>
+class AccessibleTabBarPage final : public AccessibleTabBarBase
 {
     friend class AccessibleTabBarPageList;
 
@@ -39,7 +37,7 @@ private:
     bool                    m_bSelected;
     OUString                m_sPageText;
 
-    css::uno::Reference< css::accessibility::XAccessible >        m_xParent;
+    rtl::Reference<comphelper::OAccessible> m_pParent;
 
     bool                    IsEnabled();
     bool                    IsShowing() const;
@@ -58,13 +56,8 @@ private:
     virtual void SAL_CALL   disposing() override;
 
 public:
-    AccessibleTabBarPage( TabBar* pTabBar, sal_uInt16 nPageId,
-                          const css::uno::Reference< css::accessibility::XAccessible >& rxParent );
-
-    // XServiceInfo
-    virtual OUString SAL_CALL getImplementationName() override;
-    virtual sal_Bool SAL_CALL supportsService( const OUString& rServiceName ) override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+    AccessibleTabBarPage(TabBar* pTabBar, sal_uInt16 nPageId,
+                         const rtl::Reference<comphelper::OAccessible>& rpParent);
 
     // XAccessibleContext
     virtual sal_Int64 SAL_CALL getAccessibleChildCount(  ) override;

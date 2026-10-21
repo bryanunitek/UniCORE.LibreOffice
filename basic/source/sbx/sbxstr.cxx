@@ -26,7 +26,7 @@
 #include <rtl/ustrbuf.hxx>
 #include <memory>
 
-// The conversion of an item onto String was handled via the Put-Methods
+// The conversion of an item to a String was handled via the Put-Methods
 // of the several data types to avoid duplicated code.
 
 OUString ImpGetString( const SbxValues* p )
@@ -262,7 +262,7 @@ void ImpPutString( SbxValues* p, const OUString* n )
 }
 
 
-// Convert string to an array of bytes, preserving unicode (2bytes per character)
+// Convert string to an array of bytes, preserving unicode (2 bytes per character)
 SbxArray* StringToByteArray(const OUString& rStr)
 {
     sal_Int32 nArraySize = rStr.getLength() * 2;
@@ -298,7 +298,7 @@ SbxArray* StringToByteArray(const OUString& rStr)
     return pArray;
 }
 
-// Convert an array of bytes to string (2bytes per character)
+// Convert an array of bytes to string (2 bytes per character)
 OUString ByteArrayToString(SbxArray* pArr)
 {
     sal_uInt32 nCount = pArr->Count();

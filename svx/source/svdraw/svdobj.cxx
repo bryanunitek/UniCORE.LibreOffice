@@ -110,6 +110,7 @@
 #include <svx/xlnwtit.hxx>
 #include <svx/svdglue.hxx>
 #include <svx/svdsob.hxx>
+#include <svl/whiter.hxx>
 #include <svdobjplusdata.hxx>
 #include <svdobjuserdatalist.hxx>
 
@@ -247,15 +248,12 @@ const OUString& SdrObject::getDiagramDataModelID() const
 
 bool SdrObject::isDiagramBackgroundShape() const
 {
-    const OUString& rID(getDiagramDataModelID());
-    if (rID.isEmpty())
-        return false;
-
     const std::shared_ptr< svx::diagram::DiagramHelper_svx >& rDiagramHelper(getDiagramHelper());
     if (!rDiagramHelper)
         return false;
 
-    return rID == rDiagramHelper->getBackgroundShapeModelID();
+    // BGShape has empty string for identification
+    return EMPTY_OUSTRING == getDiagramDataModelID();
 }
 
 bool SdrObject::isDiagramTextNode() const
@@ -559,6 +557,8 @@ SdrObject::SdrObject(SdrModel& rSdrModel, SdrObject const & rSource)
     if (m_pPlusData!=nullptr && m_pPlusData->pBroadcast!=nullptr) {
         m_pPlusData->pBroadcast.reset(); // broadcaster isn't copied
     }
+
+    m_bHorizontalRule = rSource.m_bHorizontalRule;
 
     m_pGrabBagItem.reset();
     if (rSource.m_pGrabBagItem!=nullptr)
@@ -1212,6 +1212,19 @@ bool SdrObject::HasLimitedRotation() const
     return false;
 }
 
+rtl::Reference<SdrObject> SdrObject::CloneSdrObject(SdrModel& rTargetModel) const
+{
+    if (&rTargetModel == &getSdrModelFromSdrObject())
+        // clone to same model, simple method
+        return implCloneSdrObject(rTargetModel);
+
+    // clone to different model, need to do more for creating a valid
+    // Style and Properties
+    rtl::Reference<SdrObject> aRetval(implCloneSdrObject(rTargetModel));
+    aRetval->GetProperties().postProcessAfterCloneToDifferentModel(*this);
+    return aRetval;
+}
+
 OUString SdrObject::TakeObjNameSingul() const
 {
     OUString sName(SvxResId(STR_ObjNameSingulNONE));
@@ -1681,7 +1694,9 @@ void SdrObject::Move(const Size& rSize)
             GetLogicRect().Left() / 100.0,
             GetLogicRect().Top() / 100.0);
 
-        getAnnotationData()->mxAnnotation->SetPosition(aNewPosition);
+        auto& xAnnotation = getAnnotationData()->mxAnnotation;
+        if (xAnnotation)
+            xAnnotation->SetPosition(aNewPosition);
     }
     SetChanged();
     BroadcastObjectChange();
@@ -1918,7 +1933,7 @@ bool SdrObject::HasTextEdit() const
 
 bool SdrObject::Equals(const SdrObject& rOtherObj) const
 {
-    return (m_aAnchor.X() == rOtherObj.m_aAnchor.X() && m_aAnchor.Y() == rOtherObj.m_aAnchor.Y() &&
+    const bool bEqual(m_aAnchor.X() == rOtherObj.m_aAnchor.X() && m_aAnchor.Y() == rOtherObj.m_aAnchor.Y() &&
             m_nOrdNum == rOtherObj.m_nOrdNum && mnNavigationPosition == rOtherObj.mnNavigationPosition &&
             mbSupportTextIndentingOnLineWidthChange == rOtherObj.mbSupportTextIndentingOnLineWidthChange &&
             m_aCustomPromptText == rOtherObj.m_aCustomPromptText &&
@@ -1927,7 +1942,79 @@ bool SdrObject::Equals(const SdrObject& rOtherObj) const
             m_bNotVisibleAsMaster == rOtherObj.m_bNotVisibleAsMaster && m_bEmptyPresObj == rOtherObj.m_bEmptyPresObj &&
             mbVisible == rOtherObj.mbVisible && m_bNoPrint == rOtherObj.m_bNoPrint && m_bSizProt == rOtherObj.m_bSizProt &&
             m_bMovProt == rOtherObj.m_bMovProt && m_bVirtObj == rOtherObj.m_bVirtObj &&
-            mnLayerID == rOtherObj.mnLayerID && GetMergedItemSet().Equals(rOtherObj.GetMergedItemSet(), false) );
+            mnLayerID == rOtherObj.mnLayerID && IsGroupObject() == rOtherObj.IsGroupObject());
+
+    if (!bEqual)
+        // compare results *without* Items are already not equal, done
+        return false;
+
+    if (IsGroupObject())
+    {
+        // for GroupObjects, do what was done before. NOTE: This will create
+        // merged ItemSets for Group content, not sure if that is needed.
+        // It would also be possible to enter content & compare recursively
+        return GetMergedItemSet().Equals(rOtherObj.GetMergedItemSet(), false);
+    }
+
+    // Do ContentCompare - Items are compared including parent e.g. Styles.
+    // The check above what was done before is more 'hard' in the sense that
+    // it WILL fail for same Item content when e.g. count of hard Items differs,
+    // but with parent ItemSet is actually equal. ContentCompare is necessary
+    // after e.g. in AttributeProperties::postProcessAfterCloneToDifferentModel
+    // the Items of an Object were hard-set/corrected
+    const SfxItemSet& rSrcItemSet(GetObjectItemSet());
+    const SfxItemSet& rDstItemSet(rOtherObj.GetObjectItemSet());
+    SfxWhichIter aIter(rSrcItemSet);
+    const SdrPage* pPage(getSdrPageFromSdrObject());
+    const bool bOnMasterPage(nullptr != pPage && pPage->IsMasterPage());
+
+    for (sal_uInt16 nWhich = aIter.FirstWhich(); nWhich; nWhich = aIter.NextWhich())
+    {
+        const SfxPoolItem& rOld(rSrcItemSet.Get(nWhich));
+        const SfxPoolItem& rNew(rDstItemSet.Get(nWhich));
+
+        if (!SfxPoolItem::areSame(rOld, rNew))
+        {
+            if (bOnMasterPage)
+            {
+                // we have strange effects for Items in Objects on MasterPages on
+                // some Items that seem to be corrected/set different due to being
+                // PresObjs or defaults or similar on MasterPage. React on those
+                // on MasterPages
+                switch (nWhich)
+                {
+                    // somewhere defaults for some objects seem to be set on MasterPages
+                    // that define Items (here: for XATTR_FILLGRADIENT and FillStyle_BITMAP).
+                    // These can be ignored when the FillStyle does not *use* these anyways.
+                    // Better do this already for all FillStyles, you never know.
+                    case XATTR_FILLCOLOR:
+                        if (drawing::FillStyle_SOLID != rSrcItemSet.Get(XATTR_FILLSTYLE).GetValue())
+                            continue;
+                        break;
+                    case XATTR_FILLGRADIENT:
+                        if (drawing::FillStyle_GRADIENT != rSrcItemSet.Get(XATTR_FILLSTYLE).GetValue())
+                            continue;
+                        break;
+                    case XATTR_FILLHATCH:
+                        if (drawing::FillStyle_HATCH != rSrcItemSet.Get(XATTR_FILLSTYLE).GetValue())
+                            continue;
+                        break;
+                    case XATTR_FILLBITMAP:
+                        if (drawing::FillStyle_BITMAP != rSrcItemSet.Get(XATTR_FILLSTYLE).GetValue())
+                            continue;
+                        break;
+
+                    default: break;
+                }
+            }
+
+            // Item is different, done
+            return false;
+        }
+    }
+
+    // all Items are Content-Equal
+    return true;
 }
 
 void SdrObject::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -2566,7 +2653,7 @@ static void extractLineContourFromPrimitive2DSequence(
     // copy line results
     rExtractedHairlines = aExtractor.getExtractedHairlines();
 
-    // copy fill rsults
+    // copy fill results
     rExtractedLineFills = aExtractor.getExtractedLineFills();
 }
 
@@ -2595,7 +2682,7 @@ rtl::Reference<SdrObject> SdrObject::ImpConvertToContourObj(bool bForceLineDash)
                 aMergedHairlinePolyPolygon.append(rExtractedHairline);
             }
 
-            // check for fill rsults
+            // check for fill results
             if (!aExtractedLineFills.empty() && !comphelper::IsFuzzing())
             {
                 // merge to a single tools::PolyPolygon (OR)
@@ -2733,7 +2820,15 @@ void SdrObject::SetMarkProtect(bool bProt)
 
 void SdrObject::SetEmptyPresObj(bool bEpt)
 {
+    const bool bWasEmpty = m_bEmptyPresObj;
     m_bEmptyPresObj = bEpt;
+
+    // Whatever put the content there - typing, a filter, the API - the page hears about it once.
+    if (bWasEmpty && !bEpt)
+    {
+        if (SdrPage* pPage = getSdrPageFromSdrObject())
+            pPage->onEmptyPresObjFilled(*this);
+    }
 }
 
 void SdrObject::SetCustomPromptText(const OUString& rVal)
@@ -3451,7 +3546,7 @@ public:
     {
     }
 
-    rtl::Reference<SdrObject> CloneSdrObject(SdrModel& rTargetModel) const override
+    rtl::Reference<SdrObject> implCloneSdrObject(SdrModel& rTargetModel) const override
     {
         return new EmptyObject(rTargetModel, *this);
     }

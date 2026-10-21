@@ -435,7 +435,10 @@ void RtfAttributeOutput::EndParagraphProperties(
     const SwRedlineData* /*pRedlineParagraphMarkerInserted*/)
 {
     const OString aProperties = MoveProperties(StyleDefinition);
-    m_rExport.Strm().WriteOString(aProperties);
+    if (!m_bBufferSectionHeaders)
+        m_rExport.Strm().WriteOString(aProperties);
+    else
+        m_aSectionHeaders.append(aProperties);
 
     ApplyCharFormatItems(rParagraphMarkerProperties);
     m_aParagraphMarkerProperties = MoveProperties(StyleDefinition);
@@ -1058,9 +1061,8 @@ void RtfAttributeOutput::TablePositioning(const SwFrameFormat* pFlyFormat)
             m_aRowDefs.append(LO_STRING_SVTOOLS_RTF_TPOSXR);
             break;
         default:
-            SwTwips nTPosX = pFlyFormat->GetHoriOrient().GetPos();
             m_aRowDefs.append(LO_STRING_SVTOOLS_RTF_TPOSX);
-            m_aRowDefs.append(static_cast<sal_Int32>(nTPosX));
+            m_aRowDefs.append(pFlyFormat->GetHoriOrient().getPosition().as_twip<sal_Int32>());
             break;
     }
 
@@ -1080,9 +1082,8 @@ void RtfAttributeOutput::TablePositioning(const SwFrameFormat* pFlyFormat)
             m_aRowDefs.append(LO_STRING_SVTOOLS_RTF_TPOSYB);
             break;
         default:
-            SwTwips nTPosY = pFlyFormat->GetVertOrient().GetPos();
             m_aRowDefs.append(LO_STRING_SVTOOLS_RTF_TPOSY);
-            m_aRowDefs.append(static_cast<sal_Int32>(nTPosY));
+            m_aRowDefs.append(pFlyFormat->GetVertOrient().getPosition().as_twip<sal_Int32>());
             break;
     }
 
@@ -1468,9 +1469,17 @@ void RtfAttributeOutput::StartTableRow(
         return;
     // Empty the previous row closing buffer before starting the new one,
     // necessary for subtables.
-    m_rExport.Strm().WriteOString(m_aAfterRuns);
+    if (!m_bBufferSectionHeaders)
+    {
+        m_rExport.Strm().WriteOString(m_aAfterRuns);
+        m_rExport.Strm().WriteOString(m_aRowDefs);
+    }
+    else
+    {
+        m_aSectionHeaders.append(m_aAfterRuns);
+        m_aSectionHeaders.append(m_aRowDefs);
+    }
     m_aAfterRuns.setLength(0);
-    m_rExport.Strm().WriteOString(m_aRowDefs);
     m_aRowDefs.setLength(0);
 }
 
@@ -4103,12 +4112,13 @@ void RtfAttributeOutput::FormatVertOrientation(const SwFormatVertOrient& rFlyVer
             break;
     }
 
+    const SwTwips nVerticalPosition = rFlyVert.getPosition().as_twip<SwTwips>();
     m_rExport.Strm().WriteOString(OOO_STRING_SVTOOLS_RTF_SHPTOP);
-    m_rExport.Strm().WriteNumberAsString(rFlyVert.GetPos());
+    m_rExport.Strm().WriteNumberAsString(nVerticalPosition);
     if (m_pFlyFrameSize)
     {
         m_rExport.Strm().WriteOString(OOO_STRING_SVTOOLS_RTF_SHPBOTTOM);
-        m_rExport.Strm().WriteNumberAsString(rFlyVert.GetPos() + m_pFlyFrameSize->Height());
+        m_rExport.Strm().WriteNumberAsString(nVerticalPosition + m_pFlyFrameSize->Height());
     }
 }
 
@@ -4150,12 +4160,13 @@ void RtfAttributeOutput::FormatHorizOrientation(const SwFormatHoriOrient& rFlyHo
             break;
     }
 
+    const SwTwips nHorizontalPosition = rFlyHori.getPosition().as_twip<SwTwips>();
     m_rExport.Strm().WriteOString(OOO_STRING_SVTOOLS_RTF_SHPLEFT);
-    m_rExport.Strm().WriteNumberAsString(rFlyHori.GetPos());
+    m_rExport.Strm().WriteNumberAsString(nHorizontalPosition);
     if (m_pFlyFrameSize)
     {
         m_rExport.Strm().WriteOString(OOO_STRING_SVTOOLS_RTF_SHPRIGHT);
-        m_rExport.Strm().WriteNumberAsString(rFlyHori.GetPos() + m_pFlyFrameSize->Width());
+        m_rExport.Strm().WriteNumberAsString(nHorizontalPosition + m_pFlyFrameSize->Width());
     }
 }
 

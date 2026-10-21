@@ -22,6 +22,7 @@
 
 namespace writerfilter::dmapper{
 // Ensure that Character Properties are placed between PROP_CHARACTER_STYLES and PROP_CHARACTER_END
+// Ensure that Paragraph Properties are placed between PROP_PARA_ADJUST and PROP_PARA_WIDOWS
 enum PropertyIds
     {
         INVALID = 0
@@ -172,6 +173,7 @@ enum PropertyIds
         ,PROP_FOOTER_IS_DYNAMIC_HEIGHT
         ,PROP_FOOTER_IS_ON
         ,PROP_FOOTER_IS_SHARED
+        ,PROP_FOOTER_NO_FIRST
         ,PROP_FOOTER_TEXT
         ,PROP_FOOTER_TEXT_LEFT
         ,PROP_FOOTER_TEXT_FIRST
@@ -194,6 +196,7 @@ enum PropertyIds
         ,PROP_HEADER_IS_DYNAMIC_HEIGHT
         ,PROP_HEADER_IS_ON
         ,PROP_HEADER_IS_SHARED
+        ,PROP_HEADER_NO_FIRST
         ,PROP_HEADER_ROW_COUNT
         ,PROP_HEADER_TEXT
         ,PROP_HEADER_TEXT_LEFT
@@ -203,7 +206,7 @@ enum PropertyIds
         ,PROP_HELP
         ,PROP_HINT
         ,PROP_HORI_ORIENT
-        ,PROP_HORI_ORIENT_POSITION
+        ,PROP_HORI_ORIENT_POSITION_EMU
         ,PROP_HORI_ORIENT_RELATION
         ,PROP_HYPER_LINK_U_R_L
         ,PROP_HYPERLINK
@@ -230,6 +233,8 @@ enum PropertyIds
         ,PROP_LISTTAB_STOP_POSITION
         ,PROP_LIST_FORMAT
         ,PROP_MACRO_NAME
+        ,PROP_MIN_BOTTOM_BODY_DISTANCE
+        ,PROP_MIN_TOP_BODY_DISTANCE
         ,PROP_NAME
         ,PROP_NUMBERING_LEVEL
         ,PROP_NUMBERING_RULES
@@ -246,6 +251,7 @@ enum PropertyIds
         ,PROP_PARAGRAPH_STYLES
         ,PROP_PARA_ADJUST
         ,PROP_PARA_BOTTOM_MARGIN
+        ,PROP_PARA_CONTEXT_MARGIN
         ,PROP_PARA_FIRST_LINE_INDENT
         ,PROP_PARA_FIRST_LINE_INDENT_UNIT
         ,PROP_PARA_IS_HANGING_PUNCTUATION
@@ -344,7 +350,7 @@ enum PropertyIds
         ,PROP_VERTICAL_MERGE
         ,PROP_GRID_STANDARD_MODE
         ,PROP_VERT_ORIENT
-        ,PROP_VERT_ORIENT_POSITION
+        ,PROP_VERT_ORIENT_POSITION_EMU
         ,PROP_VERT_ORIENT_RELATION
         ,PROP_WIDTH
         ,PROP_WIDTH_TYPE
@@ -352,7 +358,6 @@ enum PropertyIds
         ,PROP_WRITING_MODE
         ,PROP_FRM_DIRECTION
         ,PROP_EMBEDDED_OBJECT
-        ,PROP_PARA_CONTEXT_MARGIN
         ,PROP_PAGE_STYLE_LAYOUT
         ,PROP_Z_ORDER
         ,PROP_EMBED_FONTS

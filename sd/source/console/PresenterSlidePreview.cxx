@@ -27,11 +27,10 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 namespace
 {
-    // Use a super sample factor greater than 1 to achieve a poor mans
+    // Use a super sample factor greater than 1 to achieve a poor man's
     // antialiasing effect for slide previews.
     const sal_Int16 gnSuperSampleFactor = 2;
 }
@@ -77,9 +76,7 @@ PresenterSlidePreview::PresenterSlidePreview (
     if (mpPresenterController)
         mnSlideAspectRatio = mpPresenterController->GetSlideAspectRatio();
 
-    Reference<lang::XMultiComponentFactory> xFactory = rxContext->getServiceManager();
-    if (xFactory.is())
-        mxPreviewRenderer = new sd::presenter::SlideRenderer();
+    mxPreviewRenderer = new sd::presenter::SlideRenderer();
     mpBitmaps = std::make_shared<PresenterBitmapContainer>(
             "PresenterScreenSettings/ScrollBar/Bitmaps",
             std::shared_ptr<PresenterBitmapContainer>(),

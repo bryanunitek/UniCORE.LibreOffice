@@ -587,7 +587,8 @@ private:
 
     SAL_DLLPRIVATE void                 ImplInitResolutionSettings();
 
-    SAL_DLLPRIVATE void                 ImplPointToLogic(vcl::RenderContext const & rRenderContext, vcl::Font& rFont, bool bUseRenderContextDPI = false) const;
+    SAL_DLLPRIVATE void ImplPointToLogic(vcl::RenderContext const& rRenderContext,
+                                         vcl::Font& rFont) const;
     SAL_DLLPRIVATE void                 ImplLogicToPoint(vcl::RenderContext const & rRenderContext, vcl::Font& rFont) const;
 
     SAL_DLLPRIVATE bool                 ImplSysObjClip( const vcl::Region* pOldRegion );
@@ -746,7 +747,6 @@ public:
     WindowExtendedStyle                 GetExtendedStyle() const;
     void                                SetType( WindowType eType );
     WindowType                          GetType() const;
-    std::string_view GetTypeName() const;
     bool IsFormControl() const;
     void SetFormControl(bool bFormControl);
     bool                                IsSystemWindow() const;
@@ -808,7 +808,7 @@ public:
     SAL_DLLPRIVATE void                 UpdateSettings( const AllSettings& rSettings, bool bChild = false );
     SAL_DLLPRIVATE void                 NotifyAllChildren( DataChangedEvent& rDCEvt );
 
-    void                                SetPointFont(vcl::RenderContext& rRenderContext, const vcl::Font& rFont, bool bUseRenderContextDPI = false);
+    void SetPointFont(vcl::RenderContext& rRenderContext, const vcl::Font& rFont);
     vcl::Font                           GetPointFont(vcl::RenderContext const & rRenderContext) const;
     void                                SetZoomedPointFont(vcl::RenderContext& rRenderContext, const vcl::Font& rFont);
     SAL_DLLPRIVATE tools::Long          GetDrawPixel( ::OutputDevice const * pDev, tools::Long nPixels ) const;
@@ -1479,8 +1479,8 @@ public:
                                              TextRectInfo* pInfo = nullptr,
                                              const vcl::TextLayoutCommon* _pTextLayout = nullptr ) const;
     float                       GetDPIScaleFactor() const;
-    tools::Long                 GetOutOffXPixel() const;
-    tools::Long                 GetOutOffYPixel() const;
+    tools::Long                 GetDeviceOriginX() const;
+    tools::Long                 GetDeviceOriginY() const;
 
     void                        EnableMapMode( bool bEnable = true );
     bool                        IsMapModeEnabled() const;

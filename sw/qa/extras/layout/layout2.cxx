@@ -250,7 +250,7 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf136220)
                     "expand", u"the subject is testing a text formatting bug");
         assertXPath(pXmlDoc,
                     "/root/page[1]/body/txt[2]/SwParaPortion/SwLineLayout[2]/SwFieldPortion[2]",
-                    "expand", u"the subject is testing a text formatting ");
+                    "expand", u"the subject is testing a text formatting");
         assertXPath(pXmlDoc, "/root/page[2]/body/txt[1]/SwParaPortion/SwLineLayout", 1);
         // the problem was that the field follow / rest portion was missing
         assertXPath(pXmlDoc,
@@ -777,10 +777,8 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf149709_RedlineNumberingLevel)
     pXmlDoc = dumpAndParse(dumper, *xMetaFile);
     assertXPathContent(pXmlDoc, "/metafile/push/push/push/textarray[1]/text", u"1.");
     assertXPathContent(pXmlDoc, "/metafile/push/push/push/textarray[3]/text", u"a)");
-    // TODO: show as b)[a)]
-    assertXPathContent(pXmlDoc, "/metafile/push/push/push/textarray[4]/text", u"b)");
-    // FIXME: This must be "c)[b]"
-    assertXPathContent(pXmlDoc, "/metafile/push/push/push/textarray[6]/text", u"c)[a)] ");
+    assertXPathContent(pXmlDoc, "/metafile/push/push/push/textarray[4]/text", u"b)[a)] ");
+    assertXPathContent(pXmlDoc, "/metafile/push/push/push/textarray[6]/text", u"c)[b)] ");
     assertXPathContent(pXmlDoc, "/metafile/push/push/push/textarray[8]/text", u"2.");
 }
 
@@ -936,14 +934,14 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testHiddenParaLineHeight)
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[4]/infos/bounds", "height", u"767");
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[5]/infos/bounds", "height", u"475");
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[6]/infos/bounds", "height", u"450");
-        assertXPath(pXmlDoc, "/root/page[1]/body/txt[7]/infos/bounds", "height", u"475");
+        assertXPath(pXmlDoc, "/root/page[1]/body/txt[7]/infos/bounds", "height", u"450");
         // 4: this was using wrong node's character properties (height 767)
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[8]/infos/bounds", "height", u"450");
-        assertXPath(pXmlDoc, "/root/page[1]/body/txt[9]/infos/bounds", "height", u"475");
+        assertXPath(pXmlDoc, "/root/page[1]/body/txt[9]/infos/bounds", "height", u"450");
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[10]/infos/bounds", "height", u"767");
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[11]/infos/bounds", "height", u"475");
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[12]/infos/bounds", "height", u"450");
-        assertXPath(pXmlDoc, "/root/page[1]/body/txt[13]/infos/bounds", "height", u"475");
+        assertXPath(pXmlDoc, "/root/page[1]/body/txt[13]/infos/bounds", "height", u"450");
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[14]/infos/bounds", "height", u"450");
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[15]/infos/bounds", "height", u"450");
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[16]/infos/bounds", "height", u"767");
@@ -1361,6 +1359,42 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf170177_not_compound_push)
                 u"vasemberellenes vasemberellenes vasemberellenes vasemberellenes vasem");
 }
 
+// check fix of the regression associated to tdf#170177
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf174015)
+{
+    uno::Reference<linguistic2::XHyphenator> xHyphenator = LinguMgr::GetHyphenator();
+    if (!xHyphenator->hasLocale(lang::Locale(u"hu"_ustr, u"HU"_ustr, OUString())))
+        return;
+
+    createSwDoc("tdf174015.fodt");
+    // Ensure that all text portions are calculated before testing.
+    SwViewShell* pViewShell = getSwDoc()->getIDocumentLayoutAccess().GetCurrentViewShell();
+
+    CPPUNIT_ASSERT(pViewShell);
+    pViewShell->Reformat();
+
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+
+    // 2 hyphenations on page 1: "asz-szony-nyal" (not the broken "asszosz-nyal")
+
+    // This was "asszon"
+    assertXPath(pXmlDoc, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[1]", "portion",
+                u"as");
+    assertXPath(pXmlDoc, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[1]/SwHyphPortion",
+                1);
+
+    assertXPath(pXmlDoc, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[2]", "portion",
+                u"szon");
+    assertXPath(pXmlDoc, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[2]/SwHyphPortion",
+                1);
+
+    assertXPath(pXmlDoc, "/root/page[1]/body/txt[1]/SwParaPortion/SwLineLayout[3]", "portion",
+                u"nyal");
+
+    // This was 1 (single hyphenation with exceeding first line)
+    assertXPath(pXmlDoc, "/root/page[1]/body/txt/SwParaPortion/SwLineLayout/SwHyphPortion", 2);
+}
+
 // TODO: move this test to the lingucomponent project
 CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf170140)
 {
@@ -1532,7 +1566,7 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTableCellInvalidate)
 
     // inline the loading because currently properties can't be passed...
     createSwDoc("table_cell_overlap.fodt", comphelper::containerToSequence(aFilterOptions));
-    save(TestFilter::PDF_WRITER);
+    save(TestFilter::PDF);
 
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
     // somehow these 2 rows overlapped in the PDF unless CalcLayout() runs
@@ -1853,7 +1887,7 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf126425)
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 14
     // - Actual  : 12
-    // i.e. the text of the chart legend lost.
+    // i.e. the text of the chart legend was lost.
     assertXPath(pXmlDoc, "//textarray", 14);
 }
 
@@ -1866,7 +1900,7 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testUnusedOLEprops)
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: >300
     // - Actual  : 142
-    // i.e. the formula squashed
+    // i.e. the formula was squashed
     CPPUNIT_ASSERT_GREATEREQUAL(
         double(300),
         getXPath(pXmlDoc, "/root/page/body/txt[2]/anchored/fly/notxt/infos/bounds", "height")
@@ -1886,8 +1920,8 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf123268)
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 53
     // - Actual  : 0
-    // i.e. the chart lost.
-    assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/push[1]/push[3]/push[1]/push[1]/push[1]/push",
+    // i.e. the chart was lost.
+    assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/push[1]/push[4]/push[1]/push[1]/push[1]/push",
                 53);
 }
 
@@ -1903,13 +1937,13 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf133005)
     CPPUNIT_ASSERT(pXmlDoc);
 
     sal_Int32 nXChartWall = getXPath(pXmlDoc,
-                                     "/metafile/push[1]/push[1]/push[1]/push[3]/push[1]/push[1]/"
+                                     "/metafile/push[1]/push[1]/push[1]/push[4]/push[1]/push[1]/"
                                      "push[1]/push[1]/polyline[1]/point[2]",
                                      "x")
                                 .toInt32();
     sal_Int32 nXColumn = getXPath(pXmlDoc,
-                                  "/metafile/push[1]/push[1]/push[1]/push[3]/push[1]/push[1]/"
-                                  "push[1]/push[41]/polypolygon/polygon/point[1]",
+                                  "/metafile/push[1]/push[1]/push[1]/push[4]/push[1]/push[1]/"
+                                  "push[1]/push[41]/push[1]/polypolygon/polygon/point[1]",
                                   "x")
                              .toInt32();
 
@@ -1929,16 +1963,16 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf115630)
     CPPUNIT_ASSERT(pXmlDoc);
 
     // Test wide of inner chart area.
-    sal_Int32 nXRight
-        = getXPath(pXmlDoc,
-                   "/metafile/push[1]/push[1]/push[1]/push[6]/push[1]/push[3]/polyline[1]/point[1]",
-                   "x")
-              .toInt32();
-    sal_Int32 nXLeft
-        = getXPath(pXmlDoc,
-                   "/metafile/push[1]/push[1]/push[1]/push[6]/push[1]/push[3]/polyline[1]/point[2]",
-                   "x")
-              .toInt32();
+    sal_Int32 nXRight = getXPath(pXmlDoc,
+                                 "/metafile/push[1]/push[1]/push[1]/push[6]/push[1]/push[1]/"
+                                 "push[3]/polyline[1]/point[1]",
+                                 "x")
+                            .toInt32();
+    sal_Int32 nXLeft = getXPath(pXmlDoc,
+                                "/metafile/push[1]/push[1]/push[1]/push[6]/push[1]/push[1]/push[3]/"
+                                "polyline[1]/point[2]",
+                                "x")
+                           .toInt32();
     CPPUNIT_ASSERT_DOUBLES_EQUAL(2895, nXRight - nXLeft, 50);
 }
 
@@ -2148,7 +2182,7 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter2, testTdf116256)
                    "top")
               .toInt64();
 
-    // Without the fix in place these were less than they supposed to.
+    // Without the fix in place these were less than they were supposed to be.
     CPPUNIT_ASSERT_GREATEREQUAL(nCellLeft, nTextBoxFrameLeft);
     CPPUNIT_ASSERT_GREATEREQUAL(nCellTop, nTextBoxFrameTop);
 }

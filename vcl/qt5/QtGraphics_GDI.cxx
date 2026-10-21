@@ -31,7 +31,7 @@
 #include <numeric>
 
 QtGraphicsBackend::QtGraphicsBackend(QtFrame* pFrame, QImage* pQImage)
-    : m_pFrame(pFrame)
+    : QtGraphicsBase(pFrame)
     , m_pQImage(pQImage)
     , m_oLineColor(std::in_place, 0x00, 0x00, 0x00)
     , m_oFillColor(std::in_place, 0xFF, 0xFF, 0XFF)
@@ -517,9 +517,12 @@ std::shared_ptr<SalBitmap> QtGraphicsBackend::getBitmap(tools::Long nX, tools::L
                                                         tools::Long nWidth, tools::Long nHeight,
                                                         bool bWithoutAlpha)
 {
-    assert(!bWithoutAlpha && "not supported here");
-    (void)bWithoutAlpha;
-    return std::make_shared<QtBitmap>(m_pQImage->copy(nX, nY, nWidth, nHeight));
+    QImage aImage = m_pQImage->copy(nX, nY, nWidth, nHeight);
+
+    if (bWithoutAlpha && aImage.hasAlphaChannel())
+        aImage.convertTo(QImage::Format_RGB888);
+
+    return std::make_shared<QtBitmap>(aImage);
 }
 
 Color QtGraphicsBackend::getPixel(tools::Long nX, tools::Long nY)

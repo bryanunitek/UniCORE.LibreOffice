@@ -65,6 +65,8 @@
 #include <comphelper/storagehelper.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <algorithm>
+#include <cassert>
 #include <memory>
 #include <string_view>
 
@@ -93,6 +95,21 @@ using com::sun::star::uno::Reference;
 // #i34411: Flag for error handling during migration
 static bool GbMigrationSuppressErrors = false;
 
+#ifndef NDEBUG
+namespace
+{
+// The name->value map and the insertion-order vector are redundant views of the
+// same set of names; verify they list exactly the same names, once each.
+bool mapAndOrderConsistent(const std::unordered_map<OUString, Any>& rMap,
+                           const std::vector<OUString>& rOrder)
+{
+    if (rMap.size() != rOrder.size())
+        return false;
+    return std::all_of(rMap.begin(), rMap.end(), [&rOrder](const auto& rEntry)
+        { return std::find(rOrder.begin(), rOrder.end(), rEntry.first) != rOrder.end(); });
+}
+}
+#endif
 
 // Implementation class NameContainer
 
@@ -120,7 +137,8 @@ Any NameContainer::getByName( const OUString& aName )
 
 Sequence< OUString > NameContainer::getElementNames()
 {
-    return comphelper::mapKeysToSequence(maMap);
+    // Return the names in insertion order.
+    return comphelper::containerToSequence(maNamesOrder);
 }
 
 sal_Bool NameContainer::hasByName( const OUString& aName )
@@ -150,7 +168,7 @@ void NameContainer::replaceByName(const OUString& aName, const Any& aElement,
     if (maContainerListeners.getLength(guard) > 0)
     {
         ContainerEvent aEvent;
-        aEvent.Source = mpxEventSource;
+        aEvent.Source = rOwner.getXWeak();
         aEvent.Accessor <<= aName;
         aEvent.Element = aElement;
         aEvent.ReplacedElement = aOldElement;
@@ -163,7 +181,7 @@ void NameContainer::replaceByName(const OUString& aName, const Any& aElement,
     if (maChangesListeners.getLength(guard) > 0)
     {
         ChangesEvent aEvent;
-        aEvent.Source = mpxEventSource;
+        aEvent.Source = rOwner.getXWeak();
         aEvent.Base <<= aEvent.Source;
         aEvent.Changes = { { Any(aName), aElement, aOldElement } };
         maChangesListeners.notifyEach(guard, &XChangesListener::changesOccurred, aEvent);
@@ -179,13 +197,16 @@ void NameContainer::insertNoCheck(const OUString& aName, const Any& aElement,
         throw IllegalArgumentException(u"types do not match"_ustr, rOwner, 2);
     }
 
+    assert(!maMap.contains(aName) && "insertNoCheck: name already present");
     maMap[aName] = aElement;
+    maNamesOrder.push_back(aName);
+    assert(mapAndOrderConsistent(maMap, maNamesOrder));
 
     // Fire event
     if (maContainerListeners.getLength(guard) > 0)
     {
         ContainerEvent aEvent;
-        aEvent.Source = mpxEventSource;
+        aEvent.Source = rOwner.getXWeak();
         aEvent.Accessor <<= aName;
         aEvent.Element = aElement;
         maContainerListeners.notifyEach(guard, &XContainerListener::elementInserted, aEvent);
@@ -197,7 +218,7 @@ void NameContainer::insertNoCheck(const OUString& aName, const Any& aElement,
     if (maChangesListeners.getLength(guard) > 0)
     {
         ChangesEvent aEvent;
-        aEvent.Source = mpxEventSource;
+        aEvent.Source = rOwner.getXWeak();
         aEvent.Base <<= aEvent.Source;
         aEvent.Changes = { { Any(aName), aElement, {} } };
         maChangesListeners.notifyEach(guard, &XChangesListener::changesOccurred, aEvent);
@@ -223,12 +244,14 @@ void NameContainer::removeByName(const OUString& aName, std::unique_lock<std::mu
 
     Any aOldElement = aIt->second;
     maMap.erase(aIt);
+    std::erase(maNamesOrder, aName);
+    assert(mapAndOrderConsistent(maMap, maNamesOrder));
 
     // Fire event
     if (maContainerListeners.getLength(guard) > 0)
     {
         ContainerEvent aEvent;
-        aEvent.Source = mpxEventSource;
+        aEvent.Source = rOwner.getXWeak();
         aEvent.Accessor <<= aName;
         aEvent.Element = aOldElement;
         maContainerListeners.notifyEach(guard, &XContainerListener::elementRemoved, aEvent);
@@ -240,7 +263,7 @@ void NameContainer::removeByName(const OUString& aName, std::unique_lock<std::mu
     if (maChangesListeners.getLength(guard) > 0)
     {
         ChangesEvent aEvent;
-        aEvent.Source = mpxEventSource;
+        aEvent.Source = rOwner.getXWeak();
         aEvent.Base <<= aEvent.Source;
         aEvent.Changes = { { Any(aName),
                              {}, // Element remains empty (meaning "replaced with nothing")
@@ -929,10 +952,12 @@ void SfxLibraryContainer::init_Impl( const OUString& rInitialDocumentURL,
 
     // Preload?
     {
+        // A password-protected library of a document is loaded with the document's Basic project.
+        const bool bDocumentContainer = Reference< XModel >( mxOwnerDocument ).is();
         for (auto& aName : maNameContainer.getElementNames())
         {
             SfxLibrary* pImplLib = getImplLib( aName );
-            if( pImplLib->mbPreload )
+            if( pImplLib->mbPreload && !( bDocumentContainer && pImplLib->mbPasswordProtected ) )
             {
                 loadLibrary_Impl(aName, guard);
             }
@@ -2667,7 +2692,6 @@ void SAL_CALL SfxLibraryContainer::addContainerListener( const Reference< XConta
 {
     LibraryContainerMethodGuard aGuard( *this );
     std::unique_lock guard(m_aMutex);
-    maNameContainer.setEventSource( getXWeak() );
     maNameContainer.addContainerListener(xListener, guard);
 }
 
@@ -2853,15 +2877,20 @@ css::uno::Reference<css::beans::XPropertySetInfo> SAL_CALL SfxLibraryContainer::
 void SAL_CALL SfxLibraryContainer::setPropertyValue(const OUString& aPropertyName,
                                                     const uno::Any& aValue)
 {
-    if (aPropertyName != sVBATextEncodingPropName)
+    if (aPropertyName == sVBATextEncodingPropName)
+        aValue >>= meVBATextEncoding;
+    else if (aPropertyName == sDeferredVBACompatibilityModePropName)
+        aValue >>= mbVBACompat;
+    else
         throw UnknownPropertyException(aPropertyName, getXWeak());
-    aValue >>= meVBATextEncoding;
 }
 
 css::uno::Any SAL_CALL SfxLibraryContainer::getPropertyValue(const OUString& aPropertyName)
 {
     if (aPropertyName == sVBATextEncodingPropName)
         return uno::Any(meVBATextEncoding);
+    if (aPropertyName == sDeferredVBACompatibilityModePropName)
+        return uno::Any(mbVBACompat);
     throw UnknownPropertyException(aPropertyName, getXWeak());
 }
 
@@ -3087,7 +3116,6 @@ void SfxLibrary::removeByName( const OUString& Name )
 // Methods XContainer
 void SAL_CALL SfxLibrary::addContainerListener( const Reference< XContainerListener >& xListener )
 {
-    maNameContainer.setEventSource( getXWeak() );
     maNameContainer.addContainerListener(xListener, o3tl::temporary(std::unique_lock(m_aMutex)));
 }
 
@@ -3099,7 +3127,6 @@ void SAL_CALL SfxLibrary::removeContainerListener( const Reference< XContainerLi
 // Methods XChangesNotifier
 void SAL_CALL SfxLibrary::addChangesListener( const Reference< XChangesListener >& xListener )
 {
-    maNameContainer.setEventSource( getXWeak() );
     maNameContainer.addChangesListener(xListener, o3tl::temporary(std::unique_lock(m_aMutex)));
 }
 

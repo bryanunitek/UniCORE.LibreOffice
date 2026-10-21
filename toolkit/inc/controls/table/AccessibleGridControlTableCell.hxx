@@ -19,7 +19,7 @@
 #pragma once
 
 #include <controls/table/AccessibleGridControlBase.hxx>
-#include <controls/table/tablecontrol.hxx>
+#include <controls/table/TableControl.hxx>
 
 #include <comphelper/accessibletexthelper.hxx>
 #include <cppuhelper/implbase2.hxx>
@@ -27,6 +27,8 @@
 
 namespace accessibility
 {
+class AccessibleGridControlTable;
+
 class AccessibleGridControlCell : public AccessibleGridControlBase
 {
 private:
@@ -46,7 +48,7 @@ public:
     virtual OUString SAL_CALL getAccessibleName() override;
 
 protected:
-    AccessibleGridControlCell(const css::uno::Reference<css::accessibility::XAccessible>& _rxParent,
+    AccessibleGridControlCell(const rtl::Reference<comphelper::OAccessible>& rpParent,
                               svt::table::TableControl& _rTable, sal_Int32 _nRowPos,
                               sal_uInt16 _nColPos, AccessibleTableControlObjType _eType);
 
@@ -71,17 +73,12 @@ private:
     virtual AbsoluteScreenPixelRectangle implGetBoundingBoxOnScreen() override;
 
 public:
-    AccessibleGridControlTableCell(
-        const css::uno::Reference<css::accessibility::XAccessible>& _rxParent,
-        svt::table::TableControl& _rTable, sal_Int32 _nRowId, sal_uInt16 _nColId);
+    AccessibleGridControlTableCell(const rtl::Reference<AccessibleGridControlTable>& rpParent,
+                                   svt::table::TableControl& _rTable, sal_Int32 _nRowId,
+                                   sal_uInt16 _nColId);
 
     /** @return  The index of this object among the parent's children. */
     virtual sal_Int64 SAL_CALL getAccessibleIndexInParent() override;
-
-    /** @return
-                The name of this class.
-        */
-    virtual OUString SAL_CALL getImplementationName() override;
 
     /** @return
                 The count of visible children.

@@ -111,13 +111,14 @@ ScImportExport::ScImportExport( ScDocument& r )
       bFormulas( false ), bIncludeFiltered( true ),
       bAll( true ), bSingle( true ), bUndo( false ),
       bOverflowRow( false ), bOverflowCol( false ), bOverflowCell( false ),
-      mbApi( true ), mbImportBroadcast(false), mbOverwriting( false ), mbIncludeBOM(false)
+      mbApi( true ), mbImportBroadcast(false), mbOverwriting( false ), mbIncludeBOM(false),
+      mnEndianness(SvStreamEndian::LITTLE)
 {
     pUndoDoc = nullptr;
     pExtOptions = nullptr;
 }
 
-// Insert am current cell without range(es)
+// Insert at current cell without range(es)
 ScImportExport::ScImportExport( ScDocument& r, const ScAddress& rPt )
     : pDocSh( r.GetDocumentShell() ), rDoc( r ),
       aRange( rPt ),
@@ -126,7 +127,8 @@ ScImportExport::ScImportExport( ScDocument& r, const ScAddress& rPt )
       bFormulas( false ), bIncludeFiltered( true ),
       bAll( false ), bSingle( true ), bUndo( pDocSh != nullptr ),
       bOverflowRow( false ), bOverflowCol( false ), bOverflowCell( false ),
-      mbApi( true ), mbImportBroadcast(false), mbOverwriting( false ), mbIncludeBOM(false)
+      mbApi( true ), mbImportBroadcast(false), mbOverwriting( false ), mbIncludeBOM(false),
+      mnEndianness(SvStreamEndian::LITTLE)
 {
     pUndoDoc = nullptr;
     pExtOptions = nullptr;
@@ -142,7 +144,8 @@ ScImportExport::ScImportExport( ScDocument& r, const ScRange& rRange )
       bFormulas( false ), bIncludeFiltered( true ),
       bAll( false ), bSingle( false ), bUndo( pDocSh != nullptr ),
       bOverflowRow( false ), bOverflowCol( false ), bOverflowCell( false ),
-      mbApi( true ), mbImportBroadcast(false), mbOverwriting( false ), mbIncludeBOM(false)
+      mbApi( true ), mbImportBroadcast(false), mbOverwriting( false ), mbIncludeBOM(false),
+      mnEndianness(SvStreamEndian::LITTLE)
 {
     pUndoDoc = nullptr;
     pExtOptions = nullptr;
@@ -159,7 +162,8 @@ ScImportExport::ScImportExport( ScDocument& r, const OUString& rPos )
       bFormulas( false ), bIncludeFiltered( true ),
       bAll( false ), bSingle( true ), bUndo( pDocSh != nullptr ),
       bOverflowRow( false ), bOverflowCol( false ), bOverflowCell( false ),
-      mbApi( true ), mbImportBroadcast(false), mbOverwriting( false ), mbIncludeBOM(false)
+      mbApi( true ), mbImportBroadcast(false), mbOverwriting( false ), mbIncludeBOM(false),
+      mnEndianness(SvStreamEndian::LITTLE)
 {
     pUndoDoc = nullptr;
     pExtOptions = nullptr;
@@ -167,21 +171,20 @@ ScImportExport::ScImportExport( ScDocument& r, const OUString& rPos )
     SCTAB nTab = ScDocShell::GetCurTab();
     aRange.aStart.SetTab( nTab );
     OUString aPos( rPos );
+
     // Named range?
-    ScRangeName* pRange = rDoc.GetRangeName();
-    if (pRange)
+    ScRangeName& rRange = rDoc.GetRangeName();
+    const ScRangeData* pData = rRange.findByUpperName(ScGlobal::getCharClass().uppercase(aPos));
+    if (pData)
     {
-        const ScRangeData* pData = pRange->findByUpperName(ScGlobal::getCharClass().uppercase(aPos));
-        if (pData)
+        if( pData->HasType( ScRangeData::Type::RefArea )
+            || pData->HasType( ScRangeData::Type::AbsArea )
+            || pData->HasType( ScRangeData::Type::AbsPos ) )
         {
-            if( pData->HasType( ScRangeData::Type::RefArea )
-                || pData->HasType( ScRangeData::Type::AbsArea )
-                || pData->HasType( ScRangeData::Type::AbsPos ) )
-            {
-                aPos = pData->GetSymbol();
-            }
+            aPos = pData->GetSymbol();
         }
     }
+
     formula::FormulaGrammar::AddressConvention eConv = rDoc.GetAddressConvention();
     // Range?
     if (aRange.Parse(aPos, rDoc, eConv) & ScRefFlags::VALID)
@@ -1066,7 +1069,7 @@ static bool lcl_PutString(
             {
                 ScFieldEditEngine& rEngine = rDoc.GetEditEngine();
                 rEngine.SetTextCurrentDefaults(rStr);
-                rDocImport.setEditCell(ScAddress(nCol, nRow, nTab), rEngine.CreateTextObject());
+                rDocImport.setEditCell(ScAddress(nCol, nRow, nTab), std::make_unique<EditTextObject>(rEngine.CreateTextObject()));
                 return true;
             }
             else
@@ -1477,7 +1480,7 @@ static bool lcl_PutString(
         ScFieldEditEngine& rEngine = rDoc.GetEditEngine();
         rEngine.SetTextCurrentDefaults(rStr);
         if ( bUseDocImport )
-            rDocImport.setEditCell(ScAddress(nCol, nRow, nTab), rEngine.CreateTextObject());
+            rDocImport.setEditCell(ScAddress(nCol, nRow, nTab), std::make_unique<EditTextObject>(rEngine.CreateTextObject()));
         else
             rDoc.SetEditText( ScAddress( nCol, nRow, nTab ), rEngine.CreateTextObject() );
     }

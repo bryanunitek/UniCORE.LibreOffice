@@ -19,6 +19,7 @@
 
 #include <com/sun/star/table/BorderLineStyle.hpp>
 #include <officecfg/Office/Calc.hxx>
+#include <drawview.hxx>
 
 #include <comphelper/lok.hxx>
 #include <editeng/boxitem.hxx>
@@ -129,7 +130,7 @@ bool ScTabViewShell::GetFunction( OUString& rFuncStr, FormulaError nErrCode )
             SCROW       nPosY       = rViewData.GetCurY();
             SCTAB       nTab        = rViewData.CurrentTabForData();
 
-            OUString aStr = ScResId(pGlobStrId) + ": ";
+            OUString aStr = OUString::number(eFunc) + ":" + ScResId(pGlobStrId) + ": ";
 
             ScAddress aCursor( nPosX, nPosY, nTab );
             double nVal;
@@ -198,7 +199,8 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
     SfxViewFrame& rThisFrame = GetViewFrame();
     bool bOle = GetViewFrame().GetFrame().IsInPlace();
 
-    SCTAB nTabSelCount = rMark.GetSelectCount();
+    SCTAB nCountVisible = 0;
+    const SCTAB nTabCount = rDoc.GetTableCount();
 
     SfxWhichIter    aIter(rSet);
     sal_uInt16          nWhich = aIter.FirstWhich();
@@ -275,6 +277,13 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
             case SID_CURRENTTAB:
                 // Table for Basic is 1-based
                 rSet.Put( SfxUInt16Item( nWhich, static_cast<sal_uInt16>(GetViewData().GetTabNumber()) + 1 ) );
+
+                // enabled only if several sheets are visible
+                for ( SCTAB i = 0; nCountVisible < 2 && i < nTabCount ; i++ )
+                    if ( rDoc.IsVisible( i ) )
+                        ++nCountVisible;
+                if ( nCountVisible < 2 )
+                    rSet.DisableItem( nWhich );
                 break;
 
             case SID_CURRENTDOC:
@@ -544,8 +553,14 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
                 break;
 
             case FID_TAB_DESELECTALL:
-                if ( nTabSelCount == 1 )
+                if ( rMark.GetSelectCount() == 1 )
                     rSet.DisableItem( nWhich );     // enabled only if several sheets are selected
+                break;
+
+            case FID_TAB_SELECTALL:
+                // tdf#173835 count visible and hidden sheets
+                if ( rDoc.GetTableCount() == rMark.GetSelectCount() )
+                    rSet.DisableItem( nWhich );  // disabled if all sheets are already selected
                 break;
 
             case FID_TOGGLEHIDDENCOLROW:

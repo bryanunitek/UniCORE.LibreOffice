@@ -458,7 +458,7 @@ static SharedConnection lcl_connectRowSet(const Reference< XRowSet>& _rxRowSet, 
             }
             catch(Exception&)
             {
-                TOOLS_WARN_EXCEPTION( "connectivity.commontools", "EXception when we set the new active connection!");
+                TOOLS_WARN_EXCEPTION( "connectivity.commontools", "Exception when we set the new active connection!");
             }
         }
     }
@@ -895,7 +895,8 @@ void qualifiedNameComponents(const Reference< XDatabaseMetaData >& _rxConnMetaDa
 
     if ( aNameComps.bSchemas )
     {
-        sal_Int32 nIndex = sName.indexOf('.');
+        // tdf#149434 - use the last separator as table names cannot contain dots
+        sal_Int32 nIndex = sName.lastIndexOf('.');
         //  OSL_ENSURE(-1 != nIndex, "QualifiedNameComponents: no schema separator!");
         if ( nIndex != -1 )
             _rSchema = sName.copy(0, nIndex);
@@ -1991,7 +1992,7 @@ OSQLColumns::const_iterator find(OSQLColumns::const_iterator first,
 
 namespace dbase
 {
-    bool dbfDecodeCharset(rtl_TextEncoding &_out_encoding, sal_uInt8 nType, sal_uInt8 nCodepage)
+    bool dbfDecodeEncoding(rtl_TextEncoding &_out_encoding, sal_uInt8 nType, sal_uInt8 nCodepage)
     {
         switch (nType)
         {
@@ -2054,7 +2055,7 @@ namespace dbase
         return false;
     }
 
-    bool dbfReadCharset(rtl_TextEncoding &nCharSet, SvStream* dbf_Stream)
+    bool dbfReadEncoding(rtl_TextEncoding &nCharSet, SvStream* dbf_Stream)
     {
         sal_uInt8 nType=0;
         dbf_Stream->ReadUChar( nType );
@@ -2068,7 +2069,7 @@ namespace dbase
         {
             sal_uInt8 nEncoding=0;
             dbf_Stream->ReadUChar( nEncoding );
-            return dbfDecodeCharset(nCharSet, nType, nEncoding);
+            return dbfDecodeEncoding(nCharSet, nType, nEncoding);
         }
     }
 

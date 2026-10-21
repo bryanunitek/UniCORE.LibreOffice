@@ -14,26 +14,37 @@
 #include <editeng/editobj.hxx>
 #include <editeng/flditem.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <sfx2/printer.hxx>
+#include <sfx2/viewsh.hxx>
 #include <sot/exchange.hxx>
 #include <svx/svdpage.hxx>
+#include <toolkit/awt/vclxdevice.hxx>
 #include <tools/stream.hxx>
+#include <vcl/gdimtf.hxx>
 #include <vcl/keycodes.hxx>
+#include <vcl/metaact.hxx>
+#include <vcl/print.hxx>
 #include <vcl/scheduler.hxx>
 #include <stlsheet.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
+#include <comphelper/sequence.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <com/sun/star/awt/Key.hpp>
+#include <com/sun/star/awt/XDevice.hpp>
 #include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
 #include <com/sun/star/datatransfer/DataFlavor.hpp>
 #include <com/sun/star/datatransfer/XTransferable.hpp>
 #include <com/sun/star/sheet/GlobalSheetSettings.hpp>
+#include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
+#include <com/sun/star/view/XRenderable.hpp>
 #include <dbdata.hxx>
 #include <document.hxx>
 #include <docsh.hxx>
+#include <formulacell.hxx>
 #include <drwlayer.hxx>
 #include <inputopt.hxx>
 #include <postit.hxx>
@@ -1072,7 +1083,7 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testTdf118983)
 
     xGlobalSheetSettings->setExpandReferences(true);
 
-    const ScRangeData* pRD = pDoc->GetRangeName()->findByUpperName(u"TEST"_ustr);
+    const ScRangeData* pRD = pDoc->GetRangeName().findByUpperName(u"TEST"_ustr);
     CPPUNIT_ASSERT(pRD);
     CPPUNIT_ASSERT_EQUAL(u"$Test.$A$3:$D$7"_ustr, pRD->GetSymbol());
 
@@ -1184,27 +1195,38 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testTdf99386)
 
 CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testTdf149378)
 {
+    // An array-returning formula lands as a dynamic-array master with no
+    // {} wrapping in the formula text.
+
     createScDoc();
     ScDocument* pDoc = getScDoc();
 
-    insertStringToCell(u"A1"_ustr, u"=MINVERSE(A1:C3)");
+    auto checkDynamic = [pDoc](SCCOL nCol, SCROW nRow) {
+        ScFormulaCell* pCell = pDoc->GetFormulaCell(ScAddress(nCol, nRow, 0));
+        CPPUNIT_ASSERT(pCell);
+        CPPUNIT_ASSERT(pCell->IsDynamicArrayMaster());
+        CPPUNIT_ASSERT_EQUAL(ScMatrixMode::Formula, pCell->GetMatrixFlag());
+    };
 
-    // Without the fix in place, this test would have failed with
-    // - Expected: {=MINVERSE(A1:C3)}
-    // - Actual  : =MINVERSE(A1:C3)
-    CPPUNIT_ASSERT_EQUAL(u"{=MINVERSE(A1:C3)}"_ustr, pDoc->GetFormula(0, 0, 0));
+    insertStringToCell(u"A1"_ustr, u"=MINVERSE(A1:C3)");
+    CPPUNIT_ASSERT_EQUAL(u"=MINVERSE(A1:C3)"_ustr, pDoc->GetFormula(0, 0, 0));
+    checkDynamic(0, 0);
 
     insertStringToCell(u"B1"_ustr, u"={1;2}");
-    CPPUNIT_ASSERT_EQUAL(u"{={1;2}}"_ustr, pDoc->GetFormula(1, 0, 0));
+    CPPUNIT_ASSERT_EQUAL(u"={1;2}"_ustr, pDoc->GetFormula(1, 0, 0));
+    checkDynamic(1, 0);
 
     insertStringToCell(u"C1"_ustr, u"={1;2}+3");
-    CPPUNIT_ASSERT_EQUAL(u"{={1;2}+3}"_ustr, pDoc->GetFormula(2, 0, 0));
+    CPPUNIT_ASSERT_EQUAL(u"={1;2}+3"_ustr, pDoc->GetFormula(2, 0, 0));
+    checkDynamic(2, 0);
 
     insertStringToCell(u"D1"_ustr, u"={1;2}+{3;4}");
-    CPPUNIT_ASSERT_EQUAL(u"{={1;2}+{3;4}}"_ustr, pDoc->GetFormula(3, 0, 0));
+    CPPUNIT_ASSERT_EQUAL(u"={1;2}+{3;4}"_ustr, pDoc->GetFormula(3, 0, 0));
+    checkDynamic(3, 0);
 
     insertStringToCell(u"E1"_ustr, u"={1;2}+A1");
-    CPPUNIT_ASSERT_EQUAL(u"{={1;2}+A1}"_ustr, pDoc->GetFormula(4, 0, 0));
+    CPPUNIT_ASSERT_EQUAL(u"={1;2}+A1"_ustr, pDoc->GetFormula(4, 0, 0));
+    checkDynamic(4, 0);
 
     insertStringToCell(u"F1"_ustr, u"={1;2}+A1:A2");
     CPPUNIT_ASSERT_EQUAL(u"={1;2}+A1:A2"_ustr, pDoc->GetFormula(5, 0, 0));
@@ -1216,7 +1238,215 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testTdf149378)
     CPPUNIT_ASSERT_EQUAL(u"=SUM({1;2})"_ustr, pDoc->GetFormula(7, 0, 0));
 
     insertStringToCell(u"I1"_ustr, u"=ABS({-1;-2})");
-    CPPUNIT_ASSERT_EQUAL(u"{=ABS({-1;-2})}"_ustr, pDoc->GetFormula(8, 0, 0));
+    CPPUNIT_ASSERT_EQUAL(u"=ABS({-1;-2})"_ustr, pDoc->GetFormula(8, 0, 0));
+    checkDynamic(8, 0);
+
+    insertStringToCell(u"J1"_ustr, u"=A1:A2");
+    CPPUNIT_ASSERT_EQUAL(u"=A1:A2"_ustr, pDoc->GetFormula(9, 0, 0));
+    checkDynamic(9, 0);
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testBinaryRangeAdditionSpills)
+{
+    // Typing =A2:A5+B2:B5 without Ctrl+Shift+Enter should make the cell a
+    // dynamic-array master and spill the result into C1:C4.
+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    insertStringToCell(u"A2"_ustr, u"1");
+    insertStringToCell(u"A3"_ustr, u"2");
+    insertStringToCell(u"A4"_ustr, u"3");
+    insertStringToCell(u"A5"_ustr, u"4");
+    insertStringToCell(u"B2"_ustr, u"10");
+    insertStringToCell(u"B3"_ustr, u"20");
+    insertStringToCell(u"B4"_ustr, u"30");
+    insertStringToCell(u"B5"_ustr, u"40");
+
+    insertStringToCell(u"C1"_ustr, u"=A2:A5+B2:B5");
+
+    ScFormulaCell* pCell = pDoc->GetFormulaCell(ScAddress(2, 0, 0));
+    CPPUNIT_ASSERT(pCell);
+    CPPUNIT_ASSERT(pCell->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(ScMatrixMode::Formula, pCell->GetMatrixFlag());
+
+    SCCOL nCols = 0;
+    SCROW nRows = 0;
+    pCell->GetMatColsRows(nCols, nRows);
+    CPPUNIT_ASSERT_EQUAL(SCCOL(1), nCols);
+    CPPUNIT_ASSERT_EQUAL(SCROW(4), nRows);
+
+    CPPUNIT_ASSERT_EQUAL(11.0, pDoc->GetValue(ScAddress(2, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(22.0, pDoc->GetValue(ScAddress(2, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(33.0, pDoc->GetValue(ScAddress(2, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(44.0, pDoc->GetValue(ScAddress(2, 3, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testChainedRangeAdditionSpills)
+{
+    // A chain of binary additions over the same multi-cell range spills,
+    // even when the cell sits inside the source row span.
+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    insertStringToCell(u"A1"_ustr, u"1");
+    insertStringToCell(u"A2"_ustr, u"2");
+    insertStringToCell(u"A3"_ustr, u"3");
+    insertStringToCell(u"A4"_ustr, u"4");
+
+    insertStringToCell(u"D2"_ustr, u"=A1:A4 + A1:A4 + A1:A4 + A1:A4 + A1:A4");
+
+    ScFormulaCell* pCell = pDoc->GetFormulaCell(ScAddress(3, 1, 0));
+    CPPUNIT_ASSERT(pCell);
+    CPPUNIT_ASSERT(pCell->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(ScMatrixMode::Formula, pCell->GetMatrixFlag());
+
+    SCCOL nCols = 0;
+    SCROW nRows = 0;
+    pCell->GetMatColsRows(nCols, nRows);
+    CPPUNIT_ASSERT_EQUAL(SCCOL(1), nCols);
+    CPPUNIT_ASSERT_EQUAL(SCROW(4), nRows);
+
+    CPPUNIT_ASSERT_EQUAL(5.0, pDoc->GetValue(ScAddress(3, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(10.0, pDoc->GetValue(ScAddress(3, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(15.0, pDoc->GetValue(ScAddress(3, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(20.0, pDoc->GetValue(ScAddress(3, 4, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testIfWithRangeBranchesSpills)
+{
+    // An IF whose true and false branches are multi-cell ranges has
+    // an array-shaped result. The cell promotes to a dynamic-array
+    // master and spills the chosen branch.
+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    insertStringToCell(u"A1"_ustr, u"1");
+    insertStringToCell(u"B1"_ustr, u"10");
+    insertStringToCell(u"B2"_ustr, u"20");
+    insertStringToCell(u"B3"_ustr, u"30");
+    insertStringToCell(u"B4"_ustr, u"40");
+    insertStringToCell(u"C1"_ustr, u"100");
+    insertStringToCell(u"C2"_ustr, u"200");
+    insertStringToCell(u"C3"_ustr, u"300");
+    insertStringToCell(u"C4"_ustr, u"400");
+
+    insertStringToCell(u"D1"_ustr, u"=IF(A1>0,B1:B4,C1:C4)");
+
+    ScFormulaCell* pCell = pDoc->GetFormulaCell(ScAddress(3, 0, 0));
+    CPPUNIT_ASSERT(pCell);
+    CPPUNIT_ASSERT(pCell->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(ScMatrixMode::Formula, pCell->GetMatrixFlag());
+
+    // A1 is 1 so the true branch wins. The B column spills into D1:D4.
+    CPPUNIT_ASSERT_EQUAL(10.0, pDoc->GetValue(ScAddress(3, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(20.0, pDoc->GetValue(ScAddress(3, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(30.0, pDoc->GetValue(ScAddress(3, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(40.0, pDoc->GetValue(ScAddress(3, 3, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testRangeTimesScalarSpills)
+{
+    // A binary op other than addition still triggers the array-intent
+    // walk. The cell sits at B2 inside the row span of A1:A4 so the
+    // compile-time implicit-intersection skip is exercised as well.
+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    insertStringToCell(u"A1"_ustr, u"1");
+    insertStringToCell(u"A2"_ustr, u"2");
+    insertStringToCell(u"A3"_ustr, u"3");
+    insertStringToCell(u"A4"_ustr, u"4");
+
+    insertStringToCell(u"B2"_ustr, u"=A1:A4*2");
+
+    ScFormulaCell* pCell = pDoc->GetFormulaCell(ScAddress(1, 1, 0));
+    CPPUNIT_ASSERT(pCell);
+    CPPUNIT_ASSERT(pCell->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(ScMatrixMode::Formula, pCell->GetMatrixFlag());
+
+    CPPUNIT_ASSERT_EQUAL(2.0, pDoc->GetValue(ScAddress(1, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(4.0, pDoc->GetValue(ScAddress(1, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(6.0, pDoc->GetValue(ScAddress(1, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(8.0, pDoc->GetValue(ScAddress(1, 4, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testSumOfRangeStaysScalar)
+{
+    // A function that reduces an array to a scalar must not promote
+    // its cell, even when the argument is a multi-cell range. The walk
+    // pops the range push, recognises SUM as a non-array-returning
+    // function, and leaves a scalar on the stack.
+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    insertStringToCell(u"A1"_ustr, u"1");
+    insertStringToCell(u"A2"_ustr, u"2");
+    insertStringToCell(u"A3"_ustr, u"3");
+    insertStringToCell(u"A4"_ustr, u"4");
+
+    insertStringToCell(u"B1"_ustr, u"=SUM(A1:A4)");
+
+    ScFormulaCell* pCell = pDoc->GetFormulaCell(ScAddress(1, 0, 0));
+    CPPUNIT_ASSERT(pCell);
+    CPPUNIT_ASSERT(!pCell->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(ScMatrixMode::NONE, pCell->GetMatrixFlag());
+
+    CPPUNIT_ASSERT_EQUAL(10.0, pDoc->GetValue(ScAddress(1, 0, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testAtOperatorOnOperandsControlsSpill)
+{
+    // @ on every operand keeps the cell scalar. @ on only one still
+    // lets the other spill.
+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    insertStringToCell(u"A1"_ustr, u"1");
+    insertStringToCell(u"A2"_ustr, u"2");
+    insertStringToCell(u"A3"_ustr, u"3");
+    insertStringToCell(u"A4"_ustr, u"4");
+    insertStringToCell(u"B1"_ustr, u"10");
+    insertStringToCell(u"B2"_ustr, u"20");
+    insertStringToCell(u"B3"_ustr, u"30");
+    insertStringToCell(u"B4"_ustr, u"40");
+
+    // @ on both operands keeps the result scalar.
+    insertStringToCell(u"C1"_ustr, u"=@A1:A4 + @B1:B4");
+    ScFormulaCell* pBoth = pDoc->GetFormulaCell(ScAddress(2, 0, 0));
+    CPPUNIT_ASSERT(pBoth);
+    CPPUNIT_ASSERT(!pBoth->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(ScMatrixMode::NONE, pBoth->GetMatrixFlag());
+    CPPUNIT_ASSERT_EQUAL(11.0, pDoc->GetValue(ScAddress(2, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(CELLTYPE_NONE, pDoc->GetCellType(ScAddress(2, 1, 0)));
+
+    // @ on the first operand only. The second operand stays a range,
+    // so the binary + still produces an array result.
+    insertStringToCell(u"D1"_ustr, u"=@A1:A4 + B1:B4");
+    ScFormulaCell* pFirst = pDoc->GetFormulaCell(ScAddress(3, 0, 0));
+    CPPUNIT_ASSERT(pFirst);
+    CPPUNIT_ASSERT(pFirst->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(ScMatrixMode::Formula, pFirst->GetMatrixFlag());
+    CPPUNIT_ASSERT_EQUAL(11.0, pDoc->GetValue(ScAddress(3, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(21.0, pDoc->GetValue(ScAddress(3, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(31.0, pDoc->GetValue(ScAddress(3, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(41.0, pDoc->GetValue(ScAddress(3, 3, 0)));
+
+    // @ on the second operand only. Same outcome.
+    insertStringToCell(u"E1"_ustr, u"=A1:A4 + @B1:B4");
+    ScFormulaCell* pSecond = pDoc->GetFormulaCell(ScAddress(4, 0, 0));
+    CPPUNIT_ASSERT(pSecond);
+    CPPUNIT_ASSERT(pSecond->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(ScMatrixMode::Formula, pSecond->GetMatrixFlag());
+    CPPUNIT_ASSERT_EQUAL(11.0, pDoc->GetValue(ScAddress(4, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(12.0, pDoc->GetValue(ScAddress(4, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(13.0, pDoc->GetValue(ScAddress(4, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(14.0, pDoc->GetValue(ScAddress(4, 3, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testTdf152014)
@@ -1289,6 +1519,47 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testTdf126926)
 
     ScDBCollection* pDBs = pDoc->GetDBCollection();
     CPPUNIT_ASSERT(pDBs->empty());
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testCrossDocCutPasteTableUndoable)
+{
+    // Cutting a named table from one document and pasting it into another that
+    // has no database ranges adds a range to the destination. Undoing the paste
+    // must drop it again rather than leave it orphaned over the now-empty cells.
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    insertStringToCell(u"A1"_ustr, u"a");
+    insertStringToCell(u"B1"_ustr, u"b");
+    insertStringToCell(u"A2"_ustr, u"c");
+    insertStringToCell(u"B2"_ustr, u"d");
+
+    // A named table over A1:B2.
+    ScDBData* pDBData = new ScDBData(u"MyTable"_ustr, 0, 0, 0, 1, 1, true, true);
+    CPPUNIT_ASSERT(
+        pDoc->GetDBCollection()->getNamedDBs().insert(std::unique_ptr<ScDBData>(pDBData)));
+
+    // Cut the whole table.
+    goToCell(u"A1:B2"_ustr);
+    dispatchCommand(mxComponent, u".uno:Cut"_ustr, {});
+
+    // A second, empty document that owns no database ranges.
+    mxComponent2 = loadFromDesktop(u"private:factory/scalc"_ustr);
+    ScModelObj* pModelObj2 = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent2);
+    CPPUNIT_ASSERT(pModelObj2);
+    ScDocument* pDoc2 = pModelObj2->GetDocument();
+    CPPUNIT_ASSERT(pDoc2->GetDBCollection()->getNamedDBs().empty());
+
+    // Pasting into the second document recreates MyTable there.
+    dispatchCommand(mxComponent2, u".uno:Paste"_ustr, {});
+    CPPUNIT_ASSERT_MESSAGE(
+        "paste should have recreated the table in the destination",
+        pDoc2->GetDBCollection()->getNamedDBs().findByUpperName(u"MYTABLE"_ustr));
+
+    // Undo must drop the range the paste added.
+    dispatchCommand(mxComponent2, u".uno:Undo"_ustr, {});
+    CPPUNIT_ASSERT_MESSAGE("undo of a cut-paste must drop the table it added",
+                           pDoc2->GetDBCollection()->getNamedDBs().empty());
 }
 
 CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testUnallocatedColumnsAttributes)
@@ -2237,6 +2508,85 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testTdf107994_MoveActiveCellToFreezePaneSpli
     checkCurrentCursorPosition(*pDocSh, u"A1");
 }
 
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testTdf173894_MoveActiveCellBeyondFreezePaneSplitterPos)
+{
+    createScDoc();
+    ScDocShell* pDocSh = getScDocShell();
+
+    // Freeze panes at C3
+    goToCell(u"C3"_ustr);
+    dispatchCommand(mxComponent, u".uno:FreezePanes"_ustr, {});
+
+    // First Home moves to the freeze pane splitter position
+    goToCell(u"E5"_ustr);
+    dispatchCommand(mxComponent, u".uno:GoToStartOfRow"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"C5");
+
+    // Second Home moves to the first column
+    dispatchCommand(mxComponent, u".uno:GoToStartOfRow"_ustr, {});
+    // Without the fix in place, this test would have failed with
+    // - Expected: A5
+    // - Actual  : C5
+    // i.e. the active cell could not be moved beyond the freeze pane splitter position
+    checkCurrentCursorPosition(*pDocSh, u"A5");
+
+    // Home within the frozen area moves to the first column
+    goToCell(u"B5"_ustr);
+    dispatchCommand(mxComponent, u".uno:GoToStartOfRow"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"A5");
+
+    // First Ctrl+Home moves to the freeze pane splitter position, second one to A1
+    goToCell(u"E5"_ustr);
+    dispatchCommand(mxComponent, u".uno:GoToStart"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"C3");
+    dispatchCommand(mxComponent, u".uno:GoToStart"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"A1");
+
+    // Ctrl+Home with only one axis within the frozen area moves to the freeze pane splitter position
+    goToCell(u"B5"_ustr);
+    dispatchCommand(mxComponent, u".uno:GoToStart"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"C3");
+    dispatchCommand(mxComponent, u".uno:GoToStart"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"A1");
+    goToCell(u"E2"_ustr);
+    dispatchCommand(mxComponent, u".uno:GoToStart"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"C3");
+    dispatchCommand(mxComponent, u".uno:GoToStart"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"A1");
+
+    // Ctrl+Home within the frozen area moves to the first cell
+    goToCell(u"B2"_ustr);
+    dispatchCommand(mxComponent, u".uno:GoToStart"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"A1");
+
+    // Hidden freeze pane splitter column/row moves to the next visible one first
+    ScDocument* pDoc = getScDoc();
+    pDoc->SetColHidden(2, 2, 0, true);
+    goToCell(u"E5"_ustr);
+    dispatchCommand(mxComponent, u".uno:GoToStartOfRow"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"D5");
+    dispatchCommand(mxComponent, u".uno:GoToStartOfRow"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"A5");
+    pDoc->SetColHidden(2, 2, 0, false);
+
+    pDoc->SetRowHidden(2, 2, 0, true);
+    goToCell(u"E5"_ustr);
+    dispatchCommand(mxComponent, u".uno:GoToStart"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"C4");
+    dispatchCommand(mxComponent, u".uno:GoToStart"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"A1");
+    pDoc->SetRowHidden(2, 2, 0, false);
+
+    // Merged cell covering the freeze pane splitter column moves to the next column first
+    goToCell(u"B5:C5"_ustr);
+    dispatchCommand(mxComponent, u".uno:ToggleMergeCells"_ustr, {});
+    goToCell(u"E5"_ustr);
+    dispatchCommand(mxComponent, u".uno:GoToStartOfRow"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"D5");
+    dispatchCommand(mxComponent, u".uno:GoToStartOfRow"_ustr, {});
+    checkCurrentCursorPosition(*pDocSh, u"A5");
+}
+
 CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testSpillMatrixContractionOnPaste)
 {
     createScDoc();
@@ -2251,8 +2601,10 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testSpillMatrixContractionOnPaste)
     for (SCROW nR = 1; nR <= 14; ++nR)
         pDoc->SetValue(3, nR, 0, nR <= 7 ? 7.0 : 8.0); // D2..D15
 
-    insertArrayToCell(u"E2:E5"_ustr, u"=UNIQUE(B$2:B$15)");
-    CPPUNIT_ASSERT_EQUAL(u"{=UNIQUE(B$2:B$15)}"_ustr, pDoc->GetFormula(4, 1, 0)); // E2
+    insertArrayToCell(u"E2:E5"_ustr, u"=UNIQUE(B$2:B$15)", /*bDynamicArrayMaster*/ true);
+    // Dynamic-array masters read back without the {} wrapping that
+    // static Ctrl+Shift+Enter masters use.
+    CPPUNIT_ASSERT_EQUAL(u"=UNIQUE(B$2:B$15)"_ustr, pDoc->GetFormula(4, 1, 0)); // E2
     CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(ScAddress(4, 1, 0))); // E2
     CPPUNIT_ASSERT_EQUAL(4.0, pDoc->GetValue(ScAddress(4, 4, 0))); // E5
 
@@ -2263,7 +2615,7 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testSpillMatrixContractionOnPaste)
     goToCell(u"G2"_ustr);
     dispatchCommand(mxComponent, u".uno:Paste"_ustr, {});
 
-    CPPUNIT_ASSERT_EQUAL(u"{=UNIQUE(D$2:D$15)}"_ustr, pDoc->GetFormula(6, 1, 0)); // G2
+    CPPUNIT_ASSERT_EQUAL(u"=UNIQUE(D$2:D$15)"_ustr, pDoc->GetFormula(6, 1, 0)); // G2
     CPPUNIT_ASSERT_EQUAL(7.0, pDoc->GetValue(ScAddress(6, 1, 0))); // G2
     CPPUNIT_ASSERT_EQUAL(8.0, pDoc->GetValue(ScAddress(6, 2, 0))); // G3
     // G4:G5 are outside the now 2-row matrix, so they are empty.
@@ -2281,8 +2633,8 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testSpillMatrixContractionOnEdit)
     for (size_t i = 0; i < SAL_N_ELEMENTS(aB); ++i)
         pDoc->SetValue(1, 1 + static_cast<SCROW>(i), 0, aB[i]); // B2..B15
 
-    insertArrayToCell(u"D2:D5"_ustr, u"=UNIQUE(B$2:B$15)");
-    CPPUNIT_ASSERT_EQUAL(u"{=UNIQUE(B$2:B$15)}"_ustr, pDoc->GetFormula(3, 1, 0)); // D2
+    insertArrayToCell(u"D2:D5"_ustr, u"=UNIQUE(B$2:B$15)", /*bDynamicArrayMaster*/ true);
+    CPPUNIT_ASSERT_EQUAL(u"=UNIQUE(B$2:B$15)"_ustr, pDoc->GetFormula(3, 1, 0)); // D2
     CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(ScAddress(3, 1, 0))); // D2
     CPPUNIT_ASSERT_EQUAL(2.0, pDoc->GetValue(ScAddress(3, 2, 0))); // D3
     CPPUNIT_ASSERT_EQUAL(3.0, pDoc->GetValue(ScAddress(3, 3, 0))); // D4
@@ -2330,6 +2682,120 @@ CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testSetHyperlinkKeepSelection)
     // - Actual  : mytext
     // i.e. the cell content was lost, the provided text hint was used.
     CPPUNIT_ASSERT_EQUAL(u"foo"_ustr, pURLField->GetRepresentation());
+}
+
+namespace
+{
+// Prints the document once and collects the cell text of each page, in drawing order. The
+// printer records into a metafile, so this is the text that would have reached the paper.
+std::vector<std::vector<OUString>>
+lcl_getPrintedPages(const uno::Reference<lang::XComponent>& xComponent, Printer* pPrinter)
+{
+    rtl::Reference<VCLXDevice> pVclDevice = new VCLXDevice();
+    pVclDevice->SetOutputDevice(pPrinter);
+
+    uno::Reference<view::XRenderable> xRenderable(xComponent, uno::UNO_QUERY_THROW);
+    css::uno::Any aSelection(xComponent);
+
+    std::vector<beans::PropertyValue> aOptions{
+        comphelper::makePropertyValue(u"RenderDevice"_ustr,
+                                      uno::Reference<awt::XDevice>(pVclDevice)),
+        comphelper::makePropertyValue(u"IsPrinter"_ustr, true),
+        comphelper::makePropertyValue(u"IsLastPage"_ustr, false),
+    };
+
+    sal_Int32 nPages
+        = xRenderable->getRendererCount(aSelection, comphelper::containerToSequence(aOptions));
+
+    std::vector<std::vector<OUString>> aPages;
+    for (sal_Int32 nPage = 0; nPage < nPages; ++nPage)
+    {
+        aOptions.back().Value <<= (nPage + 1 == nPages);
+        css::uno::Sequence<beans::PropertyValue> aSequence
+            = comphelper::containerToSequence(aOptions);
+
+        GDIMetaFile aMetaFile;
+        pPrinter->SetConnectMetaFile(&aMetaFile);
+        xRenderable->getRenderer(nPage, aSelection, aSequence);
+        xRenderable->render(nPage, aSelection, aSequence);
+        pPrinter->SetConnectMetaFile(nullptr);
+
+        std::vector<OUString> aTexts;
+        for (size_t nAction = 0; nAction < aMetaFile.GetActionSize(); ++nAction)
+        {
+            MetaAction* pAction = aMetaFile.GetAction(nAction);
+            OUString aText;
+            if (pAction->GetType() == MetaActionType::TEXTARRAY)
+                aText = static_cast<MetaTextArrayAction*>(pAction)->GetText();
+            else if (pAction->GetType() == MetaActionType::TEXT)
+                aText = static_cast<MetaTextAction*>(pAction)->GetText();
+            else if (pAction->GetType() == MetaActionType::STRETCHTEXT)
+                aText = static_cast<MetaStretchTextAction*>(pAction)->GetText();
+            if (aText.startsWith(u"row"))
+                aTexts.push_back(aText);
+        }
+        aPages.push_back(std::move(aTexts));
+    }
+    return aPages;
+}
+
+// Names the first and the last cell of every page on one line. A failure then shows which rows
+// each page carried.
+OUString lcl_describePages(const std::vector<std::vector<OUString>>& rPages)
+{
+    OUStringBuffer aBuffer;
+    for (const auto& rPage : rPages)
+    {
+        if (!aBuffer.isEmpty())
+            aBuffer.append(" ");
+        if (rPage.empty())
+            aBuffer.append("empty");
+        else
+            aBuffer.append(rPage.front() + ".." + rPage.back());
+    }
+    return aBuffer.makeStringAndClear();
+}
+}
+
+CPPUNIT_TEST_FIXTURE(ScUiCalcTest2, testTdf171366)
+{
+    // The sheet holds 100 rows on A4 portrait paper. That is few enough per landscape page that
+    // the two orientations break the sheet at different rows.
+    createScDoc("tdf171366.fods");
+
+    // The view shell hands back the document's own printer, which is the one a print job uses.
+    SfxViewShell* pViewShell = getViewShell();
+    SfxPrinter* pPrinter = pViewShell->GetPrinter(true);
+    CPPUNIT_ASSERT(pPrinter);
+
+    // The Print Dialog turns the paper size itself and hands it on in 1/100 mm.
+    const Size aTurnedPaper(29700, 21001);
+
+    // The user chooses Landscape in the Print Dialog. The dialog gives the printer the turned
+    // size and marks the printer as carrying a setting of its own.
+    pPrinter->SetPrintPageSize(aTurnedPaper);
+    pPrinter->SetOrientation(Orientation::Landscape);
+    pPrinter->SetUsePrintDialogSetting(true);
+    const OUString aFromDialog = lcl_describePages(lcl_getPrintedPages(mxComponent, pPrinter));
+
+    // The user makes the same turn in Format - Page Style instead. That path always worked.
+    pPrinter->SetUsePrintDialogSetting(false);
+    uno::Reference<style::XStyleFamiliesSupplier> xSupplier(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<container::XNameAccess> xPageStyles(
+        xSupplier->getStyleFamilies()->getByName(u"PageStyles"_ustr), uno::UNO_QUERY_THROW);
+    uno::Reference<beans::XPropertySet> xPageStyle(xPageStyles->getByName(u"Default"_ustr),
+                                                   uno::UNO_QUERY_THROW);
+    xPageStyle->setPropertyValue(u"IsLandscape"_ustr, css::uno::Any(true));
+    xPageStyle->setPropertyValue(
+        u"Size"_ustr, css::uno::Any(awt::Size(aTurnedPaper.Width(), aTurnedPaper.Height())));
+    const OUString aFromPageStyle = lcl_describePages(lcl_getPrintedPages(mxComponent, pPrinter));
+
+    // Turning the paper in the Print Dialog splits the sheet the same way as turning it in the
+    // page style. Without the accompanying fix, only the first page was laid out for landscape
+    // paper and the rest kept the portrait splits, so this test failed with:
+    // - Expected: row1..row37 row38..row74 row75..row100
+    // - Actual  : row1..row37 row57..row100 empty
+    CPPUNIT_ASSERT_EQUAL(aFromPageStyle, aFromDialog);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

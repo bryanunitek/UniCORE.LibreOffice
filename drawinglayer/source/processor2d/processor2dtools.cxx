@@ -44,9 +44,9 @@ std::unique_ptr<BaseProcessor2D> createPixelProcessor2DFromScratch(
         return nullptr;
 
 #if USE_HEADLESS_CODE
-    // Linux/Cairo: now globally activated in master. Leave a
-    // possibility to deactivate for easy test/request testing
-    static bool bUsePrimitiveRenderer(nullptr == std::getenv("DISABLE_SYSTEM_DEPENDENT_PRIMITIVE_RENDERER"));
+    // tdf#168910: SDPR currently suffers from some precision issues that are
+    // causing graphical artifacts. Disable it by default.
+    static bool bUsePrimitiveRenderer(nullptr != std::getenv("ENABLE_SYSTEM_DEPENDENT_PRIMITIVE_RENDERER"));
 
     if (bUsePrimitiveRenderer)
     {
@@ -78,9 +78,9 @@ std::unique_ptr<BaseProcessor2D> createPixelProcessor2DFromOutputDevice(
     const drawinglayer::geometry::ViewInformation2D& rViewInformation2D)
 {
 #if USE_HEADLESS_CODE
-    // Linux/Cairo: now globally activated in master. Leave a
-    // possibility to deactivate for easy test/request testing
-    static bool bUsePrimitiveRenderer(nullptr == std::getenv("DISABLE_SYSTEM_DEPENDENT_PRIMITIVE_RENDERER"));
+    // tdf#168910: SDPR currently suffers from some precision issues that are
+    // causing graphical artifacts. Disable it by default.
+    static bool bUsePrimitiveRenderer(nullptr != std::getenv("ENABLE_SYSTEM_DEPENDENT_PRIMITIVE_RENDERER"));
 
     if (bUsePrimitiveRenderer)
     {
@@ -117,10 +117,10 @@ std::unique_ptr<BaseProcessor2D> createPixelProcessor2DFromOutputDevice(
         // NOTE: This will also need to take extended size of target device into
         //       consideration, using D2DPixelProcessor2D *will* have to clip
         //       against that. Thus for now this is *not* sufficient (see tdf#163125)
-        if(0 != rTargetOutDev.GetOutOffXPixel() || 0 != rTargetOutDev.GetOutOffYPixel())
+        if(0 != rTargetOutDev.GetDeviceOriginX() || 0 != rTargetOutDev.GetDeviceOriginY())
         {
             basegfx::B2DHomMatrix aTransform(aViewInformation2D.getViewTransformation());
-            aTransform.translate(rTargetOutDev.GetOutOffXPixel(), rTargetOutDev.GetOutOffYPixel());
+            aTransform.translate(rTargetOutDev.GetDeviceOriginX(), rTargetOutDev.GetDeviceOriginY());
             aViewInformation2D.setViewTransformation(aTransform);
         }
 

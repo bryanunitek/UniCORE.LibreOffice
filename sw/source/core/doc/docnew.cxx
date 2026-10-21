@@ -28,7 +28,6 @@
 
 #include <doc.hxx>
 #include <proofreadingiterator.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/script/vba/XVBAEventProcessor.hpp>
 #include <com/sun/star/text/XFlatParagraphIteratorProvider.hpp>
 #include <com/sun/star/linguistic2/XProofreadingIterator.hpp>
@@ -38,6 +37,8 @@
 #include <comphelper/processfactory.hxx>
 #include <comphelper/random.hxx>
 #include <comphelper/types.hxx>
+#include <sfx2/docfile.hxx>
+#include <unotools/securityoptions.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/XmlIdRegistry.hxx>
 #include <sal/log.hxx>
@@ -61,6 +62,7 @@
 #include <ftninfo.hxx>
 #include <ftnidx.hxx>
 #include <charfmt.hxx>
+#include <charformats.hxx>
 #include <frmfmt.hxx>
 #include <poolfmt.hxx>
 #include <dbmgr.hxx>
@@ -113,7 +115,6 @@
 #include <textcontentcontrol.hxx>
 
 #include <svx/xfillit0.hxx>
-#include <unotools/configmgr.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <svl/setitem.hxx>
 #include <unotxdoc.hxx>
@@ -271,6 +272,7 @@ SwDoc::SwDoc()
     mbInWriterfilterImport(false),
     mbUpdateTOX(false),
     mbInLoadAsynchron(false),
+    mbHasFillBitmapLinks(false),
     mbIsAutoFormatRedline(false),
     mbOLEPrtNotifyPending(false),
     mbAllOLENotify(false),
@@ -670,6 +672,19 @@ SfxObjectShell* SwDoc::GetPersist() const
     return mpDocShell ? mpDocShell : getIDocumentLinksAdministration().GetLinkManager().GetPersist();
 }
 
+OUString SwDoc::GetLinkReferer() const
+{
+    SfxObjectShell* pShell = GetPersist();
+    if (pShell != nullptr && pShell->HasName())
+        return pShell->GetMedium()->GetName();
+    return OUString();
+}
+
+bool SwDoc::AllowAccessLink() const
+{
+    return !SvtSecurityOptions::isUntrustedReferer(GetLinkReferer());
+}
+
 void SwDoc::ClearDoc()
 {
     GetIDocumentUndoRedo().DelAllUndoObj();
@@ -930,7 +945,7 @@ rtl::Reference<SfxObjectShell> SwDoc::CreateCopy(bool bCallInitNew, bool bEmpty)
     {
         // it could happen that DoInitNew creates model,
         // that increases the refcount of the object
-        pRetShell->DoInitNew();
+        pRetShell->DoInitNew(SfxNewDocumentMacros::Disallow);
     }
 
     xRet->ReplaceDefaults(*this);

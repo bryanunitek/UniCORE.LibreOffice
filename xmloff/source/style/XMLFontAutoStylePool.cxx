@@ -19,6 +19,7 @@
 
 #include <o3tl/sorted_vector.hxx>
 #include <tools/fontenum.hxx>
+#include <iomanip>
 #include <utility>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
@@ -450,7 +451,8 @@ void SvXMLExport::exportFonts(const std::vector<XMLFontAutoStylePoolEntry_Impl*>
                     // the font license rights too and open either read-only or not use the font for editing).
                     OUString sFileUrl = EmbeddedFontsManager::fontFileUrl(
                         pEntry->GetFamilyName(), pEntry->GetFamily(), fontItalic, fontWeight,
-                        pEntry->GetPitch(), EmbeddedFontsManager::FontRights::ViewingAllowed);
+                        pEntry->GetPitch(), EmbeddedFontsManager::FontRights::ViewingAllowed,
+                        pEntry->GetStyleName());
                     if (sFileUrl.isEmpty())
                         continue;
 

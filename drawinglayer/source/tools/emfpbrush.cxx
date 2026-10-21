@@ -20,6 +20,7 @@
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/range/b2drectangle.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
+#include <o3tl/safeint.hxx>
 #include <sal/log.hxx>
 #include "emfpbrush.hxx"
 #include "emfppath.hxx"
@@ -89,7 +90,7 @@ namespace emfplushelper
                 s.ReadUInt32(foregroundColor);
                 s.ReadUInt32(backgroundColor);
 
-                hatchStyle = static_cast<EmfPlusHatchStyle>(style);
+                hatchStyle = style;
                 solidColor = ::Color(ColorAlpha, (foregroundColor >> 24), (foregroundColor >> 16) & 0xff, (foregroundColor >> 8) & 0xff, foregroundColor & 0xff);
                 secondColor = ::Color(ColorAlpha, (backgroundColor >> 24), (backgroundColor >> 16) & 0xff, (backgroundColor >> 8) & 0xff, backgroundColor & 0xff);
                 SAL_INFO("drawinglayer.emf", "EMF+\t\t\t\tHatch style: 0x" << std::hex << style);
@@ -182,10 +183,20 @@ namespace emfplushelper
 
                     sal_uInt64 const pos = s.Tell();
                     SAL_INFO("drawinglayer.emf", "EMF+\t use boundary, points: " << boundaryPointCount);
-                    path.reset( new EMFPPath(boundaryPointCount) );
+
+                    sal_uInt64 const nBytesPerPoint = 2 * sizeof(float);
+                    sal_uInt64 const nMaxPoints = s.remainingSize() / nBytesPerPoint;
+                    if (boundaryPointCount < 0
+                        || o3tl::make_unsigned(boundaryPointCount) > nMaxPoints)
+                    {
+                        SAL_WARN("drawinglayer.emf", "EMF+\t\t\t\tTruncated boundary points");
+                        return;
+                    }
+
+                    path.reset( new EMFPPath(boundaryPointCount, false/*bHasPointTypes*/) );
                     path->Read(s, 0x0);
 
-                    s.Seek(pos + 8 * boundaryPointCount);
+                    s.Seek(pos + nBytesPerPoint * boundaryPointCount);
 
                     const ::basegfx::B2DRectangle aBounds(path->GetPolygon(rR, false).getB2DRange());
                     aWidth = aBounds.getWidth();

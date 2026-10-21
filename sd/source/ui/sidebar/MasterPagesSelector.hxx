@@ -28,7 +28,6 @@
 #include <vcl/weld/IconView.hxx>
 #include <vcl/weld/Menu.hxx>
 #include <vcl/idle.hxx>
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
 
 #include <osl/mutex.hxx>
@@ -48,7 +47,6 @@ namespace sd::sidebar {
     templates or designs that are loaded from files.
 */
 class MasterPagesSelector : public PanelLayout
-                          , public sfx2::sidebar::ILayoutableWindow
 {
     class UpdateTask final : public Idle
     {
@@ -81,7 +79,7 @@ public:
 
     virtual void LateInit();
 
-    /** Make the selector empty.  This method clear the value set from any
+    /** Make the selector empty.  This method clears the value set from any
         entries. Override this method to add functionality, especially to
         destroy objects set as data items at the value set.
     */
@@ -91,7 +89,7 @@ public:
 
     /** Mark the preview that belongs to the given index as not up-to-date
         anymore with respect to page content or preview size.
-        The implementation of this method will either sunchronously or
+        The implementation of this method will either synchronously or
         asynchronously call UpdatePreview().
         @param nIndex
             Index into the value set control that is used for displaying the
@@ -103,7 +101,6 @@ public:
 
     void ShowContextMenu(const Point& pPos);
 
-    // ILayoutableWindow
     virtual css::ui::LayoutSize GetHeightForWidth (const sal_Int32 nWidth) override;
 
 protected:
@@ -124,7 +121,7 @@ protected:
     void AssignMasterPageToAllSlides (SdPage* pMasterPage);
 
     /** Assign the given master page to all slides that are selected in a
-        slide sorter that is displayed in the lef or center pane.  When both
+        slide sorter that is displayed in the left or center pane.  When both
         panes display a slide sorter then the one in the center pane is
         used.
     */

@@ -46,7 +46,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 namespace sd::framework {
 
@@ -65,8 +64,8 @@ public:
         lifetime by acquiring a reference to itself in the constructor.
         When it detects that the event will not be notified in the near
         future (because the queue of pending configuration change operations
-        is empty and therefore no event will be sent int the near future, it
-        does not acquires a reference and thus initiates its destruction in
+        is empty and therefore no event will be sent in the near future, it
+        does not acquire a reference and thus initiates its destruction in
         the constructor.)
         @param rBase
             This ViewShellBase object is used to determine the
@@ -219,7 +218,7 @@ namespace
         {
             rtl::Reference< sd::framework::Configuration > xConfiguration( i_rConfigController->getRequestedConfiguration() );
             std::vector< rtl::Reference< ResourceId > > aViewIds( xConfiguration->getResources(
-                i_rPaneId, FrameworkHelper::msViewURLPrefix, AnchorBindingMode_DIRECT ) );
+                i_rPaneId, FrameworkHelper::msViewURLPrefix, AnchorBindingMode::DIRECT));
             if ( !aViewIds.empty() )
                 return i_rConfigController->getResource( aViewIds[0] );
         }
@@ -911,12 +910,12 @@ void LifetimeController::Update()
     else
     {
         // Both the controller and the ViewShellBase have been destroyed.
-        // Remove the FrameworkHelper so that the next call its Instance()
+        // Remove the FrameworkHelper so that the next call to its Instance()
         // method can create a new instance.
         ::sd::framework::FrameworkHelper::ReleaseInstance(mrBase);
     }
 }
 
-} // end of anonymous namespace.
+} // end of anonymous namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

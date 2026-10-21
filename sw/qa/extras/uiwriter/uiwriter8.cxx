@@ -10,6 +10,7 @@
 #include <swmodeltestbase.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <vcl/filter/PDFiumLibrary.hxx>
+#include <vcl/pdf/PDFPageObjectType.hxx>
 #include <vcl/scheduler.hxx>
 #include <vcl/TypeSerializer.hxx>
 #include <com/sun/star/awt/FontWeight.hpp>
@@ -292,7 +293,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf159026)
 
     // undo tracked table deletion
 
-    // This resulted crashing
+    // This resulted in crashing
     dispatchCommand(mxComponent, u".uno:Undo"_ustr, {});
 }
 
@@ -605,7 +606,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf148791)
     dispatchCommand(mxComponent, u".uno:PasteRowsBefore"_ustr, {});
 
     pXmlDoc = parseLayoutDump();
-    // repeating table header (and its thead/tbody indentation) doesn't effect row number
+    // repeating table header (and its thead/tbody indentation) doesn't affect row number
     assertXPath(pXmlDoc, "/root/page[1]/body/tab/row", 32);
     // there are two nested tables after the paste
     assertXPath(pXmlDoc, "/root/page[1]/body/tab/row/cell/tab", 4);
@@ -684,11 +685,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf145584)
         comphelper::InitPropertySequence({ { "Selection", uno::Any(true) } }));
 
     // Without the fix in place, this test would have crashed here
-    save(TestFilter::PDF_WRITER, {
-                                     comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
-                                 });
+    save(TestFilter::PDF, {
+                              comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+                          });
 
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
     CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
     std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(/*nIndex=*/0);
     CPPUNIT_ASSERT(pPdfPage);
@@ -717,11 +718,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf131728)
     uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence(
         { { "ExportBookmarksToPDFDestination", uno::Any(true) } }));
 
-    save(TestFilter::PDF_WRITER, {
-                                     comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
-                                 });
+    save(TestFilter::PDF, {
+                              comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+                          });
 
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
     CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
 
     std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(/*nIndex=*/0);
@@ -756,11 +757,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf95239)
     uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence(
         { { "ExportBookmarksToPDFDestination", uno::Any(true) } }));
 
-    save(TestFilter::PDF_WRITER, {
-                                     comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
-                                 });
+    save(TestFilter::PDF, {
+                              comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+                          });
 
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
     CPPUNIT_ASSERT_EQUAL(2, pPdfDocument->getPageCount());
 
     std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(/*nIndex=*/0);
@@ -809,16 +810,34 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf152575)
         comphelper::InitPropertySequence({ { "ExportNotesInMargin", uno::Any(true) } }));
 
     // Without the fix in place, this test would have crashed here
-    save(TestFilter::PDF_WRITER, {
-                                     comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
-                                 });
+    save(TestFilter::PDF, {
+                              comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+                          });
 
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
     CPPUNIT_ASSERT_EQUAL(3, pPdfDocument->getPageCount());
-    std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(/*nIndex=*/1);
-    CPPUNIT_ASSERT(pPdfPage);
-    // Without the fix for tdf#152575 this would be only 42 objects
-    CPPUNIT_ASSERT_EQUAL(51, pPdfPage->getObjectCount());
+
+    int nCommentsCount(0);
+    for (int nPageIndex = 0; nPageIndex < pPdfDocument->getPageCount(); ++nPageIndex)
+    {
+        std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(nPageIndex);
+        CPPUNIT_ASSERT(pPdfPage);
+        auto pTextPage = pPdfPage->getTextPage();
+        CPPUNIT_ASSERT(pTextPage);
+        for (int i = 0; i < pPdfPage->getObjectCount(); ++i)
+        {
+            auto pObject = pPdfPage->getObject(i);
+
+            if (pObject->getType() == vcl::pdf::PDFPageObjectType::Text)
+            {
+                OUString aText = pObject->getText(pTextPage);
+                if (aText.startsWith("Test comment"))
+                    ++nCommentsCount;
+            }
+        }
+    }
+    // Without the fix for tdf#152575 this would be only 2 comments
+    CPPUNIT_ASSERT_EQUAL(4, nCommentsCount);
 }
 
 CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf140731)
@@ -1313,9 +1332,8 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf131771)
 
     uno::Reference<text::XTextTable> xTextTable(xIndexAccess->getByIndex(0), uno::UNO_QUERY);
 
-    // By default every table has 'Default Style' table style
-    CPPUNIT_ASSERT_EQUAL(u"Default Style"_ustr,
-                         getProperty<OUString>(xTextTable, u"TableTemplateName"_ustr));
+    // Table styles must not be used (unless someone improves them so they work flawlessly)
+    CPPUNIT_ASSERT_EQUAL(u""_ustr, getProperty<OUString>(xTextTable, u"TableTemplateName"_ustr));
 
     uno::Reference<beans::XPropertySet> xTableProps(xTextTable, uno::UNO_QUERY_THROW);
     xTableProps->setPropertyValue(u"TableTemplateName"_ustr, uno::Any(u"Elegant"_ustr));
@@ -1458,7 +1476,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf107893)
     pTxBxFrm = SwTextBoxHelper::getOtherTextBoxFormat(getShape(1));
 
     //This was nullptr because of unsuccessful re-adding
-    CPPUNIT_ASSERT_MESSAGE("Textbox cannot be readd after Undo!", pTxBxFrm);
+    CPPUNIT_ASSERT_MESSAGE("Textbox cannot be re-added after Undo!", pTxBxFrm);
 }
 
 CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf121031)
@@ -1652,7 +1670,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf139566)
     uno::Reference<frame::XFrames> xFrames = mxDesktop->getFrames();
     sal_Int32 nFrames = xFrames->getCount();
 
-    // Create a second window so the first window looses focus
+    // Create a second window so the first window loses focus
     dispatchCommand(mxComponent, u".uno:NewWindow"_ustr, {});
 
     CPPUNIT_ASSERT_EQUAL(nFrames + 1, xFrames->getCount());
@@ -2461,7 +2479,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, AtPageTextBoxCrash)
         u"AnchorType"_ustr, uno::Any(text::TextContentAnchorType::TextContentAnchorType_AT_PAGE));
 
     // The page anchored objects must not have content anchor
-    // unless this will lead to crash later, for example on
+    // otherwise this will lead to crash later, for example on
     // removing the paragraph where it is anchored to...
     CPPUNIT_ASSERT_EQUAL(RndStdIds::FLY_AT_PAGE, pTxBxFrm->GetAnchor().GetAnchorId());
     CPPUNIT_ASSERT(!pTxBxFrm->GetAnchor().GetAnchorNode());
@@ -2823,8 +2841,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf128106)
         pMasterDoc->getIDocumentLinksAdministration().GetLinkManager().GetLinks().size());
     // no way to set SwDocShell::m_nUpdateDocMode away from NO_UPDATE ?
     // pMasterDoc->getIDocumentLinksAdministration().UpdateLinks();
-    pMasterDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks(false, nullptr,
-                                                                                  u""_ustr);
+    pMasterDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks(false, u""_ustr);
     // note: this has called SwGetRefFieldType::UpdateGetReferences()
     SwFieldType const* const pType(
         pMasterDoc->getIDocumentFieldsAccess().GetSysFieldType(SwFieldIds::GetRef));
@@ -2886,8 +2903,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf103612)
     SwDoc* pDoc = getSwDoc();
     CPPUNIT_ASSERT_EQUAL(
         size_t(1), pDoc->getIDocumentLinksAdministration().GetLinkManager().GetLinks().size());
-    pDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks(false, nullptr,
-                                                                            u""_ustr);
+    pDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks(false, u""_ustr);
 
     xmlDocUniquePtr pLayout = parseLayoutDump();
 
@@ -2914,8 +2930,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testTdf121119)
     SwDoc* pDoc = getSwDoc();
     CPPUNIT_ASSERT_EQUAL(
         size_t(2), pDoc->getIDocumentLinksAdministration().GetLinkManager().GetLinks().size());
-    pDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks(false, nullptr,
-                                                                            u""_ustr);
+    pDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks(false, u""_ustr);
 
     uno::Reference<text::XTextGraphicObjectsSupplier> xTextGraphicObjectsSupplier(mxComponent,
                                                                                   uno::UNO_QUERY);
@@ -3143,7 +3158,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest8, testCursorPositionAfterUndo)
     // select the word
     dispatchCommand(mxComponent, u".uno:SelectWord"_ustr, {});
 
-    // check the word is select
+    // check the word is selected
     SwShellCursor* pShellCursor = pWrtShell->getShellCursor(false);
     CPPUNIT_ASSERT_EQUAL(u"tincidunt"_ustr, pShellCursor->GetText());
 

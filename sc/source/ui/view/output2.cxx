@@ -73,6 +73,7 @@
 #include <spellcheckcontext.hxx>
 #include <scopetools.hxx>
 #include <tabvwsh.hxx>
+#include <dbdata.hxx>
 
 #include <com/sun/star/i18n/DirectionProperty.hpp>
 #include <comphelper/scopeguard.hxx>
@@ -891,7 +892,7 @@ static void lcl_DoHyperlinkResult( const OutputDevice* pDev, const tools::Rectan
     if ( !aURL.isEmpty() && pPDFData )
     {
         vcl::PDFExtOutDevBookmarkEntry aBookmark;
-        aBookmark.nLinkId = pPDFData->CreateLink(rRect, u""_ustr);
+        aBookmark.nLinkId = pPDFData->CreateLink(rRect, aCellText.isEmpty() ? aURL : aCellText);
         aBookmark.aBookmark = aURL;
         std::vector< vcl::PDFExtOutDevBookmarkEntry >& rBookmarks = pPDFData->GetBookmarks();
         rBookmarks.push_back( aBookmark );
@@ -1442,7 +1443,7 @@ bool beginsWithRTLCharacter(const OUString& rStr)
     right alignment is returned.
  */
 static SvxCellHorJustify getAlignmentFromContext( SvxCellHorJustify eInHorJust,
-        bool bCellIsValue, const OUString& rText,
+        bool bCellIsValue, bool bCellIsCallable, const OUString& rText,
         const ScPatternAttr& rPattern, const SfxItemSet* pCondSet,
         const ScDocument* pDoc, SCTAB mnTab, const bool  bNumberFormatIsText )
 {
@@ -1461,6 +1462,8 @@ static SvxCellHorJustify getAlignmentFromContext( SvxCellHorJustify eInHorJust,
         }
         else if (bCellIsValue) //If language is not RTL
             eHorJustContext = bNumberFormatIsText ? SvxCellHorJustify::Left : SvxCellHorJustify::Right;
+        else if (bCellIsCallable)
+            eHorJustContext = SvxCellHorJustify::Center;
         else
             bUseWritingDirection = true;
     }
@@ -1483,6 +1486,40 @@ static SvxCellHorJustify getAlignmentFromContext( SvxCellHorJustify eInHorJust,
             eHorJustContext = SvxCellHorJustify::Right;
     }
     return eHorJustContext;
+}
+
+/// what a database range's labels head, where this position holds one of them
+static vcl::pdf::PDFWriter::StructAttributeValue
+lcl_GetLabelScope(const ScDocument& rDoc, SCTAB nTab, SCCOL nCol, SCROW nRow)
+{
+    const ScDBData* pDBData(rDoc.GetDBAtCursor(nCol, nRow, nTab, ScDBDataPortion::AREA));
+    if (!pDBData || !pDBData->HasHeader())
+        return vcl::pdf::PDFWriter::Invalid;
+
+    ScRange aRange;
+    pDBData->GetArea(aRange);
+    // a range the user works left to right keeps its labels in the first column
+    if (!pDBData->IsByRow())
+        return nCol == aRange.aStart.Col() ? vcl::pdf::PDFWriter::Row
+                                           : vcl::pdf::PDFWriter::Invalid;
+
+    return nRow == aRange.aStart.Row() ? vcl::pdf::PDFWriter::Column
+                                       : vcl::pdf::PDFWriter::Invalid;
+}
+
+/// the element for a cell, a TH where a database range says the cell holds one of its labels
+static sal_Int32 lcl_OpenCellElement(vcl::PDFExtOutDevData& rPDF, const ScDocument& rDoc,
+                                     SCTAB nTab, SCCOL nCol, SCROW nRow)
+{
+    const vcl::pdf::PDFWriter::StructAttributeValue eScope(
+        lcl_GetLabelScope(rDoc, nTab, nCol, nRow));
+    if (eScope == vcl::pdf::PDFWriter::Invalid)
+        return rPDF.WrapBeginStructureElement(vcl::pdf::StructElement::TableData, u"TD"_ustr);
+
+    const sal_Int32 nId(
+        rPDF.WrapBeginStructureElement(vcl::pdf::StructElement::TableHeader, u"TH"_ustr));
+    rPDF.SetStructureAttribute(vcl::pdf::PDFWriter::Scope, eScope);
+    return nId;
 }
 
 void ScOutputData::DrawStrings( bool bPixelToLogic )
@@ -1601,6 +1638,7 @@ void ScOutputData::LayoutStringsImpl(bool const bPixelToLogic, RowInfo* const pT
     const SfxItemSet* pCondSet = nullptr;
     const SfxItemSet* pTableSet = nullptr;
     bool bCellIsValue = false;
+    bool bCellIsCallable = false;
     tools::Long nNeededWidth = 0;
     OutputAreaParam aAreaParam;
     bool bMergeEmpty = false;
@@ -1721,7 +1759,7 @@ void ScOutputData::LayoutStringsImpl(bool const bPixelToLogic, RowInfo* const pT
         if ( nCellY == nY && nCellX >= mnX1 && nCellX <= mnX2 )
         {
             ScCellInfo& rCellInfo = pThisRowInfo->cellInfo(nCellX);
-            pPattern = rCellInfo.pPatternAttr;
+            pPattern = rCellInfo.getPatternAttr();
             pCondSet = rCellInfo.pConditionSet;
             pTableSet = rCellInfo.pTableFormatSet;
 
@@ -1818,11 +1856,12 @@ void ScOutputData::LayoutStringsImpl(bool const bPixelToLogic, RowInfo* const pT
         {
             ScFormulaCell* pFCell = aCell.getFormula();
             bCellIsValue = pFCell->IsRunning() || pFCell->IsValue();
+            bCellIsCallable = pFCell->IsCallable();
         }
 
         const bool bNumberFormatIsText = lcl_isNumberFormatText( mpDoc, nCellX, nCellY, mnTab );
-        eOutHorJust = getAlignmentFromContext( aVars.GetHorJust(), bCellIsValue, aVars.GetString(),
-                *pPattern, pCondSet, mpDoc, mnTab, bNumberFormatIsText );
+        eOutHorJust = getAlignmentFromContext( aVars.GetHorJust(), bCellIsValue, bCellIsCallable,
+                aVars.GetString(), *pPattern, pCondSet, mpDoc, mnTab, bNumberFormatIsText );
 
         bool bBreak = ( aVars.GetLineBreak() || aVars.GetHorJust() == SvxCellHorJustify::Block );
         // #i111387# #o11817313# tdf#121040 disable automatic line breaks for all number formats
@@ -1895,17 +1934,33 @@ void ScOutputData::LayoutStringsImpl(bool const bPixelToLogic, RowInfo* const pT
         if ( bRepeat && !aAreaParam.mbLeftClip && !aAreaParam.mbRightClip )
         {
             tools::Long nAvailable = aAreaParam.maAlignRect.GetWidth() - nTotalMargin;
-            tools::Long nRepeatSize = aVars.GetTextSize().Width();         // without margin
+            double fRepeatSize = aVars.GetTextSize().Width(); // without margin
+            const OUString& aCellStr = aVars.GetString();
+
+            // Measuring a string containing a single copy of a short repeat string is inaccurate.
+            // To increase accuracy, start with a representative sample of the repeated sequence.
+            constexpr sal_Int32 nSampleSize = 20;
+            const size_t nLen = aCellStr.getLength();
+            if (nLen && nLen < nSampleSize)
+            {
+                OUStringBuffer aFill(aCellStr);
+                aFill.ensureCapacity(nSampleSize);
+                while (aFill.getLength() < nSampleSize)
+                    aFill.append(aCellStr);
+                fRepeatSize
+                    = aVars.GetFmtTextWidth(aFill.copy(0, nSampleSize).makeStringAndClear());
+                fRepeatSize = fRepeatSize * nLen / nSampleSize;
+            }
+
             // When formatting for the printer, the text sizes don't always add up.
             // Round down (too few repetitions) rather than exceeding the cell size then:
             if ( pFmtDevice != mpRefDevice )
-                ++nRepeatSize;
-            if ( nRepeatSize > 0 )
+                ++fRepeatSize;
+            if (fRepeatSize > 0)
             {
-                tools::Long nRepeatCount = nAvailable / nRepeatSize;
+                const tools::Long nRepeatCount = nAvailable / fRepeatSize;
                 if ( nRepeatCount > 1 )
                 {
-                    OUString aCellStr = aVars.GetString();
                     OUStringBuffer aRepeated(aCellStr);
                     for ( tools::Long nRepeat = 1; nRepeat < nRepeatCount; nRepeat++ )
                         aRepeated.append(aCellStr);
@@ -1943,7 +1998,7 @@ void ScOutputData::LayoutStringsImpl(bool const bPixelToLogic, RowInfo* const pT
         pThisRowInfo->basicCellInfo(nMarkX).bEditEngine = true;
         bDoCell = false;    // don't draw here
 
-        // Mark the tagged "TD" structure element to be drawn in DrawEdit
+        // Mark the tagged cell structure element to be drawn in DrawEdit
         if (bTaggedPDF)
         {
             if (bReopenRowTag)
@@ -1958,11 +2013,10 @@ void ScOutputData::LayoutStringsImpl(bool const bPixelToLogic, RowInfo* const pT
                 bReopenRowTag = true;
             }
 
-            pPDF->WrapBeginStructureElement(vcl::pdf::StructElement::TableData,
-                                            u"TD"_ustr);
-
-            sal_Int32 nId = pPDF->GetCurrentStructureElement();
+            const sal_Int32 nId(lcl_OpenCellElement(*pPDF, *mpDoc, mnTab, nX, nY));
             pPDF->GetScPDFState()->m_TableDataMap[{ nY, nX }] = nId;
+            // the first page it is drawn on, which is the one a destination for it names
+            pPDF->GetScPDFState()->m_CellIds.emplace(ScAddress(nX, nY, mnTab), nId);
 
             pPDF->EndStructureElement(); // TableData
             pPDF->EndStructureElement(); // TableRow
@@ -2190,8 +2244,10 @@ void ScOutputData::LayoutStringsImpl(bool const bPixelToLogic, RowInfo* const pT
                         bReopenRowTag = true;
                     }
 
-                    pPDF->WrapBeginStructureElement(vcl::pdf::StructElement::TableData,
-                                                    u"TD"_ustr);
+                    // what a destination naming this cell has to reach
+                    pPDF->GetScPDFState()->m_CellIds.emplace(
+                        ScAddress(nX, nY, mnTab),
+                        lcl_OpenCellElement(*pPDF, *mpDoc, mnTab, nX, nY));
                     pPDF->WrapBeginStructureElement(vcl::pdf::StructElement::Paragraph,
                                                     u"P"_ustr);
                 }
@@ -4601,7 +4657,7 @@ void ScOutputData::DrawEdit(bool bPixelToLogic)
                              !mpDoc->ColHidden(nCellX, mnTab) )
                         {
                             ScCellInfo& rCellInfo = pThisRowInfo->cellInfo(nCellX);
-                            pPattern = rCellInfo.pPatternAttr;
+                            pPattern = rCellInfo.getPatternAttr();
                             pCondSet = rCellInfo.pConditionSet;
                             pTableSet = rCellInfo.pTableFormatSet;
                             aCell = rCellInfo.maCell;
@@ -4636,7 +4692,8 @@ void ScOutputData::DrawEdit(bool bPixelToLogic)
                         DrawEditParam aParam(pPattern, pCondSet, pTableSet, lcl_SafeIsValue(aCell));
                         const bool bNumberFormatIsText = lcl_isNumberFormatText( mpDoc, nCellX, nCellY, mnTab );
                         aParam.meHorJustContext = getAlignmentFromContext( aParam.meHorJustAttr,
-                                aParam.mbCellIsValue, aStr, *pPattern, pCondSet, mpDoc, mnTab, bNumberFormatIsText);
+                                aParam.mbCellIsValue, false, aStr, *pPattern, pCondSet, mpDoc, mnTab,
+                                bNumberFormatIsText);
                         aParam.meHorJustResult = (aParam.meHorJustAttr == SvxCellHorJustify::Block) ?
                                 SvxCellHorJustify::Block : aParam.meHorJustContext;
                         aParam.mbPixelToLogic = bPixelToLogic;
@@ -4762,7 +4819,7 @@ void ScOutputData::DrawRotated(bool bPixelToLogic)
                         //! rest from merged cells further up do not work!
 
                         bool bFromDoc = false;
-                        pPattern = pInfo->pPatternAttr;
+                        pPattern = pInfo->getPatternAttr();
                         pCondSet = pInfo->pConditionSet;
                         if (!pPattern)
                         {
@@ -4951,7 +5008,7 @@ void ScOutputData::DrawRotated(bool bPixelToLogic)
                                     // tdf#143377 new strategy: instead of using zero for nSin, which
                                     // would be the *correct* value, continue with the corrected maximum
                                     // allowed value which is then *not* zero. This is similar to
-                                    // the behaviour before where (just due to numerical unprecisions)
+                                    // the behaviour before where (just due to numerical imprecisions)
                                     // nSin was also not zero (pure coincidence), but very close to it.
                                     // I checked and tried to make safe all places below that use
                                     // nSin and divide by it, but there is too much going on and that
@@ -4970,7 +5027,7 @@ void ScOutputData::DrawRotated(bool bPixelToLogic)
                                 {
                                     //! the correct paper size for break depends on the number
                                     //! of rows, as long as the rows can not be outputted individually
-                                    //! offsetted -> therefore unlimited, so no wrapping.
+                                    //! offset -> therefore unlimited, so no wrapping.
                                     //! With offset rows the following would be correct:
                                     aPaperSize.setWidth( static_cast<tools::Long>(nOutHeight / fabs(nSin)) );
                                 }

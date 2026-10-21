@@ -22,7 +22,6 @@ $(eval $(call gb_Module_add_targets,connectivity,\
 	Configuration_flat \
 	Configuration_mysql_jdbc \
 	Configuration_odbc \
-	Configuration_mysql_jdbc \
 	Configuration_writer \
 	Library_calc \
 	Library_dbase \
@@ -83,6 +82,12 @@ $(eval $(call gb_Module_add_targets,connectivity,\
 	Configuration_firebird \
 	Library_firebird_sdbc \
 ))
+
+ifeq ($(SYSTEM_FIREBIRD),)
+$(eval $(call gb_Module_add_check_targets,connectivity,\
+    CppunitTest_connectivity_firebird_test \
+))
+endif
 endif
 
 ifeq ($(ENABLE_MARIADBC),TRUE)

@@ -124,7 +124,7 @@ ImplSplitSet::ImplSplitSet() :
     the upper or lower bound, respectively. Otherwise return the given size
     unmodified.
     Note that either mnMinSize and/or mnMaxSize can be -1 in which case the
-    size has not lower or upper bound.
+    size has no lower or upper bound.
 */
 namespace {
     tools::Long ValidateSize (const tools::Long nSize, const ImplSplitItem & rItem)
@@ -2340,7 +2340,7 @@ void SplitWindow::SplitItem( sal_uInt16 nId, tools::Long nNewSize,
     }
 
     sal_uInt16          n;
-    // now splitt the windows
+    // now split the windows
     if ( nDelta < 0 )
     {
         if ( bGreat )

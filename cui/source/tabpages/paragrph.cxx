@@ -544,7 +544,7 @@ bool SvxStdParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
         if ( MapUnit::Map100thMM != eUnit )
         {
 
-            // negative first line indent -> set null default tabstob if applicable
+            // negative first line indent -> set null default tabstop if applicable
             sal_uInt16 _nWhich = GetWhich( SID_ATTR_TABSTOP );
             const SfxItemSet& rInSet = GetItemSet();
 
@@ -1299,6 +1299,7 @@ SvxParaAlignTabPage::SvxParaAlignTabPage(weld::Container* pPage, weld::DialogCon
     , m_xLabelLetterSpacing(m_xBuilder->weld_label(u"labelLetterSpacing"_ustr))
     , m_xLetterSpacingMinimum(m_xBuilder->weld_metric_spin_button(u"spin_LETTER_SPACING_MIN"_ustr, FieldUnit::PERCENT))
     , m_xLetterSpacingMaximum(m_xBuilder->weld_metric_spin_button(u"spin_LETTER_SPACING_MAX"_ustr, FieldUnit::PERCENT))
+    , m_xCompoundBased(m_xBuilder->weld_check_button(u"checkCompoundBased"_ustr))
     , m_xLabelGlyphScaling(m_xBuilder->weld_label(u"labelGlyphScaling"_ustr))
     , m_xGlyphScalingMinimum(m_xBuilder->weld_metric_spin_button(u"spin_GLYPH_SCALING_MIN"_ustr, FieldUnit::PERCENT))
     , m_xGlyphScalingMaximum(m_xBuilder->weld_metric_spin_button(u"spin_GLYPH_SCALING_MAX"_ustr, FieldUnit::PERCENT))
@@ -1409,6 +1410,7 @@ bool SvxParaAlignTabPage::FillItemSet( SfxItemSet* rOutSet )
             m_xParagraphComposer->get_state_changed_from_saved() ||
             m_xLetterSpacingMinimum->get_value_changed_from_saved() ||
             m_xLetterSpacingMaximum->get_value_changed_from_saved() ||
+            m_xCompoundBased->get_state_changed_from_saved() ||
             m_xGlyphScalingMinimum->get_value_changed_from_saved() ||
             m_xGlyphScalingMaximum->get_value_changed_from_saved();
     }
@@ -1436,6 +1438,7 @@ bool SvxParaAlignTabPage::FillItemSet( SfxItemSet* rOutSet )
         aAdj.SetParagraphComposer( m_xParagraphComposer->get_active() );
         aAdj.SetPropLetterSpacingMinimum( m_xLetterSpacingMinimum->get_value(FieldUnit::PERCENT) );
         aAdj.SetPropLetterSpacingMaximum( m_xLetterSpacingMaximum->get_value(FieldUnit::PERCENT) );
+        aAdj.SetCompoundBased( m_xCompoundBased->get_active() );
         aAdj.SetPropScaleWidthMinimum( m_xGlyphScalingMinimum->get_value(FieldUnit::PERCENT) );
         aAdj.SetPropScaleWidthMaximum( m_xGlyphScalingMaximum->get_value(FieldUnit::PERCENT) );
         rOutSet->Put( aAdj );
@@ -1543,6 +1546,8 @@ void SvxParaAlignTabPage::Reset( const SfxItemSet* rSet )
             m_xLetterSpacingMinimum->set_sensitive(true);
             m_xLetterSpacingMinimum->set_value(rAdj.GetPropLetterSpacingMinimum(), FieldUnit::PERCENT);
             m_xLetterSpacingMaximum->set_value(rAdj.GetPropLetterSpacingMaximum(), FieldUnit::PERCENT);
+            m_xCompoundBased->set_sensitive(true);
+            m_xCompoundBased->set_active(rAdj.GetCompoundBased());
             // TODO add GlyphScaling (CharScaleWidth)
             m_xGlyphScalingMaximum->set_sensitive(true);
             m_xGlyphScalingMinimum->set_sensitive(true);
@@ -1559,10 +1564,10 @@ void SvxParaAlignTabPage::Reset( const SfxItemSet* rSet )
             m_xWordSpacingMinimum->set_sensitive(false);
             m_xWordSpacingMaximum->set_sensitive(false);
             m_xParagraphComposer->set_sensitive(false);
-            m_xParagraphComposer->set_sensitive(false);
             m_xLabelLetterSpacing->set_sensitive(false);
             m_xLetterSpacingMinimum->set_sensitive(false);
             m_xLetterSpacingMaximum->set_sensitive(false);
+            m_xCompoundBased->set_sensitive(false);
             m_xLabelGlyphScaling->set_sensitive(false);
             m_xGlyphScalingMinimum->set_sensitive(false);
             m_xGlyphScalingMaximum->set_sensitive(false);
@@ -1664,6 +1669,7 @@ void SvxParaAlignTabPage::Reset( const SfxItemSet* rSet )
     m_xParagraphComposer->save_state();
     m_xLetterSpacingMinimum->save_value();
     m_xLetterSpacingMaximum->save_value();
+    m_xCompoundBased->save_state();
     m_xGlyphScalingMinimum->save_value();
     m_xGlyphScalingMaximum->save_value();
 
@@ -1690,6 +1696,7 @@ void SvxParaAlignTabPage::ChangesApplied()
     m_xParagraphComposer->save_state();
     m_xLetterSpacingMinimum->save_value();
     m_xLetterSpacingMaximum->save_value();
+    m_xCompoundBased->save_state();
     m_xGlyphScalingMinimum->save_value();
     m_xGlyphScalingMaximum->save_value();
 }
@@ -1703,14 +1710,20 @@ IMPL_LINK_NOARG(SvxParaAlignTabPage, AlignHdl_Impl, weld::Toggleable&, void)
     m_xLabelMinimum->set_sensitive(bJustify);
     m_xLabelDesired->set_sensitive(bJustify);
     m_xLabelMaximum->set_sensitive(bJustify);
+    m_xLabelLetterSpacing->set_sensitive(bJustify);
     m_xWordSpacing->set_sensitive(bJustify);
     m_xWordSpacingMinimum->set_sensitive(bJustify);
     m_xWordSpacingMaximum->set_sensitive(bJustify);
     m_xWordSpacingMaximum->set_sensitive(bJustify);
     m_xParagraphComposer->set_sensitive(bJustify);
+    if (bJustify && m_xParagraphComposer->get_state() == TRISTATE_INDET)
+        m_xParagraphComposer->set_active(false);
     // TODO visualize CharKerning with percentage
     m_xLetterSpacingMinimum->set_sensitive(bJustify);
     m_xLetterSpacingMaximum->set_sensitive(bJustify);
+    m_xCompoundBased->set_sensitive(bJustify);
+    if (bJustify && m_xCompoundBased->get_state() == TRISTATE_INDET)
+        m_xCompoundBased->set_active(false);
     m_xLabelGlyphScaling->set_sensitive(bJustify);
     // TODO visualize CharScaleWidth with percentage
     m_xGlyphScalingMinimum->set_sensitive(bJustify);
@@ -1883,6 +1896,7 @@ bool SvxExtParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
          m_xExtCompoundHyphenAfterBox->get_value_changed_from_saved() ||
          m_xMaxHyphenEdit->get_value_changed_from_saved() ||
          m_xMinWordLength->get_value_changed_from_saved() ||
+         m_xSliderHyphen->get_value() != nHyphenLevel ||
          m_aHyphenZone.get_value_changed_from_saved() ||
          m_aParagraphEndZone.get_value_changed_from_saved() ||
          m_aColumnEndZone.get_value_changed_from_saved() ||
@@ -1909,6 +1923,7 @@ bool SvxExtParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
             aHyphen.GetMinWordLength() = static_cast<sal_uInt8>(m_xMinWordLength->get_value());
         }
         aHyphen.GetMaxHyphens() = static_cast<sal_uInt8>(m_xMaxHyphenEdit->get_value());
+        aHyphen.GetLevel() = 100 - static_cast<sal_uInt8>(m_xSliderHyphen->get_value());
 
         SfxItemPool* pPool = GetItemSet().GetPool();
         DBG_ASSERT( pPool, "Where is the pool?" );
@@ -2169,6 +2184,8 @@ void SvxExtParagraphTabPage::Reset( const SfxItemSet* rSet )
         m_xExtCompoundHyphenAfterBox->set_value(rHyphen.GetCompoundMinTrail());
         m_xMaxHyphenEdit->set_value(rHyphen.GetMaxHyphens());
         m_xMinWordLength->set_value(rHyphen.GetMinWordLength());
+        m_xSliderHyphen->set_value(100 - rHyphen.GetLevel());
+        nHyphenLevel = 100 - rHyphen.GetLevel();
         m_aHyphenZone.SetFieldUnit(eFUnit);
         m_aHyphenZone.SetMetricValue(rHyphen.GetTextHyphenZone(), MapUnit::MapTwip);
         m_aParagraphEndZone.SetFieldUnit(eFUnit);
@@ -2224,6 +2241,9 @@ void SvxExtParagraphTabPage::Reset( const SfxItemSet* rSet )
     m_xMaxHyphenEdit->set_sensitive(bEnable);
     m_xMinWordLabel->set_sensitive(bEnable);
     m_xMinWordLength->set_sensitive(bEnable);
+    m_xBetterSpacingLabel->set_sensitive(bEnable);
+    m_xLessHyphenLabel->set_sensitive(bEnable);
+    m_xSliderHyphen->set_sensitive(bEnable);
     m_xHyphenZoneLabel->set_sensitive(bEnable);
     m_aHyphenZone.set_sensitive(bEnable);
     m_xParagraphEndZoneLabel->set_sensitive(bEnable);
@@ -2568,6 +2588,7 @@ SvxExtParagraphTabPage::SvxExtParagraphTabPage(weld::Container* pPage, weld::Dia
     , bPageBreak(true)
     , bHtmlMode(false)
     , nStdPos(0)
+    , nHyphenLevel(0)
     // Hyphenation
     , m_xHyphenBox(m_xBuilder->weld_check_button(u"checkAuto"_ustr))
     , m_xHyphenNoCapsBox(m_xBuilder->weld_check_button(u"checkNoCaps"_ustr))
@@ -2584,6 +2605,9 @@ SvxExtParagraphTabPage::SvxExtParagraphTabPage(weld::Container* pPage, weld::Dia
     , m_xMaxHyphenEdit(m_xBuilder->weld_spin_button(u"spinMaxNum"_ustr))
     , m_xMinWordLabel(m_xBuilder->weld_label(u"labelMinLen"_ustr))
     , m_xMinWordLength(m_xBuilder->weld_spin_button(u"spinMinLen"_ustr))
+    , m_xBetterSpacingLabel(m_xBuilder->weld_label(u"labelBetterSpacing"_ustr))
+    , m_xLessHyphenLabel(m_xBuilder->weld_label(u"labelLessHyphen"_ustr))
+    , m_xSliderHyphen(m_xBuilder->weld_scale(u"hyphenslider"_ustr))
     , m_xHyphenZoneLabel(m_xBuilder->weld_label(u"labelHyphenZone"_ustr))
     , m_aHyphenZone(m_xBuilder->weld_metric_spin_button(u"spinHyphenZone"_ustr, FieldUnit::CM))
     , m_xParagraphEndZoneLabel(m_xBuilder->weld_label(u"labelParagraphEndZone"_ustr))
@@ -2679,6 +2703,9 @@ SvxExtParagraphTabPage::SvxExtParagraphTabPage(weld::Container* pPage, weld::Dia
     m_xMaxHyphenEdit->set_sensitive(false);
     m_xMinWordLabel->set_sensitive(false);
     m_xMinWordLength->set_sensitive(false);
+    m_xBetterSpacingLabel->set_sensitive(false);
+    m_xLessHyphenLabel->set_sensitive(false);
+    m_xSliderHyphen->set_sensitive(false);
     m_xHyphenZoneLabel->set_sensitive(false);
     m_aHyphenZone.set_sensitive(false);
     m_xParagraphEndZoneLabel->set_sensitive(false);
@@ -2833,6 +2860,9 @@ void SvxExtParagraphTabPage::HyphenClickHdl()
     m_xMaxHyphenEdit->set_sensitive(bEnable);
     m_xMinWordLabel->set_sensitive(bEnable);
     m_xMinWordLength->set_sensitive(bEnable);
+    m_xBetterSpacingLabel->set_sensitive(bEnable);
+    m_xLessHyphenLabel->set_sensitive(bEnable);
+    m_xSliderHyphen->set_sensitive(bEnable);
     m_xHyphenZoneLabel->set_sensitive(bEnable);
     m_aHyphenZone.set_sensitive(bEnable);
     m_xAcrossText->set_sensitive(bEnable);

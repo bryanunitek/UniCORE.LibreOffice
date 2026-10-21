@@ -60,6 +60,7 @@
 #include <unotools/charclass.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <charfmt.hxx>
+#include <charformats.hxx>
 #include <fmtclds.hxx>
 #include <fmtcol.hxx>
 #include <fmtfsize.hxx>
@@ -1902,12 +1903,12 @@ void SwHTMLWriter::OutCSS1_FrameFormatOptions( const SwFrameFormat& rFrameFormat
                 {
                     bOutXPos = text::RelOrientation::CHAR != rHoriOri.GetRelationOrient();
                     nXPos = text::HoriOrientation::NONE == rHoriOri.GetHoriOrient()
-                                ? rHoriOri.GetPos() : 0;
+                                ? rHoriOri.getPosition().as_twip<SwTwips>() : 0;
 
                     const SwFormatVertOrient& rVertOri = rFrameFormat.GetVertOrient();
                     bOutYPos = text::RelOrientation::CHAR != rVertOri.GetRelationOrient();
                     nYPos = text::VertOrientation::NONE == rVertOri.GetVertOrient()
-                                 ? rVertOri.GetPos() : 0;
+                                 ? rVertOri.getPosition().as_twip<SwTwips>() : 0;
                 }
 
                 if( bOutYPos )
@@ -2560,6 +2561,15 @@ static SwHTMLWriter& OutCSS1_SvxOpticalSizing( SwHTMLWriter& rWrt, const SfxPool
 
 static SwHTMLWriter& OutCSS1_SvxFontVariations( SwHTMLWriter& rWrt, const SfxPoolItem& rHt )
 {
+    sal_uInt16 nScript = CSS1_OUTMODE_WESTERN;
+    switch( rHt.Which() )
+    {
+    case RES_CHRATR_CJK_FONT_VARIATIONS: nScript = CSS1_OUTMODE_CJK; break;
+    case RES_CHRATR_CTL_FONT_VARIATIONS: nScript = CSS1_OUTMODE_CTL; break;
+    }
+    if( !rWrt.IsCSS1Script( nScript ) )
+        return rWrt;
+
     const auto& rVariations = static_cast<const SvxFontVariationsItem&>(rHt).GetVariations();
     if( !rVariations.empty() )
     {
@@ -3487,6 +3497,8 @@ SwAttrFnTab const aCSS1AttrFnTab = {
 /* RES_CHRATR_SCRIPT_HINT */        nullptr,
 /* RES_CHRATR_OPTICAL_SIZING */     OutCSS1_SvxOpticalSizing,
 /* RES_CHRATR_FONT_VARIATIONS */    OutCSS1_SvxFontVariations,
+/* RES_CHRATR_CJK_FONT_VARIATIONS */ OutCSS1_SvxFontVariations,
+/* RES_CHRATR_CTL_FONT_VARIATIONS */ OutCSS1_SvxFontVariations,
 
 /* RES_TXTATR_REFMARK */            nullptr,
 /* RES_TXTATR_TOXMARK */            nullptr,
@@ -3600,7 +3612,7 @@ SwAttrFnTab const aCSS1AttrFnTab = {
 /* RES_GRFATR_GAMMA */              nullptr,
 /* RES_GRFATR_INVERT */             nullptr,
 /* RES_GRFATR_TRANSPARENCY */       nullptr,
-/* RES_GRFATR_DRWAMODE */           nullptr,
+/* RES_GRFATR_DRAWMODE */           nullptr,
 /* RES_GRFATR_DUMMY3 */             nullptr,
 /* RES_GRFATR_VISIBLE */            nullptr,
 /* RES_GRFATR_DUMMY5 */             nullptr,

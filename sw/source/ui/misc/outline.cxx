@@ -64,7 +64,7 @@ class SwNumNamesDlg : public weld::GenericDialogController
     std::unique_ptr<weld::TreeView> m_xFormBox;
     std::unique_ptr<weld::Button> m_xOKBtn;
 
-    DECL_LINK(ModifyHdl, weld::Entry&, void);
+    DECL_LINK(ModifyHdl, weld::TextWidget&, void);
     DECL_LINK(SelectHdl, weld::ItemView&, void);
     DECL_LINK(DoubleClickHdl, const weld::TreeIter&, bool);
 
@@ -106,7 +106,7 @@ void SwNumNamesDlg::SetUserNames(const OUString* pList[])
 }
 
 // unlock OK-Button when text is in Edit
-IMPL_LINK(SwNumNamesDlg, ModifyHdl, weld::Entry&, rBox, void)
+IMPL_LINK(SwNumNamesDlg, ModifyHdl, weld::TextWidget&, rBox, void)
 {
     m_xOKBtn->set_sensitive(!rBox.get_text().isEmpty());
 }
@@ -169,10 +169,10 @@ SwOutlineTabDialog::SwOutlineTabDialog(weld::Window* pParent, const SfxItemSet* 
         SetActNumLevel(nTmp < 0 ? USHRT_MAX : (1 << nTmp));
     }
 
-    AddTabPage(u"numbering"_ustr, TabResId(RID_TAB_NUMBERING.aLabel),
-               &SwOutlineSettingsTabPage::Create, RID_L + RID_TAB_NUMBERING.sIconName);
-    AddTabPage(u"position"_ustr, TabResId(RID_TAB_POSITION.aLabel), &SwNumPositionTabPage::Create,
-               RID_L + RID_TAB_POSITION.sIconName);
+    AddTabPage(u"numbering"_ustr, TabResId(RID_TAB_SWOUTLINE_NUMBERING),
+               &SwOutlineSettingsTabPage::Create, RID_L + RID_TAB_NUMBERING_IMG);
+    AddTabPage(u"position"_ustr, TabResId(RID_TAB_SWOUTLINE_POSITION),
+               &SwNumPositionTabPage::Create, RID_L + RID_TAB_POSITION_IMG);
 
     UIName sHeadline;
     sal_uInt16 i;
@@ -653,7 +653,7 @@ IMPL_LINK_NOARG(SwOutlineSettingsTabPage, NumberSelect, weld::ComboBox&, void)
     SetModified();
 }
 
-IMPL_LINK_NOARG(SwOutlineSettingsTabPage, DelimModify, weld::Entry&, void)
+IMPL_LINK_NOARG(SwOutlineSettingsTabPage, DelimModify, weld::TextWidget&, void)
 {
     sal_uInt16 nMask = 1;
     for (sal_uInt16 i = 0; i < MAXLEVEL; i++)

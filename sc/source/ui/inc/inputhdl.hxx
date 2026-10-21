@@ -20,6 +20,7 @@
 #pragma once
 
 #include <global.hxx>
+#include <unotools/resmgr.hxx>
 #include <address.hxx>
 #include <tools/solar.h>
 #include <typedstrdata.hxx>
@@ -30,6 +31,7 @@
 #include <vcl/vclptr.hxx>
 #include <editeng/svxenum.hxx>
 #include "viewdata.hxx"
+#include <patattr.hxx>
 
 #include <set>
 #include <memory>
@@ -87,7 +89,7 @@ private:
 
     sal_Unicode             nCellPercentFormatDecSep;   // 0:= no percent format, else which decimal separator
 
-    sal_uInt16              nAutoPar;                   // autom.parentheses than can be overwritten
+    sal_uInt16              nAutoPar;                   // automatic parentheses that can be overwritten
 
     ScAddress               aCursorPos;
     ScInputMode             eMode;
@@ -119,7 +121,7 @@ private:
     ScTabViewShell*         pRefViewSh;
     ScTabViewShell*         pActiveViewSh;
 
-    const ScPatternAttr*    pLastPattern;
+    CellAttributeHolder     maLastPattern;
     std::unique_ptr<SfxItemSet>
                             pEditDefaults;
 

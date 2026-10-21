@@ -9,6 +9,8 @@
 
 #include <swmodeltestbase.hxx>
 
+#include <com/sun/star/graphic/XGraphic.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/text/XTextTable.hpp>
 #include <comphelper/propertysequence.hxx>
@@ -58,6 +60,7 @@
 #include <itabenum.hxx>
 #include <redline.hxx>
 #include <UndoRedline.hxx>
+#include <editeng/memberids.h>
 
 /// Covers sw/source/core/doc/ fixes.
 class SwCoreDocTest : public SwModelTestBase
@@ -75,7 +78,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testMathInsertAnchorType)
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
 
-    // When inserting an a math object.
+    // When inserting a math object.
     SwWrtShell* pShell = getSwDocShell()->GetWrtShell();
     SvGlobalName aGlobalName(SO3_SM_CLASSID);
     pShell->InsertObject(svt::EmbeddedObjectRef(), &aGlobalName);
@@ -238,6 +241,38 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTextBoxZOrder)
     // - Actual  : 1
     // i.e. the ellipse was under the frame of the shape-frame pair, not on top of it.
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt32>(2), pEllipseShape->GetOrdNum());
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testShapeZOrderOverTextBox)
+{
+    // Given a document with a shape that has a text box at the bottom and two plain shapes over
+    // it, the three of them asking for that order:
+    createSwDoc("textbox-shape-zorder.docx");
+
+    // Then the shapes have to keep the order the document gives them.
+    uno::Reference<beans::XPropertySet> xBottom(getShapeByName(u"WithTextBox"), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xMiddle(getShapeByName(u"Middle"), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xTop(getShapeByName(u"Top"), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xBottom.is());
+    CPPUNIT_ASSERT(xMiddle.is());
+    CPPUNIT_ASSERT(xTop.is());
+
+    sal_Int32 nBottom = 0;
+    sal_Int32 nMiddle = 0;
+    sal_Int32 nTop = 0;
+    xBottom->getPropertyValue(u"ZOrder"_ustr) >>= nBottom;
+    xMiddle->getPropertyValue(u"ZOrder"_ustr) >>= nMiddle;
+    xTop->getPropertyValue(u"ZOrder"_ustr) >>= nTop;
+
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 1
+    // - Actual  : 2
+    // The shape over the text box was put one place too high and ended up over the shape that
+    // should have covered it: the import added a place for the text frame of the text box,
+    // which the z-order it read back does not count.
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), nBottom);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1), nMiddle);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(2), nTop);
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTextBoxMakeFlyFrame)
@@ -743,6 +778,19 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTableNameCollisionUpdatesChart)
 
     xmlDocUniquePtr pXmlDoc = parseExport(u"content.xml"_ustr);
     assertXPath(pXmlDoc, "//draw:object", "notify-on-update-of-ranges", u"Table3");
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTableNameWithSpaceUpdatesChart)
+{
+    createSwDoc("tdf171549.fodt");
+
+    SwFrameFormat* pFrameFormat = getSwDoc()->FindTableFormatByName(UIName("Table1"));
+    getSwDocShell()->GetEditShell()->SetTableName(*pFrameFormat, UIName("Renamed Table"));
+
+    saveAndReload(TestFilter::ODT);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"content.xml"_ustr);
+    assertXPath(pXmlDoc, "//draw:object", "notify-on-update-of-ranges", u"Renamed Table");
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTableNameUpdatePropagatedToFormulas)
@@ -1357,6 +1405,41 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTableAutoFormats)
     CPPUNIT_ASSERT_EQUAL(
         awt::FontSlant_ITALIC,
         getProperty<awt::FontSlant>(getParagraphOfText(1, xCell->getText()), u"CharPosture"_ustr));
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testCloseDocWithFillBitmapLinkTracker)
+{
+    // Closing a freshly created document must not crash while its fill-bitmap
+    // link tracker is torn down.
+    createSwDoc();
+    CPPUNIT_ASSERT(mxComponent.is());
+
+    // Without the accompanying fix in place, this crashed in
+    // ~FillBitmapLinkTracker as the document was destroyed.
+    mxComponent->dispose();
+    mxComponent.clear();
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testBrushGraphicLinkProtocols)
+{
+    // Register every configured content provider, as a running office does.
+    uno::Reference<lang::XInitialization> xBroker(
+        m_xSFactory->createInstance(u"com.sun.star.ucb.UniversalContentBroker"_ustr),
+        uno::UNO_QUERY_THROW);
+    xBroker->initialize({});
+
+    const OUString aFileURL
+        = m_directories.getURLFromSrc(u"/vcl/qa/cppunit/data/TypeDetectionExample.png");
+    SvxBrushItem aFileBrush(aFileURL, OUString(), GPOS_TILED, RES_BACKGROUND);
+    uno::Any aValue;
+    CPPUNIT_ASSERT(aFileBrush.QueryValue(aValue, MID_GRAPHIC));
+    CPPUNIT_ASSERT(aValue.get<uno::Reference<graphic::XGraphic>>().is());
+
+    // A picture named through a protocol that does not name a picture file gives none.
+    SvxBrushItem aExpandBrush(u"vnd.sun.star.expand:$BRAND_BASE_DIR/program/intro.png"_ustr,
+                              OUString(), GPOS_TILED, RES_BACKGROUND);
+    CPPUNIT_ASSERT(aExpandBrush.QueryValue(aValue, MID_GRAPHIC));
+    CPPUNIT_ASSERT(!aValue.get<uno::Reference<graphic::XGraphic>>().is());
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

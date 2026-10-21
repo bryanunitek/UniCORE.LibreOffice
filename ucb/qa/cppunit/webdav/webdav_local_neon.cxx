@@ -26,7 +26,7 @@ namespace
 
         // Change the following lines only, if you add, remove or rename
         // member functions of the current class,
-        // because these macros are need by auto register mechanism.
+        // because these macros are needed by auto register mechanism.
 
         CPPUNIT_TEST_SUITE( webdav_local_test );
         CPPUNIT_TEST( WebdavUriTest );
@@ -36,7 +36,7 @@ namespace
 
     void webdav_local_test::WebdavUriTest()
     {
-        //try URL decomposition
+        // try URL decomposition
         CurlUri aURI(u"http://user%40anothername@server.biz:8040/aService/asegment/nextsegment/check.this?test=true&link=http://anotherserver.com/%3Fcheck=theapplication%26os=linuxintel%26lang=en-US%26version=5.2.0" );
         CPPUNIT_ASSERT_EQUAL( u"http"_ustr, aURI.GetScheme() );
         CPPUNIT_ASSERT_EQUAL( u"server.biz"_ustr, aURI.GetHost() );

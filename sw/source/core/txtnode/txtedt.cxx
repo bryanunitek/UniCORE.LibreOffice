@@ -18,6 +18,7 @@
  */
 
 #include <config_wasm_strip.h>
+#include <algorithm>
 
 #include <hintids.hxx>
 #include <utility>
@@ -245,8 +246,14 @@ lcl_MaskRedlinesAndHiddenText( const SwTextNode& rNode, OUStringBuffer& rText,
  */
 static SwRect lcl_CalculateRepaintRect(
         const SwTextFrame & rTextFrame, const SwTextNode & rNode,
-        sal_Int32 const nChgStart, sal_Int32 const nChgEnd)
+        sal_Int32 nChgStart, sal_Int32 nChgEnd)
 {
+    // the wrong list range can reach past the text, keep it in bounds
+    const sal_Int32 nLen = rNode.GetText().getLength();
+    if (nChgStart > nLen)
+        nChgStart = nLen;
+    if (nChgEnd > nLen)
+        nChgEnd = nLen;
     TextFrameIndex const iChgStart(rTextFrame.MapModelToView(&rNode, nChgStart));
     TextFrameIndex const iChgEnd(rTextFrame.MapModelToView(&rNode, nChgEnd));
 
@@ -745,7 +752,10 @@ SwScanner::SwScanner(std::function<LanguageType(sal_Int32, sal_Int32, bool)> aGe
     , m_bClip(bClp)
 {
     m_nStartPos = m_nBegin = nStart;
-    m_nEndPos = nEnd;
+    // The range comes from a selection, which can be stale - e.g. an undo that
+    // rebuilt the text leaves the cursor describing the old, longer text. Keep
+    // the scan inside the string;
+    m_nEndPos = std::min(nEnd, m_aPreDashReplacementText.getLength());
 
     //MSWord f.e has special emdash and endash behaviour in that they break
     //words for the purposes of word counting, while a hyphen etc. doesn't.
@@ -2068,7 +2078,7 @@ void SwTextNode::TransliterateText(
 
     // now apply the changes from end to start to leave the offsets of the
     // yet unchanged text parts remain the same.
-    size_t nSum(0);
+    sal_Int32 nSum(0);
 
     for (size_t i = 0; i < aChanges.size(); ++i)
     {   // check this here since AddChanges cannot be moved below
@@ -2077,7 +2087,7 @@ void SwTextNode::TransliterateText(
             aChanges[ aChanges.size() - 1 - i ];
 
         nSum += rData.sChanged.getLength() - rData.nLen;
-        if (nSum > o3tl::make_unsigned(GetSpaceLeft()))
+        if (nSum > 0 && nSum > GetSpaceLeft())
         {
             SAL_WARN("sw.core", "SwTextNode::ReplaceTextOnly: "
                     "node text with insertion > node capacity.");

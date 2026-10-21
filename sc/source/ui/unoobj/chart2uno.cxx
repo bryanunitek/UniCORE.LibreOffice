@@ -338,7 +338,7 @@ Chart2PositionMap::Chart2PositionMap(SCCOL nAllColCount,  SCROW nAllRowCount,
 
             if (nHeaderColCount && !bFoundValuesInCol && bFoundAnythingInCol && nCol == nHeaderColCount)
             {
-                // There is no values in row, but some data. And this column is next to header
+                // There are no values in row, but some data. And this column is next to header
                 // So let's put it to header
                 nHeaderColCount++;
             }
@@ -1381,7 +1381,10 @@ public:
         ScSingleRefData& s = rData.Ref1;
         ScSingleRefData& e = rData.Ref2;
 
-        if(abs((e.Col()-s.Col())*(e.Row()-s.Row())) < SHRINK_RANGE_THRESHOLD)
+        // tdf#133808 - use cell counts in order to shrink entire columns/rows
+        const sal_Int64 nCells = (static_cast<sal_Int64>(std::abs(e.Col() - s.Col())) + 1)
+                                 * (static_cast<sal_Int64>(std::abs(e.Row() - s.Row())) + 1);
+        if (nCells < SHRINK_RANGE_THRESHOLD)
             return;
 
         SCCOL nMinCol = mpDoc->MaxCol(), nMaxCol = 0;
@@ -1612,12 +1615,7 @@ public:
         if (!ScRefTokenHelper::isRef(pToken))
             return;
 
-        SCTAB nTab;
-        if (pToken->GetType() == svSingleRef)
-            nTab = static_cast<ScSingleRefToken*>(pToken.get())->GetSingleRef().Tab();
-        else
-            nTab = static_cast<ScDoubleRefToken*>(pToken.get())->GetSingleRef().Tab();
-        mpTabNumVector->push_back(nTab);
+        mpTabNumVector->push_back(ScRefTokenHelper::getSingleRef(pToken.get())->Tab());
     }
 
     void getVector(std::vector<SCTAB>& rVector)
@@ -2152,12 +2150,12 @@ sal_Bool SAL_CALL ScChart2DataProvider::createDataSequenceByFormulaTokensPossibl
                     break;
                     case ocOpen:
                         if (p != pFirst)
-                            // open paran is allowed only as the first token.
+                            // open parent is allowed only as the first token.
                             return false;
                     break;
                     case ocClose:
                         if (p != pLast)
-                            // close paren is allowed only as the last token.
+                            // close parent is allowed only as the last token.
                             return false;
                     break;
                     default:
@@ -2211,12 +2209,12 @@ ScChart2DataProvider::createDataSequenceByFormulaTokens(
                     break;
                     case ocOpen:
                         if (p != pFirst)
-                            // open paran is allowed only as the first token.
+                            // open parent is allowed only as the first token.
                             throw lang::IllegalArgumentException();
                     break;
                     case ocClose:
                         if (p != pLast)
-                            // close paren is allowed only as the last token.
+                            // close parent is allowed only as the last token.
                             throw lang::IllegalArgumentException();
                     break;
                     default:
@@ -2449,6 +2447,7 @@ ScChart2DataSequence::ScChart2DataSequence( ScDocument* pDoc,
         bool bIncludeHiddenCells )
     : m_xDataArray(new std::vector<Item>)
     , m_bIncludeHiddenCells( bIncludeHiddenCells)
+    , m_eDimType(DataSourceType::UNKNOWN)
     , m_nObjectId( 0 )
     , m_pDocument( pDoc)
     , m_aTokens(std::move(rTokens))
@@ -2465,7 +2464,7 @@ ScChart2DataSequence::ScChart2DataSequence( ScDocument* pDoc,
         m_pDocument->AddUnoObject( *this);
         m_nObjectId = m_pDocument->GetNewUnoId();
     }
-    // FIXME: real implementation of identifier and it's mapping to ranges.
+    // FIXME: real implementation of identifier and its mapping to ranges.
     // Reuse ScChartListener?
 
     // BM: don't use names of named ranges but the UI range strings
@@ -3403,7 +3402,10 @@ void SAL_CALL ScChart2DataSequence::setPropertyValue(
     }
     else if( rPropertyName == "ChartExDimType" )
     {
-        if ( !(rValue >>= m_eDimType))
+        sal_Int32 nDimType;
+        if (rValue >>= nDimType)
+            m_eDimType = static_cast<DataSourceType>(nDimType);
+        else
             throw lang::IllegalArgumentException();
     }
     else if( rPropertyName == "ChartExFormula" )
@@ -3452,7 +3454,7 @@ uno::Any SAL_CALL ScChart2DataSequence::getPropertyValue(const OUString& rProper
         aRet <<= bHasStringLabel;
     }
     else if ( rPropertyName == "ChartExDimType" )
-        aRet <<= m_eDimType;
+        aRet <<= static_cast<sal_Int32>(m_eDimType);
     else if ( rPropertyName == "ChartExFormula" )
         aRet <<= m_sFormula;
     else if ( rPropertyName == "ChartExNFormula" )

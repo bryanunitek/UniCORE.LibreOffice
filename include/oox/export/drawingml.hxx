@@ -299,7 +299,7 @@ class DrawingML
 {
 
 private:
-    /// To specify where write eg. the images to (like 'ppt', or 'word' - according to the OPC).
+    /// To specify where to write eg. the images to (like 'ppt', or 'word' - according to the OPC).
     DocumentType meDocumentType;
     /// Parent exporter, used for text callback.
     DMLTextExport* mpTextExport;
@@ -363,6 +363,10 @@ protected:
     void WriteGlowEffect(const css::uno::Reference<css::beans::XPropertySet>& rXPropSet);
     void WriteTextGlowEffect(const css::uno::Reference<css::beans::XPropertySet>& rXPropSet);
     void WriteSoftEdgeEffect(const css::uno::Reference<css::beans::XPropertySet>& rXPropSet);
+    /** Writes the reflection of the shape. rStoredEffect is the reflection entry of the effects
+        kept from the imported document, or empty. */
+    void WriteReflectionEffect(const css::uno::Reference<css::beans::XPropertySet>& rXPropSet,
+                               const css::uno::Sequence<css::beans::PropertyValue>& rStoredEffect);
     void WriteCustomGeometryPoint(const css::drawing::EnhancedCustomShapeParameterPair& rParamPair,
                                   const EnhancedCustomShape2d& rCustomShape2d,
                                   const bool bReplaceGeoWidth, const bool bReplaceGeoHeight);
@@ -488,6 +492,9 @@ public:
 
     void WriteText( const css::uno::Reference< css::uno::XInterface >& rXIface, bool bBodyPr, bool bText = true, sal_Int32 nXmlNamespace = 0, bool bWritePropertiesAsLstStyles = false);
 
+    /** Writes a paragraph with no text, carrying the properties text put in it would get. */
+    void WriteTextlessParagraph(const css::uno::Reference<css::uno::XInterface>& rXIface);
+
     void WriteBodyProps(
             const css::uno::Reference< css::uno::XInterface >& rXIface,
             sal_Int32 nXmlNamespace, bool bIsFontworkShape,
@@ -525,6 +532,14 @@ public:
         const css::uno::Reference<css::drawing::XShape>& rXShape,
         const SdrObjCustomShape& rSdrObjCustomShape);
     void WriteEmptyCustomGeometry();
+    /** Writes a graphic object's clip polygon as the shape's own geometry.
+
+        Returns false when the shape has no clip polygon, so that the caller can write the geometry
+        it would have written anyway.
+     */
+    OOX_DLLPUBLIC bool WriteGraphicClipCustomGeometry(
+        const css::uno::Reference<css::beans::XPropertySet>& rXPropSet,
+        const css::awt::Size& rSize);
     void WritePolyPolygon(const css::uno::Reference<css::drawing::XShape>& rXShape,
                           const bool bClosed);
     OOX_DLLPUBLIC void WriteFill(const css::uno::Reference<css::beans::XPropertySet>& xPropSet,

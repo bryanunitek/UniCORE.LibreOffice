@@ -29,6 +29,7 @@
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
@@ -78,12 +79,11 @@ struct XShapePosCompareHelper
 
 }
 
-AccessibleDrawDocumentView::AccessibleDrawDocumentView (
-    ::sd::Window* pSdWindow,
-    ::sd::ViewShell* pViewShell,
+AccessibleDrawDocumentView::AccessibleDrawDocumentView(
+    ::sd::Window* pSdWindow, ::sd::ViewShell* pViewShell,
     const uno::Reference<frame::XController>& rxController,
-    const uno::Reference<XAccessible>& rxParent)
-    : ImplInheritanceHelper(pSdWindow, pViewShell, rxController, rxParent)
+    const rtl::Reference<comphelper::OAccessible>& rpParent)
+    : ImplInheritanceHelper(pSdWindow, pViewShell, rxController, rpParent)
     , mpSdViewSh(pViewShell)
 {
     UpdateAccessibleName();
@@ -380,16 +380,17 @@ css::uno::Sequence< OUString> SAL_CALL
     AccessibleDrawDocumentView::getSupportedServiceNames()
 {
     ensureAlive();
-    const css::uno::Sequence<OUString> vals { u"com.sun.star.drawing.AccessibleDrawDocumentView"_ustr };
-    uno::Sequence<OUString> aServiceNames =
-        AccessibleDocumentViewBase::getSupportedServiceNames();
+    return { u"com.sun.star.drawing.AccessibleDrawDocumentView"_ustr };
+}
 
-    return comphelper::concatSequences(aServiceNames, vals);
+sal_Bool SAL_CALL AccessibleDrawDocumentView::supportsService(const OUString& rServiceName)
+{
+    return cppu::supportsService(this, rServiceName);
 }
 
 //=====  XAccessibleGroupPosition  =========================================
-uno::Sequence< sal_Int32 > SAL_CALL
-    AccessibleDrawDocumentView::getGroupPosition( const uno::Any& rAny )
+uno::Sequence<sal_Int32> SAL_CALL AccessibleDrawDocumentView::getGroupPosition(
+    const css::uno::Reference<css::accessibility::XAccessible>& rxAccessible)
 {
     SolarMutexGuard g;
 
@@ -399,13 +400,11 @@ uno::Sequence< sal_Int32 > SAL_CALL
     // [2] the position of the object in the group
     uno::Sequence< sal_Int32 > aRet( 3 );
     //get the xShape of the current selected drawing object
-    uno::Reference<XAccessibleContext> xAccContent;
-    rAny >>= xAccContent;
-    if ( !xAccContent.is() )
+    if (!rxAccessible.is())
     {
         return aRet;
     }
-    AccessibleShape* pAcc = comphelper::getFromUnoTunnel<AccessibleShape>( xAccContent );
+    AccessibleShape* pAcc = comphelper::getFromUnoTunnel<AccessibleShape>(rxAccessible);
     if ( !pAcc )
     {
         return aRet;
@@ -457,19 +456,18 @@ uno::Sequence< sal_Int32 > SAL_CALL
     return aRet;
 }
 
-OUString AccessibleDrawDocumentView::getObjectLink( const uno::Any& rAny )
+OUString AccessibleDrawDocumentView::getObjectLink(
+    const css::uno::Reference<css::accessibility::XAccessible>& rxAccessible)
 {
     SolarMutexGuard g;
 
     OUString aRet;
     //get the xShape of the current selected drawing object
-    uno::Reference<XAccessibleContext> xAccContent;
-    rAny >>= xAccContent;
-    if ( !xAccContent.is() )
+    if (!rxAccessible.is())
     {
         return aRet;
     }
-    AccessibleShape* pAcc = comphelper::getFromUnoTunnel<AccessibleShape>( xAccContent );
+    AccessibleShape* pAcc = comphelper::getFromUnoTunnel<AccessibleShape>(rxAccessible);
     if ( !pAcc )
     {
         return aRet;

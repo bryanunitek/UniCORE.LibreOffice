@@ -559,6 +559,7 @@ InternalDataProvider::createDataSequenceFromArray( const OUString& rArrayStr, st
 
     if (rRole == u"values-y" || rRole == u"values-first" || rRole == u"values-last" ||
         rRole == u"values-min" || rRole == u"values-max" || rRole == u"values-size" ||
+        rRole == u"values-feature" ||
         rRole == u"error-bars-y-positive" || rRole == u"error-bars-y-negative")
     {
         // Column values.  Append a new data column and populate it.
@@ -910,7 +911,7 @@ Sequence< uno::Any > SAL_CALL InternalDataProvider::getDataByRangeRepresentation
         }
         else
         {
-            // Maybe this 'else' part and the functions is not necessary anymore.
+            // Maybe this 'else' part and the functions are not necessary anymore.
             const Sequence< OUString > aLabels = m_bDataInColumns ? getRowDescriptions() : getColumnDescriptions();
             aResult = CommonFunctors::convertToSequence(aLabels, CommonFunctors::makeAny());
         }

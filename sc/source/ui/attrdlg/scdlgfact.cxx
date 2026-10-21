@@ -20,6 +20,7 @@
 #undef SC_DLLIMPLEMENTATION
 
 #include "scdlgfact.hxx"
+#include <drawview.hxx>
 
 #include <scuiasciiopt.hxx>
 #include <corodlg.hxx>
@@ -783,10 +784,9 @@ public:
 VclPtr<AbstractScTabBgColorDlg> ScAbstractDialogFactory_Impl::CreateScTabBgColorDlg(
                                                             weld::Window* pParent,
                                                             const OUString& rTitle,
-                                                            const OUString& rTabBgColorNoColorText,
                                                             const Color& rDefaultColor)
 {
-    return VclPtr<AbstractScTabBgColorDlg_Impl>::Create(pParent, rTitle, rTabBgColorNoColorText, rDefaultColor);
+    return VclPtr<AbstractScTabBgColorDlg_Impl>::Create(pParent, rTitle, rDefaultColor);
 }
 
 namespace

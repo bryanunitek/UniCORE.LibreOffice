@@ -85,7 +85,6 @@ ValueSet::ValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow)
 {
     mnItemWidth         = 0;
     mnItemHeight        = 0;
-    mnTextOffset        = 0;
     mnVisLines          = 0;
     mnLines             = 0;
     mnUserItemWidth     = 0;
@@ -175,11 +174,6 @@ size_t ValueSet::ImplGetItem( const Point& rPos ) const
         return VALUESET_ITEM_NOTFOUND;
     }
 
-    if (mpNoneItem && maNoneItemRect.Contains(rPos))
-    {
-        return VALUESET_ITEM_NONEITEM;
-    }
-
     if (maItemListRect.Contains(rPos))
     {
         const int xc = rPos.X() - maItemListRect.Left();
@@ -207,10 +201,7 @@ size_t ValueSet::ImplGetItem( const Point& rPos ) const
 
 ValueSetItem* ValueSet::ImplGetItem( size_t nPos )
 {
-    if (nPos == VALUESET_ITEM_NONEITEM)
-        return mpNoneItem.get();
-    else
-        return (nPos < mItemList.size()) ? mItemList[nPos].get() : nullptr;
+    return (nPos < mItemList.size()) ? mItemList[nPos].get() : nullptr;
 }
 
 ValueSetItem* ValueSet::ImplGetFirstItem()
@@ -304,14 +295,14 @@ bool ValueSet::KeyInput( const KeyEvent& rKeyEvent )
     --nLastItem;
 
     const size_t nCurPos
-        = mnSelItemId ? GetItemPos(mnSelItemId) : (mpNoneItem ? VALUESET_ITEM_NONEITEM : 0);
+        = mnSelItemId ? GetItemPos(mnSelItemId) : 0;
     size_t nItemPos = VALUESET_ITEM_NOTFOUND;
     size_t nVStep = mnCols;
 
     switch (rKeyEvent.GetKeyCode().GetCode())
     {
         case KEY_HOME:
-            nItemPos = mpNoneItem ? VALUESET_ITEM_NONEITEM : 0;
+            nItemPos = 0;
             break;
 
         case KEY_END:
@@ -319,31 +310,13 @@ bool ValueSet::KeyInput( const KeyEvent& rKeyEvent )
             break;
 
         case KEY_LEFT:
-            if (nCurPos != VALUESET_ITEM_NONEITEM)
-            {
-                if (nCurPos)
-                {
-                    nItemPos = nCurPos-1;
-                }
-                else if (mpNoneItem)
-                {
-                    nItemPos = VALUESET_ITEM_NONEITEM;
-                }
-            }
+            if (nCurPos)
+                nItemPos = nCurPos - 1;
             break;
 
         case KEY_RIGHT:
             if (nCurPos < nLastItem)
-            {
-                if (nCurPos == VALUESET_ITEM_NONEITEM)
-                {
-                    nItemPos = 0;
-                }
-                else
-                {
-                    nItemPos = nCurPos+1;
-                }
-            }
+                nItemPos = nCurPos + 1;
             break;
 
         case KEY_PAGEUP:
@@ -354,31 +327,24 @@ bool ValueSet::KeyInput( const KeyEvent& rKeyEvent )
             nVStep *= mnVisLines;
             [[fallthrough]];
         case KEY_UP:
-            if (nCurPos != VALUESET_ITEM_NONEITEM)
+            if (nCurPos == nLastItem)
             {
-                if (nCurPos == nLastItem)
+                const size_t nCol = mnCols ? nLastItem % mnCols : 0;
+                if (nCol < mnCurCol)
                 {
-                    const size_t nCol = mnCols ? nLastItem % mnCols : 0;
-                    if (nCol < mnCurCol)
-                    {
-                        // Move to previous row/page, keeping the old column
-                        nVStep -= mnCurCol - nCol;
-                    }
+                    // Move to previous row/page, keeping the old column
+                    nVStep -= mnCurCol - nCol;
                 }
-                if (nCurPos >= nVStep)
-                {
-                    // Go up of a whole page
-                    nItemPos = nCurPos-nVStep;
-                }
-                else if (mpNoneItem)
-                {
-                    nItemPos = VALUESET_ITEM_NONEITEM;
-                }
-                else if (nCurPos > mnCols)
-                {
-                    // Go to same column in first row
-                    nItemPos = nCurPos % mnCols;
-                }
+            }
+            if (nCurPos >= nVStep)
+            {
+                // Go up of a whole page
+                nItemPos = nCurPos - nVStep;
+            }
+            else if (nCurPos > mnCols)
+            {
+                // Go to same column in first row
+                nItemPos = nCurPos % mnCols;
             }
             break;
 
@@ -392,14 +358,7 @@ bool ValueSet::KeyInput( const KeyEvent& rKeyEvent )
         case KEY_DOWN:
             if (nCurPos != nLastItem)
             {
-                if (nCurPos == VALUESET_ITEM_NONEITEM)
-                {
-                    nItemPos = nVStep-mnCols+mnCurCol;
-                }
-                else
-                {
-                    nItemPos = nCurPos+nVStep;
-                }
+                nItemPos = nCurPos + nVStep;
                 if (nItemPos > nLastItem)
                 {
                     nItemPos = nLastItem;
@@ -412,12 +371,9 @@ bool ValueSet::KeyInput( const KeyEvent& rKeyEvent )
             {
                 // tdf#142479 on return select the entry the cursor is in
                 // before calling Select
-                if (nCurPos != VALUESET_ITEM_NONEITEM)
-                {
-                    const sal_uInt16 nItemId = GetItemId(nCurPos);
-                    if (nItemId != mnSelItemId)
-                        SelectItem(nItemId);
-                }
+                const sal_uInt16 nItemId = GetItemId(nCurPos);
+                if (nItemId != mnSelItemId)
+                    SelectItem(nItemId);
                 Select();
                 break;
             }
@@ -429,13 +385,13 @@ bool ValueSet::KeyInput( const KeyEvent& rKeyEvent )
     if ( nItemPos == VALUESET_ITEM_NOTFOUND )
         return true;
 
-    if ( nItemPos!=VALUESET_ITEM_NONEITEM && nItemPos<nLastItem )
+    if (nItemPos < nLastItem)
     {
         // update current column only in case of a new position
         // which is also not a "specially" handled one.
         mnCurCol = mnCols ? nItemPos % mnCols : 0;
     }
-    const sal_uInt16 nItemId = (nItemPos != VALUESET_ITEM_NONEITEM) ? GetItemId( nItemPos ) : 0;
+    const sal_uInt16 nItemId = GetItemId(nItemPos);
     if ( nItemId != mnSelItemId )
     {
         SelectItem( nItemId );
@@ -671,35 +627,12 @@ void ValueSet::ImplHighlightItem(sal_uInt16 nItemId)
 void ValueSet::ImplDraw(vcl::RenderContext& rRenderContext)
 {
     if (mbFormat)
-        Format(rRenderContext);
+        Format();
 
     Point aDefPos;
     Size aSize = maVirDev->GetOutputSizePixel();
 
     rRenderContext.DrawOutDev(aDefPos, aSize, aDefPos, aSize, *maVirDev);
-
-    // draw parting line to the Namefield
-    if (GetStyle() & WB_NAMEFIELD)
-    {
-        if (!(GetStyle() & WB_FLATVALUESET))
-        {
-            const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-            Size aWinSize(GetOutputSizePixel());
-            Point aPos1(NAME_LINE_OFF_X, mnTextOffset + NAME_LINE_OFF_Y);
-            Point aPos2(aWinSize.Width() - (NAME_LINE_OFF_X * 2), mnTextOffset + NAME_LINE_OFF_Y);
-            if (!(rStyleSettings.GetOptions() & StyleSettingsOptions::Mono))
-            {
-                rRenderContext.SetLineColor(rStyleSettings.GetShadowColor());
-                rRenderContext.DrawLine(aPos1, aPos2);
-                aPos1.AdjustY( 1 );
-                aPos2.AdjustY( 1 );
-                rRenderContext.SetLineColor(rStyleSettings.GetLightColor());
-            }
-            else
-                rRenderContext.SetLineColor(rStyleSettings.GetWindowTextColor());
-            rRenderContext.DrawLine(aPos1, aPos2);
-        }
-    }
 
     ImplDrawSelect(rRenderContext);
 }
@@ -735,9 +668,9 @@ void ValueSet::SelectItem( sal_uInt16 nItemId )
     bool bNewOut = !mbFormat && IsReallyVisible();
     bool bNewLine = false;
 
-    if (weld::DrawingArea* pNeedsFormatToScroll = !mnCols ? GetDrawingArea() : nullptr)
+    if (!mnCols && GetDrawingArea())
     {
-        Format(pNeedsFormatToScroll->get_ref_device());
+        Format();
         // reset scrollbar so it's set to the later calculated mnFirstLine on
         // the next Format
         RecalcScrollBar();
@@ -798,11 +731,9 @@ void ValueSet::SelectItem( sal_uInt16 nItemId )
         // focus event (select)
         const size_t nPos = GetItemPos(mnSelItemId);
 
-        ValueSetItem* pItem;
+        ValueSetItem* pItem = nullptr;
         if (nPos != VALUESET_ITEM_NOTFOUND)
             pItem = mItemList[nPos].get();
-        else
-            pItem = mpNoneItem.get();
 
         ValueItemAcc* pItemAcc = nullptr;
         if (pItem != nullptr)
@@ -843,64 +774,19 @@ void ValueSet::SetStyle(WinBits nStyle)
     }
 }
 
-void ValueSet::Format(vcl::RenderContext const & rRenderContext)
+void ValueSet::Format()
 {
     Size aWinSize(GetOutputSizePixel());
     size_t nItemCount = mItemList.size();
     WinBits nStyle = GetStyle();
-    tools::Long nTxtHeight = rRenderContext.GetTextHeight();
-    tools::Long nOff;
-    tools::Long nNoneHeight;
-    tools::Long nNoneSpace;
 
     if (mxScrolledWindow && !(nStyle & WB_VSCROLL) && mxScrolledWindow->get_vpolicy() != VclPolicyType::NEVER)
         TurnOffScrollBar();
-
-    // calculate item offset
-    if (nStyle & WB_ITEMBORDER)
-    {
-        if (nStyle & WB_DOUBLEBORDER)
-            nOff = ITEM_OFFSET_DOUBLE;
-        else
-            nOff = ITEM_OFFSET;
-    }
-    else
-        nOff = 0;
 
     if ( mnMargin )
     {
         aWinSize.AdjustWidth(-mnMargin * 2);
         aWinSize.AdjustHeight(-mnMargin * 2);
-    }
-
-    // consider size, if NameField does exist
-    if (nStyle & WB_NAMEFIELD)
-    {
-        mnTextOffset = aWinSize.Height() - nTxtHeight - NAME_OFFSET;
-        aWinSize.AdjustHeight( -(nTxtHeight + NAME_OFFSET) );
-
-        if (!(nStyle & WB_FLATVALUESET))
-        {
-            mnTextOffset -= NAME_LINE_HEIGHT + NAME_LINE_OFF_Y;
-            aWinSize.AdjustHeight( -(NAME_LINE_HEIGHT + NAME_LINE_OFF_Y) );
-        }
-    }
-    else
-        mnTextOffset = 0;
-
-    mnTextOffset += mnMargin;
-
-    // consider offset and size, if NoneField does exist
-    if (nStyle & WB_NONEFIELD)
-    {
-        nNoneHeight = nTxtHeight + nOff;
-        nNoneSpace = mnSpacing;
-    }
-    else
-    {
-        nNoneHeight = 0;
-        nNoneSpace = 0;
-        mpNoneItem.reset();
     }
 
     // calculate number of columns
@@ -933,14 +819,14 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
 
     auto nOldVisLines = mnVisLines;
 
-    tools::Long nCalcHeight = aWinSize.Height() - nNoneHeight;
+    tools::Long nCalcHeight = aWinSize.Height();
     if (mnUserVisLines)
     {
         mnVisLines = mnUserVisLines;
     }
     else if (mnUserItemHeight)
     {
-        mnVisLines = (nCalcHeight - nNoneSpace + mnSpacing) / (mnUserItemHeight + mnSpacing);
+        mnVisLines = (nCalcHeight + mnSpacing) / (mnUserItemHeight + mnSpacing);
         if (!mnVisLines)
             mnVisLines = 1;
     }
@@ -963,7 +849,7 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
 
     // calculate item size
     const tools::Long nColSpace  = (mnCols - 1) * static_cast<tools::Long>(mnSpacing);
-    const tools::Long nLineSpace = ((mnVisLines - 1) * mnSpacing) + nNoneSpace;
+    const tools::Long nLineSpace = (mnVisLines - 1) * mnSpacing;
     if (mnUserItemWidth && !mnUserCols)
     {
         mnItemWidth = mnUserItemWidth;
@@ -975,8 +861,8 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
     if (mnUserItemHeight && !mnUserVisLines)
     {
         mnItemHeight = mnUserItemHeight;
-        if (mnItemHeight > nCalcHeight - nNoneSpace)
-            mnItemHeight = nCalcHeight - nNoneSpace;
+        if (mnItemHeight > nCalcHeight)
+            mnItemHeight = nCalcHeight;
     }
     else
     {
@@ -998,12 +884,6 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
         !nItemCount)
     {
         mbHasVisibleItems = false;
-
-        if ((nStyle & WB_NONEFIELD) && mpNoneItem)
-        {
-            mpNoneItem->mbVisible = false;
-            mpNoneItem->maText = GetText();
-        }
 
         for (size_t i = 0; i < nItemCount; i++)
         {
@@ -1040,7 +920,7 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
         if (mbFullMode)
         {
             tools::Long nAllItemWidth = (mnItemWidth * mnCols) + nColSpace;
-            tools::Long nAllItemHeight = (mnItemHeight * mnVisLines) + nNoneHeight + nLineSpace;
+            tools::Long nAllItemHeight = (mnItemHeight * mnVisLines) + nLineSpace;
             nStartX = (aWinSize.Width() - nAllItemWidth) / 2;
             nStartY = (aWinSize.Height() - nAllItemHeight) / 2;
         }
@@ -1057,25 +937,6 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
         maVirDev->SetLineColor();
         tools::Long x = nStartX;
         tools::Long y = nStartY;
-
-        // create NoSelection field and show it
-        if (nStyle & WB_NONEFIELD)
-        {
-            if (!mpNoneItem)
-                mpNoneItem.reset(new ValueSetItem(*this));
-
-            mpNoneItem->mnId = 0;
-            mpNoneItem->meType = ValueSetItemType::None;
-            mpNoneItem->mbVisible = true;
-            maNoneItemRect.SetLeft( x );
-            maNoneItemRect.SetTop( y );
-            maNoneItemRect.SetRight( maNoneItemRect.Left() + aWinSize.Width() - x - 1 );
-            maNoneItemRect.SetBottom( y + nNoneHeight - 1 );
-
-            ImplFormatItem(rRenderContext, mpNoneItem.get(), maNoneItemRect);
-
-            y += nNoneHeight + nNoneSpace;
-        }
 
         // draw items
         size_t nFirstItem = static_cast<size_t>(mnFirstLine) * mnCols;
@@ -1111,7 +972,8 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
                 }
 
                 pItem->mbVisible = true;
-                ImplFormatItem(rRenderContext, pItem, tools::Rectangle(Point(x, y), Size(mnItemWidth, mnItemHeight)));
+                ImplFormatItem(*pItem,
+                               tools::Rectangle(Point(x, y), Size(mnItemWidth, mnItemHeight)));
 
                 if (!((i + 1) % mnCols))
                 {
@@ -1175,7 +1037,7 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext)
     if (pSelectedItem)
     {
         const bool bHover = pSelectedItem == pHighlightItem;
-        ImplDrawSelect(rRenderContext, aSelectedRect, pSelectedItem, bFocus, !mbNoSelection, true, bHover);
+        ImplDrawSelect(rRenderContext, aSelectedRect, bFocus, !mbNoSelection, true, bHover);
     }
     if (pHighlightItem && (pSelectedItem != pHighlightItem || mbNoSelection))
     {
@@ -1193,7 +1055,7 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext)
         else
             bDrawFocus = pSelectedItem == pHighlightItem && mbNoSelection;
 
-        ImplDrawSelect(rRenderContext, aHoverRect, pHighlightItem, bDrawFocus, mbHighlight, false, true);
+        ImplDrawSelect(rRenderContext, aHoverRect, bDrawFocus, mbHighlight, false, true);
     }
 }
 
@@ -1206,11 +1068,6 @@ ValueSetItem* ValueSet::ImplGetDrawSelectItem(sal_uInt16 nItemId, const bool bFo
         pItem = mItemList[ nPos ].get();
         rRect = ImplGetItemRect( nPos );
     }
-    else if (mpNoneItem)
-    {
-        pItem = mpNoneItem.get();
-        rRect = maNoneItemRect;
-    }
     else if (bFocus && (pItem = ImplGetFirstItem()))
     {
         rRect = ImplGetItemRect(0);
@@ -1218,10 +1075,9 @@ ValueSetItem* ValueSet::ImplGetDrawSelectItem(sal_uInt16 nItemId, const bool bFo
     return pItem;
 }
 
-void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext,
-                              const tools::Rectangle& rRect, const ValueSetItem* pItem,
-                              const bool bFocus, const bool bDrawSel,
-                              const bool bSelected, const bool bHover)
+void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect,
+                              const bool bFocus, const bool bDrawSel, const bool bSelected,
+                              const bool bHover)
 {
     tools::Rectangle aRect(rRect);
 
@@ -1360,11 +1216,9 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext,
         if (bFocus)
             InvertFocusRect(rRenderContext, aFocusRect);
     }
-
-    ImplDrawItemText(rRenderContext, pItem->maText);
 }
 
-void ValueSet::ImplFormatItem(vcl::RenderContext const & rRenderContext, ValueSetItem* pItem, tools::Rectangle aRect)
+void ValueSet::ImplFormatItem(ValueSetItem& rItem, tools::Rectangle aRect)
 {
     WinBits nStyle = GetStyle();
     if (nStyle & WB_ITEMBORDER)
@@ -1390,35 +1244,14 @@ void ValueSet::ImplFormatItem(vcl::RenderContext const & rRenderContext, ValueSe
         }
     }
 
-    if (pItem == mpNoneItem.get())
-        pItem->maText = GetText();
-
     if ((aRect.GetHeight() <= 0) || (aRect.GetWidth() <= 0))
         return;
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
 
-    if (pItem == mpNoneItem.get())
+    if (rItem.meType == ValueSetItemType::Color)
     {
-        maVirDev->SetFont(rRenderContext.GetFont());
-        maVirDev->SetTextColor((nStyle & WB_MENUSTYLEVALUESET) ? rStyleSettings.GetMenuTextColor() : rStyleSettings.GetWindowTextColor());
-        maVirDev->SetTextFillColor();
-        maVirDev->SetFillColor((nStyle & WB_MENUSTYLEVALUESET) ? rStyleSettings.GetMenuColor() : rStyleSettings.GetWindowColor());
-        maVirDev->DrawRect(aRect);
-        Point aTxtPos(aRect.Left() + 2, aRect.Top());
-        tools::Long nTxtWidth = rRenderContext.GetTextWidth(pItem->maText);
-        if ((aTxtPos.X() + nTxtWidth) > aRect.Right())
-        {
-            maVirDev->SetClipRegion(vcl::Region(aRect));
-            maVirDev->DrawText(aTxtPos, pItem->maText);
-            maVirDev->SetClipRegion();
-        }
-        else
-            maVirDev->DrawText(aTxtPos, pItem->maText);
-    }
-    else if (pItem->meType == ValueSetItemType::Color)
-    {
-        maVirDev->SetFillColor(pItem->maColor);
+        maVirDev->SetFillColor(rItem.maColor);
         maVirDev->DrawRect(aRect);
     }
     else
@@ -1433,20 +1266,18 @@ void ValueSet::ImplFormatItem(vcl::RenderContext const & rRenderContext, ValueSe
             maVirDev->SetFillColor(rStyleSettings.GetFaceColor());
         maVirDev->DrawRect(aRect);
 
-        if (pItem->meType == ValueSetItemType::UserDraw)
+        if (rItem.meType == ValueSetItemType::UserDraw)
         {
-            UserDrawEvent aUDEvt(maVirDev.get(), aRect, pItem->mnId);
+            UserDrawEvent aUDEvt(maVirDev.get(), aRect, rItem.mnId);
             UserDraw(aUDEvt);
         }
         else
         {
-            Size aImageSize = pItem->maImage.GetSizePixel();
+            Size aImageSize = rItem.maImage.GetSizePixel();
             Size  aRectSize = aRect.GetSize();
             Point aPos(aRect.Left(), aRect.Top());
             aPos.AdjustX((aRectSize.Width() - aImageSize.Width()) / 2 );
-
-            if (pItem->meType != ValueSetItemType::ImageAndText)
-                aPos.AdjustY((aRectSize.Height() - aImageSize.Height()) / 2 );
+            aPos.AdjustY((aRectSize.Height() - aImageSize.Height()) / 2);
 
             DrawImageFlags  nImageStyle  = DrawImageFlags::NONE;
             if (!IsEnabled())
@@ -1456,31 +1287,11 @@ void ValueSet::ImplFormatItem(vcl::RenderContext const & rRenderContext, ValueSe
                 aImageSize.Height() > aRectSize.Height())
             {
                 maVirDev->SetClipRegion(vcl::Region(aRect));
-                maVirDev->DrawImage(aPos, pItem->maImage, nImageStyle);
+                maVirDev->DrawImage(aPos, rItem.maImage, nImageStyle);
                 maVirDev->SetClipRegion();
             }
             else
-                maVirDev->DrawImage(aPos, pItem->maImage, nImageStyle);
-
-            if (pItem->meType == ValueSetItemType::ImageAndText)
-            {
-                maVirDev->SetFont(rRenderContext.GetFont());
-                maVirDev->SetTextColor((nStyle & WB_MENUSTYLEVALUESET) ? rStyleSettings.GetMenuTextColor() : rStyleSettings.GetWindowTextColor());
-                maVirDev->SetTextFillColor();
-
-                tools::Long nTxtWidth = maVirDev->GetTextWidth(pItem->maText);
-
-                if (nTxtWidth > aRect.GetWidth())
-                    maVirDev->SetClipRegion(vcl::Region(aRect));
-
-                maVirDev->DrawText(Point(aRect.Left() +
-                                         (aRect.GetWidth() - nTxtWidth) / 2,
-                                         aRect.Bottom() - maVirDev->GetTextHeight()),
-                                   pItem->maText);
-
-                if (nTxtWidth > aRect.GetWidth())
-                    maVirDev->SetClipRegion();
-            }
+                maVirDev->DrawImage(aPos, rItem.maImage, nImageStyle);
         }
     }
 
@@ -1498,29 +1309,6 @@ void ValueSet::ImplFormatItem(vcl::RenderContext const & rRenderContext, ValueSe
             maVirDev->DrawBitmap(aRect.TopLeft(), aBlendFrame);
         }
     }
-}
-
-void ValueSet::ImplDrawItemText(vcl::RenderContext& rRenderContext, const OUString& rText)
-{
-    if (!(GetStyle() & WB_NAMEFIELD))
-        return;
-
-    Size aWinSize(GetOutputSizePixel());
-    tools::Long nTxtWidth = rRenderContext.GetTextWidth(rText);
-    tools::Long nTxtOffset = mnTextOffset;
-
-    auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::TEXTCOLOR);
-
-    // delete rectangle and show text
-    const bool bFlat(GetStyle() & WB_FLATVALUESET);
-    if (!bFlat)
-        nTxtOffset += NAME_LINE_HEIGHT+NAME_LINE_OFF_Y;
-
-    rRenderContext.SetTextColor(Application::GetSettings().GetStyleSettings().GetButtonTextColor());
-    // tdf#153787 highlighted entry text is drawn in the same Paint as the selected text, so can
-    // overwrite already rendered text
-    rRenderContext.Erase(tools::Rectangle(Point(0, nTxtOffset), Point(aWinSize.Width(), aWinSize.Height())));
-    rRenderContext.DrawText(Point((aWinSize.Width() - nTxtWidth) / 2, nTxtOffset + (NAME_OFFSET / 2)), rText);
 }
 
 void ValueSet::StyleUpdated()
@@ -1541,26 +1329,6 @@ void ValueSet::SetColCount( sal_uInt16 nNewCols )
         mnUserCols = nNewCols;
         QueueReformat();
     }
-}
-
-void ValueSet::SetItemImage( sal_uInt16 nItemId, const Image& rImage )
-{
-    size_t nPos = GetItemPos( nItemId );
-
-    if ( nPos == VALUESET_ITEM_NOTFOUND )
-        return;
-
-    ValueSetItem* pItem = mItemList[nPos].get();
-    pItem->meType  = ValueSetItemType::Image;
-    pItem->maImage = rImage;
-
-    if (!mbFormat && IsReallyVisible())
-    {
-        const tools::Rectangle aRect = ImplGetItemRect(nPos);
-        Invalidate(aRect);
-    }
-    else
-        mbFormat = true;
 }
 
 void ValueSet::SetItemColor( sal_uInt16 nItemId, const Color& rColor )
@@ -1627,11 +1395,10 @@ Size ValueSet::CalcWindowSizePixel( const Size& rItemSize, sal_uInt16 nDesireCol
 
     Size        aSize( rItemSize.Width() * nCalcCols, rItemSize.Height() * nCalcLines );
     WinBits     nStyle = GetStyle();
-    tools::Long        nTxtHeight = GetTextHeight();
-    tools::Long        n;
 
     if ( nStyle & WB_ITEMBORDER )
     {
+        tools::Long n;
         if ( nStyle & WB_DOUBLEBORDER )
             n = ITEM_OFFSET_DOUBLE;
         else
@@ -1640,25 +1407,11 @@ Size ValueSet::CalcWindowSizePixel( const Size& rItemSize, sal_uInt16 nDesireCol
         aSize.AdjustWidth(n * nCalcCols );
         aSize.AdjustHeight(n * nCalcLines );
     }
-    else
-        n = 0;
 
     if ( mnSpacing )
     {
         aSize.AdjustWidth(mnSpacing * (nCalcCols - 1) );
         aSize.AdjustHeight(mnSpacing * (nCalcLines - 1) );
-    }
-
-    if ( nStyle & WB_NAMEFIELD )
-    {
-        aSize.AdjustHeight(nTxtHeight + NAME_OFFSET );
-        if ( !(nStyle & WB_FLATVALUESET) )
-            aSize.AdjustHeight(NAME_LINE_HEIGHT + NAME_LINE_OFF_Y );
-    }
-
-    if ( nStyle & WB_NONEFIELD )
-    {
-        aSize.AdjustHeight(nTxtHeight + n + mnSpacing );
     }
 
     if ( mnMargin )
@@ -1680,12 +1433,11 @@ void ValueSet::InsertItem( sal_uInt16 nItemId, const Image& rImage )
 }
 
 void ValueSet::InsertItem( sal_uInt16 nItemId, const Image& rImage,
-                           const OUString& rText, size_t nPos,
-                           bool bShowLegend )
+                           const OUString& rText, size_t nPos)
 {
     std::unique_ptr<ValueSetItem> pItem(new ValueSetItem( *this ));
     pItem->mnId     = nItemId;
-    pItem->meType   = bShowLegend ? ValueSetItemType::ImageAndText : ValueSetItemType::Image;
+    pItem->meType = ValueSetItemType::Image;
     pItem->maImage  = rImage;
     pItem->maText   = rText;
     ImplInsertItem( std::move(pItem), nPos );
@@ -1850,38 +1602,6 @@ void ValueSet::SetFormat()
     mbFormat = true;
 }
 
-void ValueSet::SetItemData( sal_uInt16 nItemId, void* pData )
-{
-    size_t nPos = GetItemPos( nItemId );
-
-    if ( nPos == VALUESET_ITEM_NOTFOUND )
-        return;
-
-    ValueSetItem* pItem = mItemList[nPos].get();
-    pItem->mpData = pData;
-
-    if (pItem->meType == ValueSetItemType::UserDraw)
-    {
-        if (!mbFormat && IsReallyVisible())
-        {
-            const tools::Rectangle aRect = ImplGetItemRect(nPos);
-            Invalidate(aRect);
-        }
-        else
-            mbFormat = true;
-    }
-}
-
-void* ValueSet::GetItemData( sal_uInt16 nItemId ) const
-{
-    size_t nPos = GetItemPos( nItemId );
-
-    if ( nPos != VALUESET_ITEM_NOTFOUND )
-        return mItemList[nPos]->mpData;
-    else
-        return nullptr;
-}
-
 void ValueSet::SetItemText(sal_uInt16 nItemId, const OUString& rText)
 {
     size_t nPos = GetItemPos( nItemId );
@@ -1928,22 +1648,13 @@ Size ValueSet::GetLargestItemSize()
         if (!pItem->mbVisible)
             continue;
 
-        if (pItem->meType != ValueSetItemType::Image &&
-            pItem->meType != ValueSetItemType::ImageAndText)
+        if (pItem->meType != ValueSetItemType::Image)
         {
             // handle determining an optimal size for this case
             continue;
         }
 
         Size aSize = pItem->maImage.GetSizePixel();
-        if (pItem->meType == ValueSetItemType::ImageAndText)
-        {
-            aSize.AdjustHeight(3 * NAME_LINE_HEIGHT +
-                maVirDev->GetTextHeight() );
-            aSize.setWidth( std::max(aSize.Width(),
-                                     maVirDev->GetTextWidth(pItem->maText) + NAME_OFFSET) );
-        }
-
         aLargestItem.setWidth( std::max(aLargestItem.Width(), aSize.Width()) );
         aLargestItem.setHeight( std::max(aLargestItem.Height(), aSize.Height()) );
     }
@@ -1958,16 +1669,6 @@ void ValueSet::SetOptimalSize()
     aLargestSize.setHeight(std::max(aLargestSize.Height(), mnUserItemHeight));
     Size aPrefSize(CalcWindowSizePixel(aLargestSize));
     GetDrawingArea()->set_size_request(aPrefSize.Width(), aPrefSize.Height());
-}
-
-Image ValueSet::GetItemImage(sal_uInt16 nItemId) const
-{
-    size_t nPos = GetItemPos( nItemId );
-
-    if ( nPos != VALUESET_ITEM_NOTFOUND )
-        return mItemList[nPos]->maImage;
-    else
-        return Image();
 }
 
 void ValueSet::SetColor(const Color& rColor)

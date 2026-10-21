@@ -498,9 +498,9 @@ SvxTextForwarder* SvxTextEditSourceImpl::GetBackgroundTextForwarder()
             mpOutliner->SetTextObjNoInit( pTextObj );
             if( mbIsLocked )
             {
-                const_cast<EditEngine*>(&(mpOutliner->GetEditEngine()))->SetUpdateLayout( false );
+                mpOutliner->GetEditEngine().SetUpdateLayout( false );
                 mbOldUndoMode = mpOutliner->GetEditEngine().IsUndoEnabled();
-                const_cast<EditEngine*>(&(mpOutliner->GetEditEngine()))->EnableUndo( false );
+                mpOutliner->GetEditEngine().EnableUndo( false );
             }
 
             if (!comphelper::IsFuzzing())
@@ -576,12 +576,12 @@ SvxTextForwarder* SvxTextEditSourceImpl::GetBackgroundTextForwarder()
         if (mpOutliner->GetParagraphCount()==1)
         {
             // if we only have one paragraph we check if it is empty
-            OUString aStr(mpOutliner->GetText(mpOutliner->GetParagraph(0)));
+            OUString aStr(mpOutliner->GetText(0));
 
             if (aStr.isEmpty())
             {
                 // its empty, so we have to force the outliner to initialise itself
-                mpOutliner->SetText( u""_ustr, mpOutliner->GetParagraph( 0 ) );
+                mpOutliner->SetText( u""_ustr, 0 );
 
                 auto pCell = dynamic_cast<sdr::table::Cell*>(mpText);
                 if (pCell && pCell->GetStyleSheet())
@@ -773,12 +773,24 @@ void SvxTextEditSourceImpl::UpdateData()
     {
         if( mpOutliner && mpObject && mpText )
         {
+            const bool bEmptyText
+                = (mpOutliner->GetParagraphCount() == 1
+                   && mpOutliner->GetEditEngine().GetTextLen(0) == 0)
+                  || (mpOutliner->GetParagraphCount() == 2
+                      && mpOutliner->GetEditEngine().GetTextLen(0) == 0
+                      && mpOutliner->GetEditEngine().GetTextLen(1) == 0);
+
+            // An empty presentation object holds the prompt to show, but GetBackgroundTextForwarder
+            // hands out an empty outliner for it rather than that prompt. Writing the emptiness
+            // back would delete the prompt and make the object an ordinary one, so leave it as it
+            // is: nothing was typed into it.
+            if (bEmptyText && mpObject->IsEmptyPresObj())
+                return;
+
             SdrTextObj* pTextObj = DynCastSdrTextObj( mpObject );
             if( pTextObj )
             {
-                if( (mpOutliner->GetParagraphCount() == 1 && mpOutliner->GetEditEngine().GetTextLen( 0 ) == 0 )
-                        || (mpOutliner->GetParagraphCount() == 2 && mpOutliner->GetEditEngine().GetTextLen( 0 ) == 0
-                            && mpOutliner->GetEditEngine().GetTextLen( 1 ) == 0) )
+                if (bEmptyText)
                 {
                     pTextObj->NbcSetOutlinerParaObjectForText( std::nullopt, mpText );
                 }
@@ -797,13 +809,13 @@ void SvxTextEditSourceImpl::UpdateData()
 void SvxTextEditSourceImpl::lock()
 {
     // if this assert ever fires, we will need to make this a counter instead of a boolean
-    assert(!mbIsLocked && "cannot nest these loc() calls");
+    assert(!mbIsLocked && "cannot nest these lock() calls");
     mbIsLocked = true;
     if( mpOutliner )
     {
-        const_cast<EditEngine*>(&(mpOutliner->GetEditEngine()))->SetUpdateLayout( false );
+        mpOutliner->GetEditEngine().SetUpdateLayout( false );
         mbOldUndoMode = mpOutliner->GetEditEngine().IsUndoEnabled();
-        const_cast<EditEngine*>(&(mpOutliner->GetEditEngine()))->EnableUndo( false );
+        mpOutliner->GetEditEngine().EnableUndo( false );
     }
 }
 
@@ -819,8 +831,8 @@ void SvxTextEditSourceImpl::unlock()
 
     if( mpOutliner )
     {
-        const_cast<EditEngine*>(&(mpOutliner->GetEditEngine()))->SetUpdateLayout( true );
-        const_cast<EditEngine*>(&(mpOutliner->GetEditEngine()))->EnableUndo( mbOldUndoMode );
+        mpOutliner->GetEditEngine().SetUpdateLayout( true );
+        mpOutliner->GetEditEngine().EnableUndo( mbOldUndoMode );
     }
 }
 

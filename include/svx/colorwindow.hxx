@@ -21,7 +21,8 @@
 
 #include <svtools/toolbarmenu.hxx>
 #include <rtl/ustring.hxx>
-#include <svx/SvxColorValueSet.hxx>
+#include <svx/ColorIconView.hxx>
+#include <svx/MenuOrToolMenuButton.hxx>
 #include <svx/Palette.hxx>
 #include <vcl/toolboxid.hxx>
 #include <vcl/weld/Button.hxx>
@@ -52,34 +53,6 @@ public:
 
 class SvxColorToolBoxControl;
 
-class SVXCORE_DLLPUBLIC MenuOrToolMenuButton
-{
-private:
-    // either
-    weld::MenuButton* m_pMenuButton;
-    // or
-    weld::Toolbar* m_pToolbar;
-    OUString m_aIdent;
-    // or
-    SvxColorToolBoxControl* m_pControl;
-    VclPtr<ToolBox> m_xToolBox;
-    ToolBoxItemId m_nId;
-public:
-    MenuOrToolMenuButton(weld::MenuButton* pMenuButton);
-    MenuOrToolMenuButton(weld::Toolbar* pToolbar, OUString sIdent);
-    MenuOrToolMenuButton(SvxColorToolBoxControl* pControl, ToolBox* pToolbar, ToolBoxItemId nId);
-    ~MenuOrToolMenuButton();
-
-    MenuOrToolMenuButton(MenuOrToolMenuButton const &) = default;
-    MenuOrToolMenuButton(MenuOrToolMenuButton &&) = default;
-    MenuOrToolMenuButton & operator =(MenuOrToolMenuButton const &) = default;
-    MenuOrToolMenuButton & operator =(MenuOrToolMenuButton &&) = default;
-
-    bool get_active() const;
-    void set_inactive() const;
-    weld::Widget* get_widget() const;
-};
-
 class SVXCORE_DLLPUBLIC ColorWindow final : public WeldToolbarPopup
 {
 private:
@@ -91,27 +64,25 @@ private:
     TopLevelParentFunction maTopLevelParentFunction;
     ColorSelectFunction maColorSelectFunction;
 
-    std::unique_ptr<SvxColorValueSet> mxColorSet;
-    std::unique_ptr<SvxColorValueSet> mxRecentColorSet;
+    ColorIconView maColorIconView;
+    ColorIconView maRecentColorIconView;
     std::unique_ptr<weld::ComboBox> mxPaletteListBox;
     std::unique_ptr<weld::Button> mxButtonAutoColor;
     std::unique_ptr<weld::Button> mxButtonNoneColor;
     std::unique_ptr<weld::Button> mxButtonPicker;
     std::unique_ptr<weld::Widget> mxAutomaticSeparator;
-    std::unique_ptr<weld::CustomWeld> mxColorSetWin;
-    std::unique_ptr<weld::CustomWeld> mxRecentColorSetWin;
     weld::Button* mpDefaultButton;
 
-    DECL_DLLPRIVATE_LINK(ColorSelectHdl, ValueSet*, void);
-    DECL_DLLPRIVATE_LINK(RecentColorSelectHdl, ValueSet*, void);
+    DECL_DLLPRIVATE_LINK(ColorSelectHdl, int, void);
+    DECL_DLLPRIVATE_LINK(RecentColorSelectHdl, int, void);
     DECL_DLLPRIVATE_LINK(SelectPaletteHdl, weld::ComboBox&, void);
     DECL_DLLPRIVATE_LINK(AutoColorClickHdl, weld::Button&, void);
     DECL_DLLPRIVATE_LINK(OpenPickerClickHdl, weld::Button&, void);
 
-    static bool SelectValueSetEntry(SvxColorValueSet& rColorSet, const Color& rColor);
-    static NamedColor GetSelectEntryColor(const ValueSet& rColorSet);
+    static bool SelectIconViewEntry(ColorIconView& rColorIconView, const Color& rColor);
+    static NamedColor GetEntryColor(const ColorIconView& rColorIconView, int nIndex);
     NamedColor GetAutoColor() const;
-    void ApplySelectedColor(ValueSet& rColorSet);
+    void ApplyColor(ColorIconView& rColorIconView, int nIndex);
 
 public:
     ColorWindow(OUString  rCommand,

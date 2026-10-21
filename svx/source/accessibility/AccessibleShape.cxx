@@ -95,7 +95,7 @@ OUString GetOptionalProperty (
 // internal
 AccessibleShape::AccessibleShape(const AccessibleShapeInfo& rShapeInfo,
                                  const AccessibleShapeTreeInfo& rShapeTreeInfo)
-    : ImplInheritanceHelper(rShapeInfo.mxParent, AccessibleRole::SHAPE)
+    : ImplInheritanceHelper(rShapeInfo.mpParent, AccessibleRole::SHAPE)
     , mxShape(rShapeInfo.mxShape)
     , maShapeTreeInfo(rShapeTreeInfo)
     , m_nIndexInParent(-1)
@@ -394,20 +394,15 @@ sal_Int64 SAL_CALL
             mnStateSet &= ~AccessibleStateType::FOCUSED;
     }
     //Just when the document is not read-only,set states EDITABLE,RESIZABLE,MOVEABLE
-    css::uno::Reference<XAccessible> xTempAcc = getAccessibleParent();
-    if( xTempAcc.is() )
+    rtl::Reference<comphelper::OAccessible> pParent = implGetAccessibleParent();
+    if (pParent.is())
     {
-        css::uno::Reference<XAccessibleContext>
-                                xTempAccContext = xTempAcc->getAccessibleContext();
-        if( xTempAccContext.is() )
+        sal_Int64 nState = pParent->getAccessibleStateSet();
+        if (nState & AccessibleStateType::EDITABLE)
         {
-            sal_Int64 nState = xTempAccContext->getAccessibleStateSet();
-            if (nState & AccessibleStateType::EDITABLE)
-            {
-                mnStateSet |= AccessibleStateType::EDITABLE;
-                mnStateSet |= AccessibleStateType::RESIZABLE;
-                mnStateSet |= AccessibleStateType::MOVEABLE;
-            }
+            mnStateSet |= AccessibleStateType::EDITABLE;
+            mnStateSet |= AccessibleStateType::RESIZABLE;
+            mnStateSet |= AccessibleStateType::MOVEABLE;
         }
     }
 
@@ -998,8 +993,8 @@ struct XShapePosCompareHelper
 //end of group position
 
 // XAccessibleGroupPosition
-uno::Sequence< sal_Int32 > SAL_CALL
-AccessibleShape::getGroupPosition( const uno::Any& )
+uno::Sequence<sal_Int32> SAL_CALL
+AccessibleShape::getGroupPosition(const css::uno::Reference<css::accessibility::XAccessible>&)
 {
     // we will return the:
     // [0] group level
@@ -1038,7 +1033,7 @@ AccessibleShape::getGroupPosition( const uno::Any& )
         Reference< XAccessibleGroupPosition > xGroupPosition( xParent,uno::UNO_QUERY );
         if ( xGroupPosition.is() )
         {
-            aRet = xGroupPosition->getGroupPosition( uno::Any( getAccessibleContext() ) );
+            aRet = xGroupPosition->getGroupPosition(this);
         }
         return aRet;
     }
@@ -1089,7 +1084,7 @@ AccessibleShape::getGroupPosition( const uno::Any& )
     return aRet;
 }
 
-OUString AccessibleShape::getObjectLink( const uno::Any& )
+OUString AccessibleShape::getObjectLink(const css::uno::Reference<css::accessibility::XAccessible>&)
 {
     OUString aRet;
 
@@ -1103,7 +1098,7 @@ OUString AccessibleShape::getObjectLink( const uno::Any& )
         Reference< XAccessibleGroupPosition > xGroupPosition( maShapeTreeInfo.GetDocumentWindow(), uno::UNO_QUERY );
         if (xGroupPosition.is())
         {
-            aRet = xGroupPosition->getObjectLink( uno::Any( getAccessibleContext() ) );
+            aRet = xGroupPosition->getObjectLink(this);
         }
     }
     return aRet;

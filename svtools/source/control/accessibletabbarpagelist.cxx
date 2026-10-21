@@ -325,27 +325,6 @@ void AccessibleTabBarPageList::disposing()
     m_aAccessibleChildren.clear();
 }
 
-
-// XServiceInfo
-
-
-OUString AccessibleTabBarPageList::getImplementationName()
-{
-    return u"com.sun.star.comp.svtools.AccessibleTabBarPageList"_ustr;
-}
-
-
-sal_Bool AccessibleTabBarPageList::supportsService( const OUString& rServiceName )
-{
-    return cppu::supportsService(this, rServiceName);
-}
-
-
-Sequence< OUString > AccessibleTabBarPageList::getSupportedServiceNames()
-{
-    return { u"com.sun.star.awt.AccessibleTabBarPageList"_ustr };
-}
-
 // XAccessibleContext
 
 sal_Int64 AccessibleTabBarPageList::getAccessibleChildCount()
@@ -390,11 +369,10 @@ Reference< XAccessible > AccessibleTabBarPageList::getAccessibleParent(  )
 {
     OExternalLockGuard aGuard( this );
 
-    Reference< XAccessible > xParent;
     if ( m_pTabBar )
-        xParent = m_pTabBar->GetAccessible();
+        return m_pTabBar->GetAccessible();
 
-    return xParent;
+    return {};
 }
 
 
@@ -581,18 +559,13 @@ Reference< XAccessible > AccessibleTabBarPageList::getSelectedAccessibleChild( s
     if ( nSelectedChildIndex < 0 || nSelectedChildIndex >= getSelectedAccessibleChildCount() )
         throw IndexOutOfBoundsException();
 
-    Reference< XAccessible > xChild;
-
     for ( sal_Int64 i = 0, j = 0, nCount = getAccessibleChildCount(); i < nCount; i++ )
     {
         if ( isAccessibleChildSelected( i ) && ( j++ == nSelectedChildIndex ) )
-        {
-            xChild = getAccessibleChild( i );
-            break;
-        }
+            return getAccessibleChild(i);
     }
 
-    return xChild;
+    return {};
 }
 
 

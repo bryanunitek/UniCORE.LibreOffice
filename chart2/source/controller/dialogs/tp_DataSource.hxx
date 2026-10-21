@@ -83,7 +83,7 @@ private:
     DECL_LINK( CategoriesRangeButtonClickedHdl, weld::Button&, void );
     DECL_LINK( AddButtonClickedHdl, weld::Button&, void );
     DECL_LINK( RemoveButtonClickedHdl, weld::Button&, void );
-    DECL_LINK( RangeModifiedHdl, weld::Entry&, void );
+    DECL_LINK(RangeModifiedHdl, weld::TextWidget&, void);
     DECL_LINK( UpButtonClickedHdl, weld::Button&, void );
     DECL_LINK( DownButtonClickedHdl, weld::Button&, void );
 
@@ -102,7 +102,7 @@ private:
             <TRUE/> if the text from the field is a valid format to the internal
             data was valid
      */
-    bool updateModelFromControl(const weld::Entry* pField = nullptr);
+    bool updateModelFromControl(const weld::TextWidget* pField = nullptr);
 
     /** @return </sal_True>, if the edit field contains a valid range entry. If no
         XCellRangesAccess can be obtained, </sal_False> is returned.
@@ -120,8 +120,6 @@ private:
     void fillRoleListBox();
 
     std::vector<std::unique_ptr<SeriesEntry>> m_aEntries;
-
-    OUString       m_aFixedTextRange;
 
     ChartTypeTemplateProvider * m_pTemplateProvider;
     DialogModel &               m_rDialogModel;

@@ -121,7 +121,7 @@ AccessibleControlShape::~AccessibleControlShape()
     m_xControlContextProxy.clear();
     m_xControlContextTypeAccess.clear();
     m_xControlContextComponent.clear();
-        // this should remove the _only_ three "real" reference (means not delegated to
+        // this should remove the _only_ three "real" references (means not delegated to
         // ourself) to this proxy, and thus delete it
 }
 
@@ -201,10 +201,9 @@ void AccessibleControlShape::Init()
         else
         {
             Reference< XModeChangeBroadcaster > xControlModes( m_xUnoControl, UNO_QUERY );
-            Reference< XAccessible > xControlAccessible( xControlModes, UNO_QUERY );
             Reference< XAccessibleContext > xNativeControlContext;
-            if ( xControlAccessible.is() )
-                xNativeControlContext = xControlAccessible->getAccessibleContext();
+            if (UnoControl* pUnoControl = dynamic_cast<UnoControl*>(xControlModes.get()))
+                xNativeControlContext = pUnoControl->getAccessible();
             OSL_ENSURE( xNativeControlContext.is(), "AccessibleControlShape::Init: no AccessibleContext for the control!" );
             m_aControlContext = WeakReference< XAccessibleContext >( xNativeControlContext );
 

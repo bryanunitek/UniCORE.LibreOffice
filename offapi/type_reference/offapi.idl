@@ -155,7 +155,6 @@ module com {
      interface ::com::sun::star::awt::XControl;
      interface ::com::sun::star::awt::XWindow;
      interface ::com::sun::star::awt::XView;
-     [optional] interface ::com::sun::star::accessibility::XAccessible;
     };
     published service UnoControlDialogElement {
      [property] long Height;
@@ -6068,6 +6067,10 @@ module com {
     published interface XLinkCreator {
      interface ::com::sun::star::uno::XInterface;
      ::com::sun::star::uno::XInterface createInstanceLink([in] ::com::sun::star::embed::XStorage xStorage, [in] string sEntryName, [in] sequence< ::com::sun::star::beans::PropertyValue > aArgs, [in] sequence< ::com::sun::star::beans::PropertyValue > aObjectArgs) raises (::com::sun::star::lang::IllegalArgumentException, ::com::sun::star::io::IOException, ::com::sun::star::uno::Exception);
+    };
+    published interface XLinkFactory {
+     interface ::com::sun::star::uno::XInterface;
+     ::com::sun::star::uno::XInterface createInstanceLinkUserInit([in] sequence< byte > aClassID, [in] string ClassName, [in] ::com::sun::star::embed::XStorage xStorage, [in] string sEntryName, [in] sequence< ::com::sun::star::beans::PropertyValue > aArgs, [in] sequence< ::com::sun::star::beans::PropertyValue > aObjectArgs) raises (::com::sun::star::lang::IllegalArgumentException, ::com::sun::star::io::IOException, ::com::sun::star::uno::Exception);
     };
    };
    module frame {

@@ -34,9 +34,9 @@ using namespace ::com::sun::star::accessibility;
 // Ctor/Dtor/disposing --------------------------------------------------------
 
 AccessibleBrowseBoxHeaderBar::AccessibleBrowseBoxHeaderBar(
-    const Reference<XAccessible>& rxParent, vcl::IAccessibleTableProvider& rBrowseBox,
-    AccessibleBrowseBoxObjType eObjType)
-    : ImplInheritanceHelper(rxParent, rBrowseBox, eObjType)
+    const rtl::Reference<comphelper::OAccessible>& rpParent,
+    vcl::IAccessibleTableProvider& rBrowseBox, AccessibleBrowseBoxObjType eObjType)
+    : ImplInheritanceHelper(rpParent, rBrowseBox, eObjType)
 {
     OSL_ENSURE( isRowBar() || isColumnBar(),
         "AccessibleBrowseBoxHeaderBar - invalid object type" );
@@ -265,13 +265,6 @@ void SAL_CALL AccessibleBrowseBoxHeaderBar::deselectAccessibleChild(
         else
             implSelectColumn( implToVCLColumnPos( nSelectedChildIndex ), false );
     }
-}
-
-// XServiceInfo ---------------------------------------------------------------
-
-OUString SAL_CALL AccessibleBrowseBoxHeaderBar::getImplementationName()
-{
-    return u"com.sun.star.comp.svtools.AccessibleBrowseBoxHeaderBar"_ustr;
 }
 
 // internal virtual methods ---------------------------------------------------

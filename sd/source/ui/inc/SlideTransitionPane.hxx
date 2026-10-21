@@ -22,7 +22,6 @@
 
 #include "EventMultiplexer.hxx"
 #include <svtools/valueset.hxx>
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
 #include <vcl/weld/Button.hxx>
 #include <vcl/weld/CheckButton.hxx>
@@ -37,7 +36,6 @@
 #include <map>
 
 class SdDrawDocument;
-class SdXImpressDocument;
 namespace com::sun::star::drawing { class XDrawView; }
 namespace sdtools { class EventMultiplexerEvent; }
 
@@ -61,7 +59,6 @@ struct TransitionEntry
 };
 
 class SlideTransitionPane final : public PanelLayout
-                          , public sfx2::sidebar::ILayoutableWindow
 {
 public:
     explicit SlideTransitionPane(
@@ -69,7 +66,6 @@ public:
         ViewShellBase & rBase);
     virtual ~SlideTransitionPane() override;
 
-    // ILayoutableWindow
     virtual css::ui::LayoutSize GetHeightForWidth (const sal_Int32 nWidth) override;
 
     void onSelectionChanged();
@@ -93,7 +89,7 @@ private:
 
     ::sd::slidesorter::SharedPageSelection getSelectedPages() const;
 
-    void Initialize(SdDrawDocument* pDoc);
+    void Initialize();
 
     DECL_LINK( ApplyToAllButtonClicked, weld::Button&, void );
     DECL_LINK( PlayButtonClicked, weld::Button&, void );
@@ -134,13 +130,11 @@ private:
     std::unique_ptr<weld::CheckButton> mxCB_AUTO_PREVIEW;
 
     css::uno::Reference< css::drawing::XDrawView >             mxView;
-    rtl::Reference< SdXImpressDocument >                  mxModel;
 
     std::unordered_map<OUString, std::unique_ptr<TransitionEntry>> maTranstionMap;
 
     bool         mbHasSelection;
     bool         mbUpdatingControls;
-    bool         mbIsMainViewChangePending;
 
     std::vector<OUString>  maSoundList;
     mutable OUString maCurrentSoundFile;

@@ -153,18 +153,18 @@ CPPUNIT_TEST_FIXTURE(Test, testFlyMinimalWrap)
 
 CPPUNIT_TEST_FIXTURE(Test, testContentControlHeaderPDFExport)
 {
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+        return;
+
     // Given a document with a content control in the header:
     createSwDoc("content-control-header.docx");
 
     // When exporting to PDF:
-    save(TestFilter::PDF_WRITER);
+    save(TestFilter::PDF);
 
     // Then make sure all the expected text is there on page 2:
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
-    if (!pPdfDocument)
-    {
-        return;
-    }
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
     std::unique_ptr<vcl::pdf::PDFiumPage> pPage2 = pPdfDocument->openPage(1);
     int nTextCount = 0;
     for (int i = 0; i < pPage2->getObjectCount(); ++i)
@@ -221,10 +221,10 @@ CPPUNIT_TEST_FIXTURE(Test, testCheckedCheckboxContentControlPDF)
     pWrtShell->GotoContentControl(rFormatContentControl);
 
     // When exporting to PDF:
-    save(TestFilter::PDF_WRITER);
+    save(TestFilter::PDF);
 
     // Then make sure that a checked checkbox form widget is emitted:
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
     std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdfDocument->openPage(0);
     CPPUNIT_ASSERT_EQUAL(1, pPage->getAnnotationCount());
     std::unique_ptr<vcl::pdf::PDFiumAnnotation> pAnnotation = pPage->getAnnotation(0);
@@ -259,10 +259,10 @@ CPPUNIT_TEST_FIXTURE(Test, testContentControlPDFFontColor)
     pWrtShell->InsertContentControl(SwContentControlType::RICH_TEXT);
 
     // When exporting that document to PDF:
-    save(TestFilter::PDF_WRITER);
+    save(TestFilter::PDF);
 
     // Then make sure that the widget in the PDF result has that custom font color:
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
     std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdfDocument->openPage(0);
     pPage->onAfterLoadPage(pPdfDocument.get());
     CPPUNIT_ASSERT_EQUAL(1, pPage->getAnnotationCount());
@@ -313,10 +313,10 @@ CPPUNIT_TEST_FIXTURE(Test, testContentControlPDFDropDownText)
     xText->insertTextContent(xCursor, xContentControl, /*bAbsorb=*/true);
 
     // When exporting that to PDF:
-    save(TestFilter::PDF_WRITER);
+    save(TestFilter::PDF);
 
     // Then make sure that the custom default is not lost:
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
     std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdfDocument->openPage(0);
     pPage->onAfterLoadPage(pPdfDocument.get());
     CPPUNIT_ASSERT_EQUAL(1, pPage->getAnnotationCount());
@@ -349,12 +349,12 @@ CPPUNIT_TEST_FIXTURE(Test, testContentControlPDFComments)
         comphelper::makePropertyValue(u"ExportNotes"_ustr, false),
         comphelper::makePropertyValue(u"ExportNotesInMargin"_ustr, true),
     };
-    save(TestFilter::PDF_WRITER, {
-                                     comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
-                                 });
+    save(TestFilter::PDF, {
+                              comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+                          });
 
     // Then make sure the only widget for the content control has a correct position:
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
     std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdfDocument->openPage(0);
     pPage->onAfterLoadPage(pPdfDocument.get());
     CPPUNIT_ASSERT_EQUAL(1, pPage->getAnnotationCount());

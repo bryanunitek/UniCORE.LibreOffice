@@ -34,6 +34,7 @@
 #include <osl/diagnose.h>
 #include <drawingml/textbody.hxx>
 #include <drawingml/textparagraph.hxx>
+#include <drawingml/chart/axismodel.hxx>
 #include <drawingml/chart/datasourceconverter.hxx>
 #include <drawingml/chart/titlemodel.hxx>
 #include <oox/token/properties.hxx>
@@ -65,7 +66,7 @@ Reference< XDataSequence > TextConverter::createDataSequence( const OUString& rR
     if( mrModel.mxDataSeq.is() )
     {
         DataSequenceConverter aDataSeqConv( *this, *mrModel.mxDataSeq );
-        xDataSeq = aDataSeqConv.createDataSequence( rRole );
+        xDataSeq = aDataSeqConv.createDataSequence( rRole, DataSourceType::UNKNOWN );
     }
     return xDataSeq;
 }
@@ -186,7 +187,7 @@ TitleConverter::~TitleConverter()
 {
 }
 
-void TitleConverter::convertFromModel( const Reference< XTitled >& rxTitled, const OUString& rAutoTitle, ObjectType eObjType, sal_Int32 nMainIdx, sal_Int32 nSubIdx )
+void TitleConverter::convertFromModel( const Reference< XTitled >& rxTitled, const OUString& rAutoTitle, ObjectType eObjType, ChartType eCT, sal_Int32 nMainIdx, sal_Int32 nSubIdx )
 {
     if( !rxTitled.is() )
         return;
@@ -208,6 +209,10 @@ void TitleConverter::convertFromModel( const Reference< XTitled >& rxTitled, con
         // frame formatting (text formatting already done in TextConverter::createStringSequence())
         PropertySet aPropSet( xTitle );
         getFormatter().convertFrameFormatting( aPropSet, mrModel.mxShapeProp, eObjType );
+
+        if (eCT == ChartType::CX && mrModel.mxShapeProp.is()) {
+            aPropSet.setProperty(PROP_HasExplicitSpPr, true);
+        }
 
         // frame rotation
         OSL_ENSURE( !mrModel.mxTextProp || !rText.mxTextBody, "TitleConverter::convertFromModel - multiple text properties" );
@@ -231,7 +236,7 @@ LegendConverter::~LegendConverter()
 {
 }
 
-void LegendConverter::convertFromModel( const Reference< XDiagram >& rxDiagram )
+void LegendConverter::convertFromModel( const Reference< XDiagram >& rxDiagram, ChartType eCT )
 {
     if( !rxDiagram.is() )
         return;
@@ -254,7 +259,7 @@ void LegendConverter::convertFromModel( const Reference< XDiagram >& rxDiagram )
         cssc2::LegendPosition eLegendPos = cssc2::LegendPosition_LINE_END;
         cssc::ChartLegendExpansion eLegendExpand = cssc::ChartLegendExpansion_CUSTOM;
         RelativePosition eRelPos;
-        bool bTopRight=false;
+        bool bTopRight = false;
         switch( mrModel.mnPosition )
         {
             case XML_l:
@@ -267,9 +272,9 @@ void LegendConverter::convertFromModel( const Reference< XDiagram >& rxDiagram )
             break;
             case XML_tr:    // top-right not supported
                 eRelPos.Primary = 1;
-                eRelPos.Secondary =0;
+                eRelPos.Secondary = 0;
                 eRelPos.Anchor = Alignment_TOP_RIGHT;
-                bTopRight=true;
+                bTopRight = true;
             break;
             case XML_t:
                 eLegendPos = cssc2::LegendPosition_PAGE_START;
@@ -280,7 +285,7 @@ void LegendConverter::convertFromModel( const Reference< XDiagram >& rxDiagram )
                 eLegendExpand = cssc::ChartLegendExpansion_WIDE;
             break;
         }
-        bool bManualLayout=false;
+        bool bManualLayout = false;
         // manual positioning and size
         if( mrModel.mxLayout )
         {
@@ -298,12 +303,16 @@ void LegendConverter::convertFromModel( const Reference< XDiagram >& rxDiagram )
         aPropSet.setProperty( PROP_Expansion, eLegendExpand );
 
         if (bTopRight && !bManualLayout)
-            aPropSet.setProperty( PROP_RelativePosition , Any(eRelPos));
+            aPropSet.setProperty( PROP_RelativePosition, Any(eRelPos));
 
         aPropSet.setProperty(PROP_Overlay, mrModel.mbOverlay);
 
         if (mrModel.maLegendEntries.size() > 0)
             legendEntriesFormatting(rxDiagram);
+
+        if (eCT == ChartType::CX && mrModel.mxShapeProp.is()) {
+            aPropSet.setProperty(PROP_HasExplicitSpPr, true);
+        }
     }
     catch( Exception& )
     {

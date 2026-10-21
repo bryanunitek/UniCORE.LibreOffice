@@ -46,7 +46,6 @@
 #include <editeng/charscaleitem.hxx>
 #include <editeng/numitem.hxx>
 #include <editeng/StripPortionsHelper.hxx>
-#include <outleeng.hxx>
 #include <TextPortion.hxx>
 #include <tools/gen.hxx>
 
@@ -1172,7 +1171,7 @@ bool ImpEditEngine::CreateLines( sal_Int32 nPara, sal_uInt32 nStartPosY )
                                         }
                                         else
                                         {
-                                            //even the 1. char does not fit..
+                                            //even the 1. char does not fit...
                                             //this means the field should start on next line
                                             //except if the actual line is a full line already
                                             if (nLineStartX < 0 || nStartX > nStartXNextLine)
@@ -2889,6 +2888,7 @@ void ImpEditEngine::SeekCursor( ContentNode* pNode, sal_Int32 nPos, SvxFont& rFo
     {
         const SvxFontItem& rFontItem = static_cast<const SvxFontItem&>(pNode->GetContentAttribs().GetItem( GetScriptItemId( EE_CHAR_FONTINFO, nScriptType ) ));
         rFont.SetFamilyName( rFontItem.GetFamilyName() );
+        rFont.SetStyleName( rFontItem.GetStyleName() );
         rFont.SetFamily( rFontItem.GetFamily() );
         rFont.SetPitch( rFontItem.GetPitch() );
         rFont.SetCharSet( rFontItem.GetCharSet() );
@@ -3809,11 +3809,9 @@ void ImpEditEngine::StripAllPortions( OutputDevice& rOutDev, tools::Rectangle aC
                                             {
                                                 // tdf#148966 don't paint the line break following a
                                                 // multiline field based on a compat flag
-                                                OutlinerEditEng* pOutlEditEng{ dynamic_cast<OutlinerEditEng*>(mpEditEngine)};
                                                 int nStartNextLine = rParaPortion.GetLines()[nLine + 1].GetStartPortion();
                                                 const TextPortion& rNextTextPortion = rParaPortion.GetTextPortions()[nStartNextLine];
-                                                if (pOutlEditEng
-                                                    && pOutlEditEng->GetCompatFlag(SdrCompatibilityFlag::IgnoreBreakAfterMultilineField)
+                                                if (mpEditEngine->GetCompatFlag(SdrCompatibilityFlag::IgnoreBreakAfterMultilineField)
                                                            .value_or(false))
                                                 {
                                                     if (rNextTextPortion.GetKind() == PortionKind::LINEBREAK)
@@ -4214,21 +4212,18 @@ void ImpEditEngine::InsertContent(std::unique_ptr<ContentNode> pNode, sal_Int32 
 
 EditPaM ImpEditEngine::SplitContent( sal_Int32 nNode, sal_Int32 nSepPos )
 {
-    ContentNode* pNode = maEditDoc.GetObject( nNode );
-    assert(pNode && "Invalid Node in SplitContent");
+    ContentNode& rNode = maEditDoc.GetObject( nNode );
     DBG_ASSERT( IsInUndo(), "SplitContent only for Undo()!" );
-    DBG_ASSERT( nSepPos <= pNode->Len(), "Index out of range: SplitContent" );
-    EditPaM aPaM( pNode, nSepPos );
+    DBG_ASSERT( nSepPos <= rNode.Len(), "Index out of range: SplitContent" );
+    EditPaM aPaM( rNode, nSepPos );
     return ImpInsertParaBreak( aPaM );
 }
 
 EditPaM ImpEditEngine::ConnectContents( sal_Int32 nLeftNode, bool bBackward )
 {
-    ContentNode* pLeftNode = maEditDoc.GetObject( nLeftNode );
-    ContentNode* pRightNode = maEditDoc.GetObject( nLeftNode+1 );
-    DBG_ASSERT( pLeftNode, "Invalid left node in ConnectContents ");
-    DBG_ASSERT( pRightNode, "Invalid right node in ConnectContents ");
-    return ImpConnectParagraphs( pLeftNode, pRightNode, bBackward );
+    ContentNode& rLeftNode = maEditDoc.GetObject( nLeftNode );
+    ContentNode& rRightNode = maEditDoc.GetObject( nLeftNode+1 );
+    return ImpConnectParagraphs( &rLeftNode, &rRightNode, bBackward );
 }
 
 bool ImpEditEngine::SetUpdateLayout( bool bUp, EditView* pCurView, bool bForceUpdate )
@@ -4535,16 +4530,13 @@ EditPaM ImpEditEngine::InsertParagraph( sal_Int32 nPara )
     EditPaM aPaM;
     if ( nPara != 0 )
     {
-        ContentNode* pNode = GetEditDoc().GetObject( nPara-1 );
-        if ( !pNode )
-            pNode = GetEditDoc().GetObject( GetEditDoc().Count() - 1 );
-        assert(pNode && "Not a single paragraph in InsertParagraph ?");
-        aPaM = EditPaM( pNode, pNode->Len() );
+        ContentNode& rNode = GetEditDoc().GetObject( nPara-1 );
+        aPaM = EditPaM( rNode, rNode.Len() );
     }
     else
     {
-        ContentNode* pNode = GetEditDoc().GetObject( 0 );
-        aPaM = EditPaM( pNode, 0 );
+        ContentNode& rNode = GetEditDoc().GetObject( 0 );
+        aPaM = EditPaM( rNode, 0 );
     }
 
     return ImpInsertParaBreak( aPaM );
@@ -4553,10 +4545,8 @@ EditPaM ImpEditEngine::InsertParagraph( sal_Int32 nPara )
 std::optional<EditSelection> ImpEditEngine::SelectParagraph( sal_Int32 nPara )
 {
     std::optional<EditSelection> pSel;
-    ContentNode* pNode = GetEditDoc().GetObject( nPara );
-    SAL_WARN_IF( !pNode, "editeng", "Paragraph does not exist: SelectParagraph" );
-    if ( pNode )
-        pSel.emplace( EditPaM( pNode, 0 ), EditPaM( pNode, pNode->Len() ) );
+    ContentNode& rNode = GetEditDoc().GetObject( nPara );
+    pSel.emplace( EditPaM( rNode, 0 ), EditPaM( rNode, rNode.Len() ) );
 
     return pSel;
 }
@@ -4720,8 +4710,8 @@ void ImpEditEngine::ImplInitLayoutMode(OutputDevice& rOutDev, sal_Int32 nPara, s
     }
     else
     {
-        ContentNode* pNode = GetEditDoc().GetObject( nPara );
-        short nScriptType = GetI18NScriptType( EditPaM( pNode, nIndex+1 ) );
+        ContentNode& rNode = GetEditDoc().GetObject( nPara );
+        short nScriptType = GetI18NScriptType( EditPaM( rNode, nIndex+1 ) );
         bCTL = nScriptType == i18n::ScriptType::COMPLEX;
         // this change was discussed in issue 37190
         bR2L = (GetRightToLeft( nPara, nIndex + 1) % 2) != 0;
@@ -4792,7 +4782,7 @@ Color ImpEditEngine::GetAutoColor(const SvxFont* pFont) const
     Color aBackgroundColor(COL_AUTO);
     if (pFont) //check for char background color
         aBackgroundColor = pFont->GetFillColor();
-    if (aBackgroundColor == COL_AUTO) // check for aother background (i.e: cell color)
+    if (aBackgroundColor == COL_AUTO) // check for another background (i.e: cell color)
         aBackgroundColor = GetBackgroundColor();
 
     const SfxViewShell* pKitSh = comphelper::LibreOfficeKit::isActive() ? SfxViewShell::Current() : nullptr;

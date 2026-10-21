@@ -2622,7 +2622,8 @@ void DbListBox::SetList(const Any& rItems)
 
 void DbListBox::Init(BrowserDataWin& rParent, const Reference< XRowSet >& xCursor)
 {
-    m_rColumn.SetAlignment(css::awt::TextAlign::LEFT);
+    // tdf#98382 - read alignment from model instead of hardcoding LEFT
+    m_rColumn.SetAlignmentFromModel(css::awt::TextAlign::LEFT);
 
     m_pWindow = VclPtr<ListBoxControl>::Create( &rParent );
 
@@ -2959,16 +2960,16 @@ bool DbFilterField::commitControl()
             OUString aErrorMsg;
             Reference< XNumberFormatter >  xNumberFormatter(m_rColumn.GetParent().getNumberFormatter());
 
-            std::unique_ptr< OSQLParseNode > pParseNode = predicateTree(aErrorMsg, aNewText,xNumberFormatter, m_rColumn.GetField());
+            Reference< XRowSet > xDataSourceRowSet(
+                Reference< XInterface >(*m_rColumn.GetParent().getDataSource()), UNO_QUERY);
+            Reference< XConnection >  xConnection(getConnection(xDataSourceRowSet));
+
+            std::unique_ptr< OSQLParseNode > pParseNode = predicateTree(aErrorMsg, aNewText,xNumberFormatter, m_rColumn.GetField(), xConnection);
             if (pParseNode != nullptr)
             {
                 OUString aPreparedText;
 
                 css::lang::Locale aAppLocale = Application::GetSettings().GetUILanguageTag().getLocale();
-
-                Reference< XRowSet > xDataSourceRowSet(
-                    Reference< XInterface >(*m_rColumn.GetParent().getDataSource()), UNO_QUERY);
-                Reference< XConnection >  xConnection(getConnection(xDataSourceRowSet));
 
                 pParseNode->parseNodeToPredicateStr(aPreparedText,
                                                     xConnection,

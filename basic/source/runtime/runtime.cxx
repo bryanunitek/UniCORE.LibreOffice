@@ -628,6 +628,15 @@ void SbiRuntime::SetIsMissing( SbxVariable* pVar )
     pVar->SetInfo( pInfo );
 }
 
+// tdf#102381 - turns a variable into the representation of a missing argument
+void SbxSetMissingParameter(SbxVariable& rVar)
+{
+    // #57915 The semantics of a missing argument is represented by the value 448
+    // (ERRCODE_BASIC_NAMED_NOT_FOUND) of the type error in VB.
+    rVar.PutErr(448);
+    SbiRuntime::SetIsMissing(&rVar);
+}
+
 // tdf#79426, tdf#125180 - checks if a variable contains the information about a missing parameter
 bool SbiRuntime::IsMissing( SbxVariable* pVar, sal_uInt16 nIdx )
 {
@@ -708,7 +717,7 @@ void SbiRuntime::SetParameters( SbxArray* pParams )
                 }
                 SbxVariable* v2 = new SbxVariable( t );
                 v2->SetFlag( SbxFlagBits::ReadWrite );
-                // tdf#79426, tdf#125180 - if parameter was missing, readd additional information about a missing parameter
+                // tdf#79426, tdf#125180 - if parameter was missing, re-add additional information about a missing parameter
                 if ( IsMissing( v, 1 ) )
                 {
                     SetIsMissing( v2 );
@@ -2788,13 +2797,10 @@ void SbiRuntime::StepRESTART()
 void SbiRuntime::StepEMPTY()
 {
     // #57915 The semantics of StepEMPTY() is the representation of a missing argument.
-    // This is represented by the value 448 (ERRCODE_BASIC_NAMED_NOT_FOUND) of the type error
-    // in VB. StepEmpty should now rather be named StepMISSING() but the name is kept
-    // to simplify matters.
+    // StepEmpty should now rather be named StepMISSING() but the name is kept to simplify matters.
     SbxVariableRef xVar = new SbxVariable( SbxVARIANT );
-    xVar->PutErr( 448 );
     // tdf#79426, tdf#125180 - add additional information about a missing parameter
-    SetIsMissing( xVar.get() );
+    SbxSetMissingParameter(*xVar);
     PushVar( xVar.get() );
 }
 
@@ -3057,14 +3063,14 @@ void SbiRuntime::StepONJUMP( sal_uInt32 nOp1 )
     SbxVariableRef p = PopVar();
     sal_Int16 n = p->GetInteger();
 
-    if (nOp1 & 0x8000)
-        nOp1 &= 0x7FFF;
+    sal_uInt32 nMax = nOp1 & 0x7FFF;
 
     // tdf#160321 - do not execute the jump statement if the expression is out of range
-    if (n < 1 || o3tl::make_unsigned(n) > nOp1)
-        n = static_cast<sal_Int16>(nOp1 + 1);
+    if (n < 1 || o3tl::make_unsigned(n) > nMax)
+        n = static_cast<sal_Int16>(nMax + 1);
+    // tdf#173360 - only push a return address for a valid On...GoSub target
     else if (nOp1 & 0x8000)
-        PushGosub(pCode + 5 * nOp1);
+        PushGosub(pCode + 5 * nMax);
 
     nOp1 = static_cast<sal_uInt32>(pCode - pImg->GetCode()) + 5 * --n;
     StepJUMP( nOp1 );
@@ -3938,8 +3944,7 @@ void SbiRuntime::SetupArgs( SbxVariable* p, sal_uInt32 nOp1 )
                             // Same as in SbiRuntime::StepEMPTY(), because the compiler does not
                             // generate a StepEMPTY for StepPARAM when there is no COMMA token
                             xVar = new SbxVariable(SbxVARIANT);
-                            xVar->PutErr(448);
-                            SetIsMissing(xVar.get());
+                            SbxSetMissingParameter(*xVar);
                         }
                         pArg->Put(xVar.get(), j);
                     }
@@ -4242,9 +4247,8 @@ void SbiRuntime::StepPARAM( sal_uInt32 nOp1, sal_uInt32 nOp2 )
         while( iLoop >= nParamCount )
         {
             pVar = new SbxVariable();
-            pVar->PutErr( 448 );       // like in VB: Error-Code 448 (ERRCODE_BASIC_NAMED_NOT_FOUND)
             // tdf#79426, tdf#125180 - add additional information about a missing parameter
-            SetIsMissing( pVar );
+            SbxSetMissingParameter(*pVar);
             refParams->Put(pVar, iLoop);
             iLoop--;
         }

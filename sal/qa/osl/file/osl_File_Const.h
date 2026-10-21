@@ -54,9 +54,9 @@ extern "C"
 {
 #endif
 
-// common used string resource
-// these common used string will be used as assist resource in test
-// they are mostly OS independent, some of the resource can be reused
+// commonly used string resources
+// these commonly used strings will be used as assistant resources in test
+// they are mostly OS independent, some of the resources can be reused
 // so, a common test data repository will be better since it can be
 // shared among all test code
 
@@ -67,11 +67,11 @@ const char pBuffer_Blank[]  = "";
 // OS dependent/independent definitions/includes
 // we use FILE_PREFIX for URL prefix,
 //        TEST_PLATFORM for test platform initial,
-//        TEST_PLATFORM_ROOT for root dir in comrresponding platform,
-//        TEST_PLATFORM_TEMP for temp dir in comrresponding platform,
-//        PATH_LIST_DELIMITER for separator of path list in comrresponding platform,
-//        PATH_SEPARATOR for separator in URL or system path in comrresponding platform,
-//        PATH_MAX/MAX_PATH for max path length in comrresponding platform,
+//        TEST_PLATFORM_ROOT for root dir in corresponding platform,
+//        TEST_PLATFORM_TEMP for temp dir in corresponding platform,
+//        PATH_LIST_DELIMITER for separator of path list in corresponding platform,
+//        PATH_SEPARATOR for separator in URL or system path in corresponding platform,
+//        PATH_MAX/MAX_PATH for max path length in corresponding platform,
 
 // OS independent const definition
 
@@ -124,7 +124,7 @@ OUString aTempDirectoryURL(getTempDirectoryURL_());
 OUString aUserDirectorySys( aTempDirectorySys + "" );
 OUString aUserDirectoryURL( aTempDirectoryURL + "" );
 
-// common used URL:temp, canonical, root, relative, link,etc
+// commonly used URLs: temp, canonical, root, relative, link, etc.
 
 OUString aCanURL1( aTempDirectoryURL +  "/canonical.name" );
 OUString aCanURL2(
@@ -150,7 +150,7 @@ OUString aRelURL5( aTempDirectoryURL + "/./../"     );
 OUString aLnkURL1( aTempDirectoryURL + "/link.file" );
 OUString aHidURL1( u".hiddenfile"_ustr );
 
-// common used System Path:temp, root,etc
+// commonly used System Paths: temp, root, etc.
 
 OUString aRootSys( u"" TEST_PLATFORM_ROOT ""_ustr);
 OUString aSysPath1( aTempDirectorySys + "/system.path" );

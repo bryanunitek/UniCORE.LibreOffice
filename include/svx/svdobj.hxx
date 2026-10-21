@@ -246,13 +246,16 @@ protected:
     void resetViewContact();
 
 private:
-    // check if a ObjectName is set and it is in DiagramModelID syntax
+    // check if an ObjectName is set and it is in DiagramModelID syntax
     bool ObjectNameIsDiagramModelID();
 
     friend class                SdrObjListIter;
     friend class                SdrObjList;
     friend class                SdrVirtObj;
     friend class                SdrRectObj;
+
+    // Returns a copy of the object. Every inherited class must reimplement this.
+    virtual rtl::Reference<SdrObject> implCloneSdrObject(SdrModel& rTargetModel) const = 0;
 
     // OperationSmiley: Allow at each SdrObject to set a FillGeometryDefiningShape,
     // so that for SdrObjects where this is set, the definition of a defined FillStyle
@@ -369,6 +372,20 @@ public:
     virtual OUString GetDescription() const;
     virtual void SetDecorative(bool isDecorative);
     virtual bool IsDecorative() const;
+    // tdf#167714 a "standard horizontal rule", which is laid out and cropped its own way.
+    // This says which kind of object this is, not how it looks: it belongs to creating a rule and
+    // is read-only afterwards, never toggled on an existing shape, so no undo action reverses it.
+    void SetHorizontalRule(bool isHorizontalRule) { m_bHorizontalRule = isHorizontalRule; }
+    // The flag lives in a graphic style, which can be shared or applied to anything, so it is
+    // honoured only for the two shapes a rule can be made of: a filled bar (the shaded rule) and
+    // a picture (a picture rule). On an ellipse, a group or a custom shape it would ask for a
+    // layout that makes no sense.
+    bool IsHorizontalRule() const
+    {
+        const SdrObjKind eKind = GetObjIdentifier();
+        return m_bHorizontalRule
+               && (eKind == SdrObjKind::Rectangle || eKind == SdrObjKind::Graphic);
+    }
 
     // Object representing an annotation
     bool isAnnotationObject() const { return bool(mpAnnotationData); }
@@ -438,8 +455,12 @@ public:
     // means no change of the rotation point (only centered) and no shear allowed
     virtual bool HasLimitedRotation() const;
 
-    // Returns a copy of the object. Every inherited class must reimplement this.
-    virtual rtl::Reference<SdrObject> CloneSdrObject(SdrModel& rTargetModel) const = 0;
+    // Returns a copy of the object. Internally uses the virtual and
+    // overridden method implCloneSdrObject that is implemented for each
+    // derivation. If cloned to another SdrModel it will support calling
+    // postProcessAfterCloneToDifferentModel
+    rtl::Reference<SdrObject> CloneSdrObject(SdrModel& rTargetModel) const;
+
     // helper, since Clone always return the type of the current subclass
     template<class T>
     static rtl::Reference<T> Clone(T const & rObj, SdrModel& rTargetModel)
@@ -498,7 +519,7 @@ public:
 
     // FullDrag support. This is for standard interactions and for SdrObjOwn
     // support. If supportsFullDrag() returns true, getFullDragClone has to
-    // return a cloned SdrObject (who's ownership it loses) at which modifications
+    // return a cloned SdrObject (whose ownership it loses) at which modifications
     // like Move(), Scale(), etc or applySpecialDrag() will be executed. That
     // object will be visualized on overlay for full drag, but should not be
     // part of the model, thus not changing anything since it's only a temporary
@@ -928,6 +949,9 @@ protected:
     bool                        mbLineIsOutsideGeometry : 1;
     // #i25616#
     bool                        mbSupportTextIndentingOnLineWidthChange : 1;
+
+    bool                        m_bHorizontalRule = false;
+
     // custom prompt text for empty presentation object
     OUString                    m_aCustomPromptText;
 

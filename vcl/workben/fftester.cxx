@@ -46,8 +46,10 @@
 #include <vcl/graphicfilter.hxx>
 #include <vcl/filter/PngImageReader.hxx>
 #include <vcl/font/EOTConverter.hxx>
+#include <vcl/pdfwriter.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wmf.hxx>
+#include <filter/JxlReader.hxx>
 #include <filter/TiffReader.hxx>
 #include <filter/TgaReader.hxx>
 #include <filter/PictReader.hxx>
@@ -68,7 +70,6 @@
 #include <rtl/bootstrap.hxx>
 #include <tools/stream.hxx>
 #include <vcl/gdimtf.hxx>
-#include <fontsubset.hxx>
 
 #include "../source/filter/igif/gifread.hxx"
 #include "../source/filter/ixbm/xbmread.hxx"
@@ -142,17 +143,17 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         Application::EnableHeadlessMode(false);
         InitVCL();
 
-        if (strcmp(argv[2], "wmf") == 0 || strcmp(argv[2], "emf") == 0)
-        {
-            GDIMetaFile aGDIMetaFile;
-            SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ReadWindowMetafile(aFileStream, aGDIMetaFile));
-        }
-        else if (strcmp(argv[2], "jpg") == 0)
+        if (strcmp(argv[2], "jpg") == 0)
         {
             ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
             ret = static_cast<int>(ImportJPEG(aFileStream, aImportOutput, GraphicFilterImportFlags::NONE, nullptr));
+        }
+        else if (strcmp(argv[2], "jxl") == 0)
+        {
+            Graphic aGraphic;
+            SvFileStream aFileStream(out, StreamMode::READ);
+            ret = static_cast<int>(ImportJxlGraphic(aFileStream, aGraphic));
         }
         else if (strcmp(argv[2], "gif") == 0)
         {
@@ -265,10 +266,12 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         }
         else if (strcmp(argv[2], "sft") == 0)
         {
+            // The font under test has to be found by name.
+            unsetenv("SAL_NO_FONT_LOOKUP");
             SvFileStream aFileStream(out, StreamMode::READ);
             std::vector<sal_uInt8> aData(aFileStream.remainingSize());
             aFileStream.ReadBytes(aData.data(), aData.size());
-            ret = TestFontParsing(aData.data(), aData.size());
+            ret = TestFontPDFExport(aData.data(), aData.size());
         }
 #ifndef DISABLE_DYNLOADING
         else if ((strcmp(argv[2], "doc") == 0) || (strcmp(argv[2], "ww8") == 0))
@@ -607,6 +610,16 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
             if (!pfnImport)
             {
                 pfnImport = load(u"libsvgiolo.so", "TestImportSVG");
+            }
+            SvFileStream aFileStream(out, StreamMode::READ);
+            ret = static_cast<int>((*pfnImport)(aFileStream));
+        }
+        else if (strcmp(argv[2], "wmf") == 0 || strcmp(argv[2], "emf") == 0)
+        {
+            static FFilterCall pfnImport(nullptr);
+            if (!pfnImport)
+            {
+                pfnImport = load(u"libdrawinglayerlo.so", "TestImportWMF");
             }
             SvFileStream aFileStream(out, StreamMode::READ);
             ret = static_cast<int>((*pfnImport)(aFileStream));

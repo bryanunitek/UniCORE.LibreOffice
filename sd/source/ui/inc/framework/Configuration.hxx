@@ -19,9 +19,10 @@
 
 #pragma once
 
+#include <AnchorBindingMode.hxx>
+
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/drawing/framework/AnchorBindingMode.hpp>
 #include <comphelper/compbase.hxx>
 #include <rtl/ref.hxx>
 #include <memory>
@@ -114,7 +115,7 @@ public:
         @param xAnchorId
             This anchor typically is either a pane or an empty
             ResourceId object.  An
-            empty reference is treated like an ResourceId object.
+            empty reference is treated like a ResourceId object.
         @param sTargetURLPrefix
             When a non-empty string is given then resource ids are returned
             only when their resource URL matches this prefix, i.e. when it
@@ -139,7 +140,7 @@ public:
     std::vector< rtl::Reference<sd::framework::ResourceId> > getResources (
         const rtl::Reference<sd::framework::ResourceId>& rxAnchorId,
         std::u16string_view rsResourceURLPrefix,
-        css::drawing::framework::AnchorBindingMode eMode);
+        sd::framework::AnchorBindingMode eMode);
 
     /** <p>Returns whether the specified resource is part of the
         configuration.</p>
@@ -173,8 +174,8 @@ public:
 
 private:
     class ResourceContainer;
-    /** The resource container holds the URLs of unique resource and of
-        resource linked to unique resources.
+    /** The resource container holds the URLs of unique resources and of
+        resources linked to unique resources.
     */
     std::unique_ptr<ResourceContainer> mpResourceContainer;
 

@@ -23,24 +23,9 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-
 VCLXAccessibleComboBox::VCLXAccessibleComboBox(ComboBox* pComboBox)
-    : VCLXAccessibleBox(pComboBox, VCLXAccessibleBox::COMBOBOX, false)
+    : VCLXAccessibleBox(pComboBox, VCLXAccessibleBox::BoxType::COMBOBOX, false)
 {
-}
-
-// XServiceInfo
-
-OUString VCLXAccessibleComboBox::getImplementationName()
-{
-    return u"com.sun.star.comp.toolkit.AccessibleComboBox"_ustr;
-}
-
-
-Sequence< OUString > VCLXAccessibleComboBox::getSupportedServiceNames()
-{
-    return comphelper::concatSequences(VCLXAccessibleBox::getSupportedServiceNames(),
-                                       std::initializer_list<OUString>{u"com.sun.star.accessibility.AccessibleComboBox"_ustr});
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
