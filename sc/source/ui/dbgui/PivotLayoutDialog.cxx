@@ -54,11 +54,9 @@ namespace
 ScRange lclGetRangeForNamedRange(OUString const & aName, const ScDocument& rDocument)
 {
     ScRange aInvalidRange(ScAddress::INITIALIZE_INVALID);
-    ScRangeName* pRangeName = rDocument.GetRangeName();
-    if (pRangeName == nullptr)
-        return aInvalidRange;
+    ScRangeName& rRangeName = rDocument.GetRangeName();
 
-    const ScRangeData* pData = pRangeName->findByUpperName(aName.toAsciiUpperCase());
+    const ScRangeData* pData = rRangeName.findByUpperName(aName.toAsciiUpperCase());
     if (pData == nullptr)
         return aInvalidRange;
 
@@ -626,7 +624,9 @@ bool ScPivotLayoutDialog::IsDataElement(SCCOL nColumn)
 
 bool ScPivotLayoutDialog::IsCalculatedElement(SCCOL nColumn)
 {
-    return maPivotParameters.maLabelArray[nColumn]->mbCalculatedField;
+    // tdf#174093 - a data element cannot be a calculated field
+    return nColumn != PIVOT_DATA_FIELD
+           && maPivotParameters.maLabelArray[nColumn]->mbCalculatedField;
 }
 
 ScDPLabelData& ScPivotLayoutDialog::GetLabelData(SCCOL nColumn)

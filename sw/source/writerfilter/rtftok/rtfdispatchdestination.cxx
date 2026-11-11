@@ -80,6 +80,8 @@ RTFError RTFDocumentImpl::dispatchDestination(RTFKeyword nKeyword)
                 while (!bFoundCode && ch != '}')
                 {
                     Strm().ReadChar(ch);
+                    if (Strm().eof())
+                        break;
                     if ('\\' == ch)
                         bInKeyword = true;
                     if (!bInKeyword && rtl::isAsciiAlphanumeric(static_cast<unsigned char>(ch)))
@@ -99,7 +101,7 @@ RTFError RTFDocumentImpl::dispatchDestination(RTFKeyword nKeyword)
                     while (true)
                     {
                         Strm().ReadChar(ch);
-                        if (ch == '}')
+                        if (Strm().eof() || ch == '}')
                             break;
                         aBuf.append(ch);
                     }
@@ -289,20 +291,19 @@ RTFError RTFDocumentImpl::dispatchDestination(RTFKeyword nKeyword)
                         }
                     }
                     m_aSuperBuffer.clear();
+                    // Clearing m_aSuperBuffer discards everything buffered into
+                    // it, including a tracked-change start. The states still
+                    // pointing at it can no longer replay that start, so clear
+                    // StartedTrackchange on them to drop the matching end.
+                    for (std::size_t i = 0; i < m_aStates.size(); ++i)
+                    {
+                        if (m_aStates[i].getCurrentBuffer() == &m_aSuperBuffer)
+                            m_aStates[i].setStartedTrackchange(false);
+                    }
                     m_aStates.top().setDestination(Destination::FOOTNOTE);
                     Mapper().startCharacterGroup();
                     runProps();
-                    if (!m_aStates.top().getCurrentBuffer())
-                        resolveSubstream(m_nGroupStartPos - 1, nId, aCustomMark);
-                    else
-                    {
-                        RTFSprms aAttributes;
-                        aAttributes.set(Id(0), new RTFValue(m_nGroupStartPos - 1));
-                        aAttributes.set(Id(1), new RTFValue(nId));
-                        aAttributes.set(Id(2), new RTFValue(aCustomMark));
-                        m_aStates.top().getCurrentBuffer()->push_back(Buf_t(
-                            RTFBufferTypes::ResolveSubstream, new RTFValue(aAttributes), nullptr));
-                    }
+                    bufferOrResolveSubstream(m_nGroupStartPos - 1, nId, aCustomMark);
                     if (bCustomMark)
                     {
                         m_aStates.top().getCharacterAttributes().clear();
@@ -335,19 +336,8 @@ RTFError RTFDocumentImpl::dispatchDestination(RTFKeyword nKeyword)
             case RTFKeyword::ANNOTATION:
                 if (!m_pSuperstream)
                 {
-                    if (!m_aStates.top().getCurrentBuffer())
-                    {
-                        resolveSubstream(m_nGroupStartPos - 1, NS_ooxml::LN_annotation);
-                    }
-                    else
-                    {
-                        RTFSprms aAttributes;
-                        aAttributes.set(Id(0), new RTFValue(m_nGroupStartPos - 1));
-                        aAttributes.set(Id(1), new RTFValue(NS_ooxml::LN_annotation));
-                        aAttributes.set(Id(2), new RTFValue(OUString()));
-                        m_aStates.top().getCurrentBuffer()->push_back(Buf_t(
-                            RTFBufferTypes::ResolveSubstream, new RTFValue(aAttributes), nullptr));
-                    }
+                    bufferOrResolveSubstream(m_nGroupStartPos - 1, NS_ooxml::LN_annotation,
+                                             OUString());
                     m_aStates.top().setDestination(Destination::SKIP);
                 }
                 else
@@ -408,6 +398,7 @@ RTFError RTFDocumentImpl::dispatchDestination(RTFKeyword nKeyword)
                                 Buf_t(RTFBufferTypes::StartShape, pValue, nullptr));
                         }
                     }
+                    startShapeTextTableState();
                 }
             }
             break;

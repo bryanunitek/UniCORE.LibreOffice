@@ -37,7 +37,6 @@ using namespace ::com::sun::star;
 
 ValueSetItem::ValueSetItem( ValueSet& rParent )
     : mrParent(rParent)
-    , mpData(nullptr)
     , mxAcc()
     , mnId(0)
     , meType(ValueSetItemType::None)
@@ -133,15 +132,6 @@ sal_Int64 SAL_CALL ValueItemAcc::getAccessibleIndexInParent()
         }
     }
 
-    //if this valueset contain a none field(common value is default), then we should increase the real index and set the noitem index value equal 0.
-    if (mpValueSetItem && ((mpValueSetItem->mrParent.GetStyle() & WB_NONEFIELD) != 0))
-    {
-        ValueSetItem* pFirstItem = mpValueSetItem->mrParent.ImplGetItem(VALUESET_ITEM_NONEITEM);
-        if( pFirstItem && pFirstItem == mpValueSetItem)
-            nIndexInParent = 0;
-        else
-            nIndexInParent++;
-    }
     return nIndexInParent;
 }
 
@@ -227,8 +217,7 @@ lang::Locale SAL_CALL ValueItemAcc::getLocale()
 
 uno::Reference< accessibility::XAccessible > SAL_CALL ValueItemAcc::getAccessibleAtPoint( const awt::Point& )
 {
-    uno::Reference< accessibility::XAccessible > xRet;
-    return xRet;
+    return {};
 }
 
 awt::Rectangle ValueItemAcc::implGetBounds()
@@ -329,10 +318,7 @@ sal_Int64 SAL_CALL ValueSetAcc::getAccessibleChildCount()
     const SolarMutexGuard aSolarGuard;
     ThrowIfDisposed();
 
-    sal_Int64 nCount = mpValueSet->ImplGetVisibleItemCount();
-    if (HasNoneField())
-        nCount += 1;
-    return nCount;
+    return mpValueSet->ImplGetVisibleItemCount();
 }
 
 
@@ -486,9 +472,6 @@ uno::Reference< accessibility::XAccessible > SAL_CALL ValueSetAcc::getAccessible
         return nullptr;
 
     const size_t nItemPos = mpValueSet->GetItemPos(nItemId);
-    if( VALUESET_ITEM_NONEITEM == nItemPos )
-        return nullptr;
-
     ValueSetItem* const pItem = mpValueSet->mItemList[nItemPos].get();
     return pItem->GetAccessible();
 }
@@ -645,33 +628,11 @@ void ValueSetAcc::Invalidate()
     mpValueSet = nullptr;
 }
 
-sal_uInt16 ValueSetAcc::getItemCount() const
-{
-    sal_uInt16 nCount = mpValueSet->ImplGetVisibleItemCount();
-    // When the None-Item is visible then increase the number of items by
-    // one.
-    if (HasNoneField())
-        nCount += 1;
-    return nCount;
-}
+sal_uInt16 ValueSetAcc::getItemCount() const { return mpValueSet->ImplGetVisibleItemCount(); }
 
 ValueSetItem* ValueSetAcc::getItem (sal_uInt16 nIndex) const
 {
-    ValueSetItem* pItem = nullptr;
-
-    if (HasNoneField())
-    {
-        if (nIndex == 0)
-            // When present the first item is the then always visible none field.
-            pItem = mpValueSet->ImplGetItem(VALUESET_ITEM_NONEITEM);
-        else
-            // Shift down the index to compensate for the none field.
-            nIndex -= 1;
-    }
-    if (pItem == nullptr)
-        pItem = mpValueSet->ImplGetItem(nIndex);
-
-    return pItem;
+    return mpValueSet->ImplGetItem(nIndex);
 }
 
 
@@ -684,12 +645,6 @@ void ValueSetAcc::ThrowIfDisposed()
         assert(false && "ValueSetAcc not disposed but mpValueSet  == NULL");
         throw css::uno::RuntimeException(u"ValueSetAcc not disposed but mpValueSet == NULL"_ustr);
     }
-}
-
-bool ValueSetAcc::HasNoneField() const
-{
-    assert(mpValueSet && "ValueSetAcc::HasNoneField called with mpValueSet==NULL");
-    return ((mpValueSet->GetStyle() & WB_NONEFIELD) != 0);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -136,6 +136,16 @@ static int sortWeightValue(FontWeight eWeight)
     return 0; // eWeight == WEIGHT_NORMAL
 }
 
+//sort normal to the start
+static int sortWidthValue(FontWidth eWidth)
+{
+    if (eWidth < WIDTH_NORMAL)
+        return eWidth + 1;
+    if (eWidth > WIDTH_NORMAL)
+        return eWidth - 1;
+    return 0; // eWidth == WIDTH_NORMAL
+}
+
 static sal_Int32 ImplCompareFontMetric(const ImplFontListFontMetric* pInfo1,
                                        const ImplFontListFontMetric* pInfo2)
 {
@@ -152,6 +162,15 @@ static sal_Int32 ImplCompareFontMetric(const ImplFontListFontMetric* pInfo1,
     if ( nWeight1 < nWeight2 )
         return -1;
     else if ( nWeight1 > nWeight2 )
+        return 1;
+
+    // Sort normal width to the start, followed by narrowest to widest widths.
+    int nWidth1 = sortWidthValue(pInfo1->GetWidthType());
+    int nWidth2 = sortWidthValue(pInfo2->GetWidthType());
+
+    if (nWidth1 < nWidth2)
+        return -1;
+    else if (nWidth1 > nWidth2)
         return 1;
 
     return pInfo1->GetStyleName().compareTo( pInfo2->GetStyleName() );
@@ -278,6 +297,17 @@ void FontList::ImplInsertFonts(OutputDevice* pDevice, bool bInsertData)
     {
         FontMetric aFontMetric = pDevice->GetFontMetricFromCollection( i );
         OUString aSearchName(aFontMetric.GetFamilyName());
+
+#ifdef MACOSX
+        // tdf#91400 tdf#173342: Skip private system fonts. macOS marks these by
+        // prefixing the family name with a period; they are not intended to be
+        // used by applications and Apple's own font panels hide them. The system
+        // UI font (".AppleSystemUIFont") is one of them: it is added to the font
+        // list so that it can be used as the default UI font, but it must not be
+        // offered in the font selection lists.
+        if (!aSearchName.isEmpty() && aSearchName[0] == '.')
+            continue;
+#endif
 
         // If this font is embedded in a document, is restricted, and is not installed locally
         // (which is returned from EmbeddedFontsManager::isEmbeddedAndRestricted), we must not
@@ -703,6 +733,24 @@ FontMetric FontList::Get(const OUString& rName, const OUString& rStyleName) cons
     aInfo.SetStyleName( rStyleName );
 
     return aInfo;
+}
+
+OUString FontList::GetFaceStyleName(std::u16string_view rName, const OUString& rStyleName) const
+{
+    // The box shows localized names (see GetStyleName), so match against those
+    // but return the face's own name.
+    ImplFontListNameInfo* pData = ImplFindByName( rName );
+    if ( pData )
+    {
+        for (ImplFontListFontMetric* pSearchInfo = pData->mpFirst; pSearchInfo;
+             pSearchInfo = pSearchInfo->mpNext)
+        {
+            if (rStyleName.equalsIgnoreAsciiCase(GetStyleName(*pSearchInfo)))
+                return pSearchInfo->GetStyleName();
+        }
+    }
+
+    return rStyleName;
 }
 
 FontMetric FontList::Get(const OUString& rName,

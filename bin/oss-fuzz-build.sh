@@ -21,7 +21,9 @@ echo git: `git -C $SRC/libreoffice log -1 --pretty=reference`
 
 #shuffle CXXFLAGS -stdlib=libc++ arg into CXX as well because we use
 #the CXX as the linker and need to pass -stdlib=libc++ to build
-export CXX="$CXX -stdlib=libc++ -fsanitize-blacklist=$SRC/libreoffice/bin/sanitize-excludelist.txt"
+#enable libc++ fast hardening so an out-of-range operator[] aborts instead
+#of reading adjacent live memory that the redzone sanitizers don't flag
+export CXX="$CXX -stdlib=libc++ -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST -fsanitize-blacklist=$SRC/libreoffice/bin/sanitize-excludelist.txt"
 export CXX_FOR_BUILD="$CXX"
 export CC="$CC -fsanitize-blacklist=$SRC/libreoffice/bin/sanitize-excludelist.txt"
 export CC_FOR_BUILD="$CC"
@@ -50,6 +52,8 @@ pushd instdir/program
 # xml tags to merge these into a single xml file
 head -c -14 services.rdb  > templateservices.rdb
 tail -c +85 ./services/services.rdb >> templateservices.rdb
+$SRC/libreoffice/bin/oss-fuzz-registry-xcd.py ../share/registry fuzzer.xcd \
+    org.openoffice.Office/Embedding
 for a in *fuzzer; do
     #some minimal fonts required
     mv $a $OUT
@@ -66,10 +70,17 @@ URE_INTERNAL_LIB_DIR=\${ORIGIN}
 UNO_TYPES=\${ORIGIN}/$a.types.rdb \${ORIGIN}/$a.moretypes.rdb
 UNO_SERVICES=\${ORIGIN}/$a.services.rdb
 EOF
+    #configuration the fuzzers need: Embedding, so that charts and other objects in documents load
+    mkdir -p $OUT/$a.registry
+    cp fuzzer.xcd $OUT/$a.registry
+    cat > $OUT/${a}rc << EOF
+[Bootstrap]
+CONFIGURATION_LAYERS=xcsxcu:\${ORIGIN}/$a.registry
+EOF
 done
 popd
 
-#starting corpuses
+#starting corpora
 for zip_file in $SRC/*_seed_corpus.zip; do
     cp $zip_file $OUT
 done

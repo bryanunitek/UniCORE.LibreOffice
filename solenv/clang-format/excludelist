@@ -419,11 +419,7 @@ bridges/source/jni_uno/jni_java2uno.cxx
 bridges/source/jni_uno/jni_uno2java.cxx
 bridges/source/jni_uno/jniunoenvironmentdata.hxx
 bridges/source/jni_uno/nativethreadpool.cxx
-canvas/inc/base/basemutexhelper.hxx
-canvas/inc/base/bitmapcanvasbase.hxx
-canvas/inc/base/bufferedgraphicdevicebase.hxx
 canvas/inc/base/cachedprimitivebase.hxx
-canvas/inc/base/canvasbase.hxx
 canvas/inc/base/canvascustomspritebase.hxx
 canvas/inc/base/canvascustomspritehelper.hxx
 canvas/inc/base/disambiguationhelper.hxx
@@ -444,17 +440,12 @@ canvas/inc/vclwrapper.hxx
 canvas/inc/verifyinput.hxx
 canvas/source/cairo/cairo_cachedbitmap.cxx
 canvas/source/cairo/cairo_cachedbitmap.hxx
-canvas/source/cairo/cairo_canvas.cxx
-canvas/source/cairo/cairo_canvas.hxx
 canvas/source/cairo/cairo_canvasbitmap.cxx
 canvas/source/cairo/cairo_canvasbitmap.hxx
 canvas/source/cairo/cairo_canvascustomsprite.cxx
 canvas/source/cairo/cairo_canvascustomsprite.hxx
 canvas/source/cairo/cairo_canvasfont.cxx
 canvas/source/cairo/cairo_canvasfont.hxx
-canvas/source/cairo/cairo_canvashelper.cxx
-canvas/source/cairo/cairo_canvashelper.hxx
-canvas/source/cairo/cairo_canvashelper_text.cxx
 canvas/source/cairo/cairo_devicehelper.cxx
 canvas/source/cairo/cairo_devicehelper.hxx
 canvas/source/cairo/cairo_repainttarget.hxx
@@ -518,7 +509,6 @@ canvas/source/directx/dx_textlayout_drawhelper.hxx
 canvas/source/directx/dx_vcltools.cxx
 canvas/source/directx/dx_vcltools.hxx
 canvas/source/directx/dx_winstuff.hxx
-canvas/source/factory/cf_service.cxx
 canvas/source/opengl/ogl_bitmapcanvashelper.cxx
 canvas/source/opengl/ogl_bitmapcanvashelper.hxx
 canvas/source/opengl/ogl_buffercontext.hxx
@@ -541,10 +531,8 @@ canvas/source/opengl/ogl_textlayout.hxx
 canvas/source/opengl/ogl_texturecache.cxx
 canvas/source/opengl/ogl_texturecache.hxx
 canvas/source/opengl/ogl_tools.hxx
-canvas/source/simplecanvas/simplecanvasimpl.cxx
 canvas/source/tools/cachedprimitivebase.cxx
 canvas/source/tools/canvascustomspritehelper.cxx
-canvas/source/tools/canvastools.cxx
 canvas/source/tools/elapsedtime.cxx
 canvas/source/tools/page.cxx
 canvas/source/tools/page.hxx
@@ -586,8 +574,6 @@ canvas/source/vcl/impltools.hxx
 canvas/source/vcl/outdevprovider.hxx
 canvas/source/vcl/repainttarget.hxx
 canvas/source/vcl/sprite.hxx
-canvas/source/vcl/spritecanvas.cxx
-canvas/source/vcl/spritecanvas.hxx
 canvas/source/vcl/spritecanvashelper.cxx
 canvas/source/vcl/spritecanvashelper.hxx
 canvas/source/vcl/spritedevicehelper.cxx
@@ -1295,7 +1281,6 @@ comphelper/source/streaming/seqstream.cxx
 comphelper/source/streaming/streamsection.cxx
 comphelper/source/windows/windows_process.cxx
 comphelper/source/xml/attributelist.cxx
-comphelper/source/xml/ofopxmlhelper.cxx
 comphelper/source/xml/xmltools.cxx
 compilerplugins/clang/automem.cxx
 compilerplugins/clang/badstatics.cxx
@@ -2156,7 +2141,6 @@ cui/source/dialogs/cuifmsearch.cxx
 cui/source/dialogs/cuigaldlg.cxx
 cui/source/dialogs/cuigrfflt.cxx
 cui/source/dialogs/cuihyperdlg.cxx
-cui/source/dialogs/hangulhanjadlg.cxx
 cui/source/dialogs/hldocntp.cxx
 cui/source/dialogs/hldoctp.cxx
 cui/source/dialogs/hlinettp.cxx
@@ -2200,7 +2184,6 @@ cui/source/inc/cuisrchdlg.hxx
 cui/source/inc/cuitabarea.hxx
 cui/source/inc/cuitabline.hxx
 cui/source/inc/grfpage.hxx
-cui/source/inc/hangulhanjadlg.hxx
 cui/source/inc/hldocntp.hxx
 cui/source/inc/hldoctp.hxx
 cui/source/inc/hlinettp.hxx
@@ -2639,7 +2622,6 @@ dbaccess/source/ui/dlg/odbcconfig.cxx
 dbaccess/source/ui/dlg/odbcconfig.hxx
 dbaccess/source/ui/dlg/optionalboolitem.cxx
 dbaccess/source/ui/dlg/optionalboolitem.hxx
-dbaccess/source/ui/dlg/paramdialog.cxx
 dbaccess/source/ui/dlg/queryfilter.cxx
 dbaccess/source/ui/dlg/queryorder.cxx
 dbaccess/source/ui/dlg/sqlmessage.cxx
@@ -2743,7 +2725,6 @@ dbaccess/source/ui/inc/indexfieldscontrol.hxx
 dbaccess/source/ui/inc/linkeddocuments.hxx
 dbaccess/source/ui/inc/objectnamecheck.hxx
 dbaccess/source/ui/inc/opendoccontrols.hxx
-dbaccess/source/ui/inc/paramdialog.hxx
 dbaccess/source/ui/inc/propertystorage.hxx
 dbaccess/source/ui/inc/querycontainerwindow.hxx
 dbaccess/source/ui/inc/querycontroller.hxx
@@ -3005,17 +2986,15 @@ desktop/source/pkgchk/unopkg/unopkg_cmdenv.cxx
 desktop/source/pkgchk/unopkg/unopkg_misc.cxx
 desktop/source/pkgchk/unopkg/unopkg_shared.h
 desktop/source/splash/splash.cxx
-desktop/source/splash/unxsplash.cxx
-desktop/source/splash/unxsplash.hxx
 desktop/test/deployment/active/active_native.cxx
 desktop/test/deployment/passive/passive_native.cxx
-desktop/unx/source/args.c
-desktop/unx/source/args.h
-desktop/unx/source/file_image.h
-desktop/unx/source/file_image_unx.c
-desktop/unx/source/pagein.c
+desktop/unx/source/args.cxx
+desktop/unx/source/args.hxx
+desktop/unx/source/file_image.hxx
+desktop/unx/source/file_image_unx.cxx
+desktop/unx/source/pagein.cxx
 desktop/unx/source/splashx.c
-desktop/unx/source/start.c
+desktop/unx/source/start.cxx
 desktop/win32/source/QuickStart/QuickStart.cxx
 desktop/win32/source/QuickStart/resource.h
 desktop/win32/source/applauncher/launcher.cxx
@@ -3168,8 +3147,9 @@ editeng/inc/editattr.hxx
 editeng/inc/editdoc.hxx
 editeng/inc/edtspell.hxx
 editeng/inc/eerdll2.hxx
-editeng/inc/outleeng.hxx
+editeng/inc/outlundo.hxx
 editeng/inc/unomodel.hxx
+editeng/inc/paralist.hxx
 editeng/qa/items/borderline_test.cxx
 editeng/qa/lookuptree/lookuptree_test.cxx
 editeng/qa/unit/core-test.cxx
@@ -3253,11 +3233,9 @@ editeng/source/outliner/outlin2.cxx
 editeng/source/outliner/outliner.cxx
 editeng/source/outliner/outlobj.cxx
 editeng/source/outliner/outlundo.cxx
-editeng/source/outliner/outlundo.hxx
 editeng/source/outliner/outlvw.cxx
 editeng/source/outliner/overflowingtxt.cxx
 editeng/source/outliner/paralist.cxx
-editeng/source/outliner/paralist.hxx
 editeng/source/rtf/rtfitem.cxx
 editeng/source/rtf/svxrtf.cxx
 editeng/source/uno/UnoForbiddenCharsTable.cxx
@@ -3605,6 +3583,8 @@ extensions/test/ole/unoTocomCalls/XCallback_Impl/Callback.h
 extensions/test/ole/unoTocomCalls/XCallback_Impl/Simple.cpp
 extensions/test/ole/unoTocomCalls/XCallback_Impl/Simple.h
 extensions/test/ole/unoTocomCalls/XCallback_Impl/resource.h
+external/afdko/afdko_version.cpp
+external/afdko/afdko_version.h
 external/bluez_bluetooth/inc/bluetooth/bluetooth.h
 external/cairo/configs/wnt_cairo_config.h
 external/cairo/configs/wnt_cairo_features.h
@@ -3629,6 +3609,10 @@ external/fontconfig/configs/wnt_fontconfig_fcstdint.h
 external/libjpeg-turbo/jconfig.h
 external/libjpeg-turbo/jconfigint.h
 external/libjpeg-turbo/jversion.h
+external/libjxl/jxl_cms_export.h
+external/libjxl/jxl_export.h
+external/libjxl/jxl_threads_export.h
+external/libjxl/version.h
 external/mariadb-connector-c/configs/linux_my_config.h
 external/mariadb-connector-c/configs/mac_my_config.h
 external/mariadb-connector-c/configs/mariadb_version.h
@@ -3957,7 +3941,6 @@ formula/source/ui/dlg/formula.cxx
 formula/source/ui/dlg/funcpage.hxx
 formula/source/ui/dlg/funcutl.cxx
 formula/source/ui/dlg/parawin.cxx
-formula/source/ui/dlg/parawin.hxx
 formula/source/ui/dlg/structpg.cxx
 formula/source/ui/dlg/structpg.hxx
 fpicker/source/aqua/ControlHelper.hxx
@@ -4594,7 +4577,6 @@ include/basic/sbxmeth.hxx
 include/basic/sbxobj.hxx
 include/basic/sbxvar.hxx
 include/basic/vbahelper.hxx
-include/canvas/canvastools.hxx
 include/canvas/elapsedtime.hxx
 include/codemaker/commoncpp.hxx
 include/codemaker/commonjava.hxx
@@ -4957,7 +4939,6 @@ include/editeng/outliner.hxx
 include/editeng/outlobj.hxx
 include/editeng/overflowingtxt.hxx
 include/editeng/paperinf.hxx
-include/editeng/paragraphdata.hxx
 include/editeng/paravertalignitem.hxx
 include/editeng/pbinitem.hxx
 include/editeng/pgrditem.hxx
@@ -5069,7 +5050,6 @@ include/o3tl/cow_wrapper.hxx
 include/o3tl/enumarray.hxx
 include/o3tl/enumrange.hxx
 include/o3tl/functional.hxx
-include/o3tl/lazy_update.hxx
 include/o3tl/numeric.hxx
 include/o3tl/safeint.hxx
 include/o3tl/sorted_vector.hxx
@@ -5089,7 +5069,6 @@ include/oox/core/recordparser.hxx
 include/oox/core/relations.hxx
 include/oox/core/relationshandler.hxx
 include/oox/core/xmlfilterbase.hxx
-include/oox/crypto/AgileEngine.hxx
 include/oox/crypto/CryptoEngine.hxx
 include/oox/crypto/DocumentDecryption.hxx
 include/oox/crypto/DocumentEncryption.hxx
@@ -5499,6 +5478,7 @@ include/svtools/unoevent.hxx
 include/svtools/unoimap.hxx
 include/svtools/urlfilter.hxx
 include/svtools/valueset.hxx
+include/svtools/viewoptions.hxx
 include/svx/AccessibleControlShape.hxx
 include/svx/AccessibleGraphicShape.hxx
 include/svx/AccessibleOLEShape.hxx
@@ -5744,7 +5724,6 @@ include/svx/tbxctl.hxx
 include/svx/transfrmhelper.hxx
 include/svx/txencbox.hxx
 include/svx/ucsubset.hxx
-include/svx/uiobject.hxx
 include/svx/unoapi.hxx
 include/svx/unobrushitemhelper.hxx
 include/svx/unofill.hxx
@@ -5768,7 +5747,6 @@ include/svx/xdash.hxx
 include/svx/xdef.hxx
 include/svx/xenum.hxx
 include/svx/xfillit0.hxx
-include/svx/xflasit.hxx
 include/svx/xflbckit.hxx
 include/svx/xflbmpit.hxx
 include/svx/xflbmsli.hxx
@@ -5794,7 +5772,6 @@ include/svx/xhatch.hxx
 include/svx/xit.hxx
 include/svx/xlineit0.hxx
 include/svx/xlinjoit.hxx
-include/svx/xlnasit.hxx
 include/svx/xlncapit.hxx
 include/svx/xlnclit.hxx
 include/svx/xlndsit.hxx
@@ -5970,7 +5947,6 @@ include/unotools/transliterationwrapper.hxx
 include/unotools/ucbhelper.hxx
 include/unotools/ucbstreamhelper.hxx
 include/unotools/useroptions.hxx
-include/unotools/viewoptions.hxx
 include/unotools/wincodepage.hxx
 include/vbahelper/vbaaccesshelper.hxx
 include/vbahelper/vbaapplicationbase.hxx
@@ -6023,7 +5999,6 @@ include/vcl/bitmap.hxx
 include/vcl/builder.hxx
 include/vcl/builderfactory.hxx
 include/vcl/cairo.hxx
-include/vcl/canvastools.hxx
 include/vcl/checksum.hxx
 include/vcl/commandevent.hxx
 include/vcl/commandinfoprovider.hxx
@@ -6729,7 +6704,6 @@ oox/source/core/recordparser.cxx
 oox/source/core/relations.cxx
 oox/source/core/relationshandler.cxx
 oox/source/core/xmlfilterbase.cxx
-oox/source/crypto/AgileEngine.cxx
 oox/source/crypto/DocumentEncryption.cxx
 oox/source/crypto/Standard2007Engine.cxx
 oox/source/docprop/docprophandler.cxx
@@ -7700,6 +7674,7 @@ sc/qa/unit/mark_test.cxx
 sc/qa/unit/opencl-test-1.cxx
 sc/qa/unit/opencl-test-2.cxx
 sc/qa/unit/screenshots/screenshots.cxx
+sc/qa/unit/solver.cxx
 sc/qa/unit/tiledrendering/tiledrendering.cxx
 sc/qa/unit/ucalc.cxx
 sc/qa/unit/ucalc_condformat.cxx
@@ -8329,6 +8304,9 @@ sc/source/filter/xml/xmlsubti.hxx
 sc/source/filter/xml/xmltabi.cxx
 sc/source/filter/xml/xmltabi.hxx
 sc/source/filter/xml/xmlwrap.cxx
+sc/source/solver/CoinMPSolver.cxx
+sc/source/solver/SolverComponent.cxx
+sc/source/solver/SolverComponent.hxx
 sc/source/ui/Accessibility/AccessibilityHints.cxx
 sc/source/ui/Accessibility/AccessibleCell.cxx
 sc/source/ui/Accessibility/AccessibleCellBase.cxx
@@ -9035,11 +9013,6 @@ scaddins/source/pricing/black_scholes.cxx
 scaddins/source/pricing/black_scholes.hxx
 scaddins/source/pricing/pricing.cxx
 scaddins/source/pricing/pricing.hxx
-sccomp/qa/unit/solver.cxx
-sccomp/source/solver/CoinMPSolver.cxx
-sccomp/source/solver/LpsolveSolver.cxx
-sccomp/source/solver/SolverComponent.cxx
-sccomp/source/solver/SolverComponent.hxx
 scripting/source/basprov/baslibnode.cxx
 scripting/source/basprov/baslibnode.hxx
 scripting/source/basprov/basmethnode.cxx
@@ -9080,7 +9053,6 @@ sd/inc/CustomAnimationPreset.hxx
 sd/inc/EffectMigration.hxx
 sd/inc/FactoryIds.hxx
 sd/inc/OutlinerIterator.hxx
-sd/inc/PresenterHelper.hxx
 sd/inc/PresenterPreviewCache.hxx
 sd/inc/ResourceId.hxx
 sd/inc/SlideRenderer.hxx
@@ -9107,6 +9079,7 @@ sd/inc/sdpptwrp.hxx
 sd/inc/sdundo.hxx
 sd/inc/sdxmlwrp.hxx
 sd/inc/shapelist.hxx
+sd/inc/slideshow.hxx
 sd/inc/stlfamily.hxx
 sd/inc/stlpool.hxx
 sd/inc/stlsheet.hxx
@@ -9128,12 +9101,15 @@ sd/source/console/AccessibleObject.cxx
 sd/source/console/AccessibleObject.hxx
 sd/source/console/AccessibleParagraph.cxx
 sd/source/console/AccessibleParagraph.hxx
+sd/source/console/CanvasUpdateRequester.cxx
 sd/source/console/PresenterAccessibility.cxx
 sd/source/console/PresenterAccessibility.hxx
 sd/source/console/PresenterBitmapContainer.cxx
 sd/source/console/PresenterBitmapContainer.hxx
 sd/source/console/PresenterButton.cxx
 sd/source/console/PresenterButton.hxx
+sd/source/console/PresenterCanvas.cxx
+sd/source/console/PresenterCanvas.hxx
 sd/source/console/PresenterCanvasHelper.cxx
 sd/source/console/PresenterCanvasHelper.hxx
 sd/source/console/PresenterConfigurationAccess.cxx
@@ -9148,6 +9124,8 @@ sd/source/console/PresenterGeometryHelper.cxx
 sd/source/console/PresenterGeometryHelper.hxx
 sd/source/console/PresenterHelpView.cxx
 sd/source/console/PresenterHelpView.hxx
+sd/source/console/PresenterHelper.cxx
+sd/source/console/PresenterHelper.hxx
 sd/source/console/PresenterNotesView.cxx
 sd/source/console/PresenterNotesView.hxx
 sd/source/console/PresenterPaintManager.cxx
@@ -9456,6 +9434,7 @@ sd/source/ui/inc/Ruler.hxx
 sd/source/ui/inc/SdUnoDrawView.hxx
 sd/source/ui/inc/SdUnoOutlineView.hxx
 sd/source/ui/inc/SdUnoSlideView.hxx
+sd/source/ui/inc/SlideShowController.hxx
 sd/source/ui/inc/SlideSorter.hxx
 sd/source/ui/inc/SlideSorterViewShell.hxx
 sd/source/ui/inc/SlideTransitionPane.hxx
@@ -9545,7 +9524,6 @@ sd/source/ui/inc/sdpreslt.hxx
 sd/source/ui/inc/sdtreelb.hxx
 sd/source/ui/inc/sdundogr.hxx
 sd/source/ui/inc/sdxfer.hxx
-sd/source/ui/inc/slideshow.hxx
 sd/source/ui/inc/tabtempl.hxx
 sd/source/ui/inc/tmplctrl.hxx
 sd/source/ui/inc/titledockwin.hxx
@@ -9567,10 +9545,6 @@ sd/source/ui/inc/unoprnms.hxx
 sd/source/ui/inc/unosrch.hxx
 sd/source/ui/inc/unprlout.hxx
 sd/source/ui/inc/vectdlg.hxx
-sd/source/ui/presenter/CanvasUpdateRequester.cxx
-sd/source/ui/presenter/PresenterCanvas.cxx
-sd/source/ui/presenter/PresenterCanvas.hxx
-sd/source/ui/presenter/PresenterHelper.cxx
 sd/source/ui/presenter/PresenterPreviewCache.cxx
 sd/source/ui/presenter/SlideRenderer.cxx
 sd/source/ui/remotecontrol/AvahiNetworkService.cxx
@@ -9632,8 +9606,7 @@ sd/source/ui/slideshow/SlideShowRestarter.cxx
 sd/source/ui/slideshow/showwin.cxx
 sd/source/ui/slideshow/showwindow.hxx
 sd/source/ui/slideshow/slideshow.cxx
-sd/source/ui/slideshow/slideshowimpl.cxx
-sd/source/ui/slideshow/slideshowimpl.hxx
+sd/source/ui/slideshow/SlideShowController.cxx
 sd/source/ui/slideshow/slideshowviewimpl.cxx
 sd/source/ui/slideshow/slideshowviewimpl.hxx
 sd/source/ui/slidesorter/cache/SlsBitmapCache.cxx
@@ -10031,7 +10004,6 @@ sfx2/source/doc/docstoragemodifylistener.cxx
 sfx2/source/doc/doctempl.cxx
 sfx2/source/doc/doctemplates.cxx
 sfx2/source/doc/doctemplateslocal.cxx
-sfx2/source/doc/doctemplateslocal.hxx
 sfx2/source/doc/docundomanager.cxx
 sfx2/source/doc/frmdescr.cxx
 sfx2/source/doc/graphhelp.cxx
@@ -10043,7 +10015,6 @@ sfx2/source/doc/objcont.cxx
 sfx2/source/doc/objembed.cxx
 sfx2/source/doc/objitem.cxx
 sfx2/source/doc/objmisc.cxx
-sfx2/source/doc/objserv.cxx
 sfx2/source/doc/objstor.cxx
 sfx2/source/doc/objxtor.cxx
 sfx2/source/doc/oleprops.cxx
@@ -10061,6 +10032,7 @@ sfx2/source/doc/zoomitem.cxx
 sfx2/source/explorer/nochaos.cxx
 sfx2/source/inc/appbaslib.hxx
 sfx2/source/inc/appdata.hxx
+sfx2/source/inc/doctemplateslocal.hxx
 sfx2/source/inc/docundomanager.hxx
 sfx2/source/inc/eventsupplier.hxx
 sfx2/source/inc/fltoptint.hxx
@@ -10096,7 +10068,6 @@ sfx2/source/sidebar/DeckLayouter.cxx
 sfx2/source/sidebar/DeckTitleBar.cxx
 sfx2/source/sidebar/FocusManager.cxx
 sfx2/source/sidebar/IContextChangeReceiver.cxx
-sfx2/source/sidebar/ILayoutableWindow.cxx
 sfx2/source/sidebar/Panel.cxx
 sfx2/source/sidebar/PanelDescriptor.cxx
 sfx2/source/sidebar/PanelLayout.cxx
@@ -10281,6 +10252,8 @@ slideshow/source/engine/rehearsetimingsactivity.cxx
 slideshow/source/engine/rehearsetimingsactivity.hxx
 slideshow/source/engine/screenupdater.cxx
 slideshow/source/engine/shapeattributelayer.cxx
+slideshow/source/engine/shapes/appletshape.cxx
+slideshow/source/engine/shapes/appletshape.hxx
 slideshow/source/engine/shapes/backgroundshape.cxx
 slideshow/source/engine/shapes/backgroundshape.hxx
 slideshow/source/engine/shapes/drawinglayeranimation.cxx
@@ -10298,6 +10271,8 @@ slideshow/source/engine/shapes/intrinsicanimationactivity.hxx
 slideshow/source/engine/shapes/mediashape.cxx
 slideshow/source/engine/shapes/mediashape.hxx
 slideshow/source/engine/shapes/shapeimporter.cxx
+slideshow/source/engine/shapes/viewappletshape.cxx
+slideshow/source/engine/shapes/viewappletshape.hxx
 slideshow/source/engine/shapes/viewbackgroundshape.cxx
 slideshow/source/engine/shapes/viewbackgroundshape.hxx
 slideshow/source/engine/shapes/viewmediashape.cxx
@@ -10448,7 +10423,7 @@ slideshow/test/testshape.cxx
 slideshow/test/testview.cxx
 slideshow/test/views.cxx
 smoketest/smoketest.cxx
-solenv/bin/concat-deps.c
+solenv/bin/concat-deps.cxx
 solenv/gbuildtojson/gbuildtojson.cxx
 solenv/gcc-wrappers/wrapper.cxx
 solenv/lockfile/autoconf.h.in
@@ -10803,6 +10778,7 @@ svtools/source/config/miscopt.cxx
 svtools/source/config/optionsdrawinglayer.cxx
 svtools/source/config/printoptions.cxx
 svtools/source/config/test/test.cxx
+svtools/source/config/viewoptions.cxx
 svtools/source/control/accessibleruler.cxx
 svtools/source/control/accessibleruler.hxx
 svtools/source/control/accessibletabbar.cxx
@@ -11205,7 +11181,6 @@ svx/source/inc/gridcell.hxx
 svx/source/inc/gridcols.hxx
 svx/source/inc/sdbdatacolumn.hxx
 svx/source/inc/sqlparserclient.hxx
-svx/source/inc/svdobjplusdata.hxx
 svx/source/inc/svdoutlinercache.hxx
 svx/source/inc/svxpixelctlaccessiblecontext.hxx
 svx/source/inc/svxrectctaccessiblecontext.hxx
@@ -11357,8 +11332,6 @@ svx/source/sidebar/graphic/GraphicPropertyPanel.hxx
 svx/source/sidebar/line/LinePropertyPanel.cxx
 svx/source/sidebar/line/LinePropertyPanel.hxx
 svx/source/sidebar/line/LinePropertyPanelBase.cxx
-svx/source/sidebar/line/LineWidthValueSet.cxx
-svx/source/sidebar/line/LineWidthValueSet.hxx
 svx/source/sidebar/media/MediaPlaybackPanel.cxx
 svx/source/sidebar/media/MediaPlaybackPanel.hxx
 svx/source/sidebar/nbdtmg.cxx
@@ -11427,7 +11400,6 @@ svx/source/svdraw/svdmrkv.cxx
 svx/source/svdraw/svdmrkv1.cxx
 svx/source/svdraw/svdoashp.cxx
 svx/source/svdraw/svdobj.cxx
-svx/source/svdraw/svdobjplusdata.cxx
 svx/source/svdraw/svdobjuserdatalist.cxx
 svx/source/svdraw/svdocapt.cxx
 svx/source/svdraw/svdocirc.cxx
@@ -11590,6 +11562,7 @@ sw/inc/IDocumentRedlineAccess.hxx
 sw/inc/IDocumentUndoRedo.hxx
 sw/inc/IMark.hxx
 sw/inc/PostItMgr.hxx
+sw/inc/SwAppletImpl.hxx
 sw/inc/SwStyleNameMapper.hxx
 sw/inc/SwUndoField.hxx
 sw/inc/SwXMLSectionList.hxx
@@ -12407,6 +12380,7 @@ sw/source/filter/basflt/fltshell.cxx
 sw/source/filter/basflt/iodetect.cxx
 sw/source/filter/basflt/shellio.cxx
 sw/source/filter/docx/swdocxreader.cxx
+sw/source/filter/html/SwAppletImpl.cxx
 sw/source/filter/html/css1atr.cxx
 sw/source/filter/html/htmlatr.cxx
 sw/source/filter/html/htmlbas.cxx
@@ -12542,7 +12516,6 @@ sw/source/ui/chrdlg/numpara.cxx
 sw/source/ui/chrdlg/pardlg.cxx
 sw/source/ui/chrdlg/swuiccoll.cxx
 sw/source/ui/chrdlg/tblnumfm.cxx
-sw/source/ui/config/mailconfigpage.cxx
 sw/source/ui/config/optcomp.cxx
 sw/source/ui/config/optload.cxx
 sw/source/ui/config/optpage.cxx
@@ -12562,7 +12535,6 @@ sw/source/ui/dbui/mmdocselectpage.cxx
 sw/source/ui/dbui/mmgreetingspage.cxx
 sw/source/ui/dbui/mmlayoutpage.cxx
 sw/source/ui/dbui/mmlayoutpage.hxx
-sw/source/ui/dbui/mmoutputtypepage.cxx
 sw/source/ui/dbui/mmresultdialogs.cxx
 sw/source/ui/dbui/selectdbtabledialog.hxx
 sw/source/ui/dialog/ascfldlg.cxx
@@ -12793,7 +12765,6 @@ sw/source/uibase/dbui/dbmgr.cxx
 sw/source/uibase/dbui/dbtree.cxx
 sw/source/uibase/dbui/dbui.cxx
 sw/source/uibase/dbui/maildispatcher.cxx
-sw/source/uibase/dbui/mailmergehelper.cxx
 sw/source/uibase/dbui/mailmergetoolbarcontrols.cxx
 sw/source/uibase/dbui/mmconfigitem.cxx
 sw/source/uibase/dialog/SwSpellDialogChildWindow.cxx
@@ -13255,9 +13226,7 @@ toolkit/inc/controls/table/AccessibleGridControlHeader.hxx
 toolkit/inc/controls/table/AccessibleGridControlHeaderCell.hxx
 toolkit/inc/controls/table/AccessibleGridControlTable.hxx
 toolkit/inc/controls/table/AccessibleGridControlTableBase.hxx
-toolkit/inc/controls/table/defaultinputhandler.hxx
 toolkit/inc/controls/table/gridtablerenderer.hxx
-toolkit/inc/controls/table/tablecontrol.hxx
 toolkit/inc/controls/table/tablecontrolinterface.hxx
 toolkit/inc/controls/table/tablemodel.hxx
 toolkit/inc/controls/table/tablerenderer.hxx
@@ -13324,12 +13293,7 @@ toolkit/source/controls/table/AccessibleGridControlTable.cxx
 toolkit/source/controls/table/AccessibleGridControlTableBase.cxx
 toolkit/source/controls/table/cellvalueconversion.cxx
 toolkit/source/controls/table/cellvalueconversion.hxx
-toolkit/source/controls/table/defaultinputhandler.cxx
 toolkit/source/controls/table/gridtablerenderer.cxx
-toolkit/source/controls/table/mousefunction.cxx
-toolkit/source/controls/table/tablecontrol.cxx
-toolkit/source/controls/table/tablecontrol_impl.cxx
-toolkit/source/controls/table/tablecontrol_impl.hxx
 toolkit/source/controls/table/tabledatawindow.cxx
 toolkit/source/controls/table/tabledatawindow.hxx
 toolkit/source/controls/table/tablegeometry.cxx
@@ -13347,8 +13311,6 @@ toolkit/source/controls/unocontrolcontainer.cxx
 toolkit/source/controls/unocontrolcontainermodel.cxx
 toolkit/source/controls/unocontrolmodel.cxx
 toolkit/source/controls/unocontrols.cxx
-toolkit/source/controls/unocontroltablemodel.cxx
-toolkit/source/controls/unocontroltablemodel.hxx
 toolkit/source/controls/unogridcolumnfacade.cxx
 toolkit/source/controls/unogridcolumnfacade.hxx
 toolkit/source/hatchwindow/documentcloser.cxx
@@ -13670,7 +13632,6 @@ unotools/source/config/searchopt.cxx
 unotools/source/config/securityoptions.cxx
 unotools/source/config/syslocaleoptions.cxx
 unotools/source/config/useroptions.cxx
-unotools/source/config/viewoptions.cxx
 unotools/source/i18n/calendarwrapper.cxx
 unotools/source/i18n/charclass.cxx
 unotools/source/i18n/collatorwrapper.cxx
@@ -13967,6 +13928,7 @@ vcl/source/accessibility/vclxaccessibletextcomponent.cxx
 vcl/source/accessibility/vclxaccessibletextfield.cxx
 vcl/source/accessibility/vclxaccessibletoolbox.cxx
 vcl/source/accessibility/vclxaccessibletoolboxitem.cxx
+vcl/source/canvas/CanvasFactory.cxx
 vcl/inc/accmgr.hxx
 vcl/inc/animate/AnimationRenderer.hxx
 vcl/inc/brdwin.hxx
@@ -14008,6 +13970,8 @@ vcl/inc/opengl/win/WinDeviceInfo.hxx
 vcl/inc/osx/a11yfactory.h
 vcl/inc/osx/a11yfocustracker.hxx
 vcl/inc/osx/a11ywrapper.h
+vcl/inc/osx/clipboard.hxx
+vcl/inc/osx/DataFlavorMapping.hxx
 vcl/inc/osx/printview.h
 vcl/inc/osx/runinmain.hxx
 vcl/inc/osx/saldata.hxx
@@ -14064,15 +14028,15 @@ vcl/inc/toolbox.h
 vcl/inc/unx/X11Helper.hxx
 vcl/inc/unx/cairotextrender.hxx
 vcl/inc/unx/cupsmgr.hxx
-vcl/inc/unx/fc_fontoptions.hxx
-vcl/inc/unx/fontmanager.hxx
-vcl/inc/unx/freetype_glyphcache.hxx
-vcl/inc/unx/freetypetextrender.hxx
+vcl/inc/unx/font/fc_fontoptions.hxx
+vcl/inc/unx/font/fontmanager.hxx
+vcl/inc/unx/font/GenericFontFace.hxx
+vcl/inc/unx/generictextrender.hxx
 vcl/inc/unx/gendisp.hxx
 vcl/inc/unx/geninst.h
 vcl/inc/unx/genprn.h
 vcl/inc/unx/genpspgraphics.h
-vcl/inc/unx/glyphcache.hxx
+vcl/inc/unx/font/GenericFontList.hxx
 vcl/inc/unx/gtk/gloactiongroup.h
 vcl/inc/unx/gtk/glomenu.h
 vcl/inc/unx/gtk/gtkdata.hxx
@@ -14246,7 +14210,6 @@ vcl/ios/iosinst.cxx
 vcl/ios/salios.cxx
 vcl/null/printerinfomanager.cxx
 vcl/osx/DataFlavorMapping.cxx
-vcl/osx/DataFlavorMapping.hxx
 vcl/osx/DragSource.cxx
 vcl/osx/DragSource.hxx
 vcl/osx/DragSourceContext.cxx
@@ -14263,7 +14226,6 @@ vcl/osx/a11ylistener.cxx
 vcl/osx/a11yrolehelper.h
 vcl/osx/a11ytextattributeswrapper.h
 vcl/osx/clipboard.cxx
-vcl/osx/clipboard.hxx
 vcl/osx/cuidraw.hxx
 vcl/osx/documentfocuslistener.cxx
 vcl/osx/documentfocuslistener.hxx
@@ -14520,7 +14482,6 @@ vcl/source/graphic/UnoGraphicDescriptor.cxx
 vcl/source/graphic/UnoGraphicObject.cxx
 vcl/source/graphic/UnoGraphicProvider.cxx
 vcl/source/helper/canvasbitmap.cxx
-vcl/source/helper/canvastools.cxx
 vcl/source/helper/commandinfoprovider.cxx
 vcl/source/helper/displayconnectiondispatch.cxx
 vcl/source/helper/evntpost.cxx
@@ -14688,19 +14649,20 @@ vcl/unx/generic/dtrans/movedata_curs.h
 vcl/unx/generic/dtrans/movedata_mask.h
 vcl/unx/generic/dtrans/nodrop_curs.h
 vcl/unx/generic/dtrans/nodrop_mask.h
-vcl/unx/generic/fontmanager/fontconfig.cxx
-vcl/unx/generic/fontmanager/fontmanager.cxx
-vcl/unx/generic/fontmanager/fontsubst.cxx
-vcl/unx/generic/fontmanager/helper.cxx
+vcl/unx/generic/font/fontconfig.cxx
+vcl/unx/generic/font/fontmanager.cxx
+vcl/unx/generic/font/fontsubst.cxx
+vcl/unx/generic/print/helper.cxx
 vcl/unx/generic/gdi/cairo_xlib_cairo.cxx
 vcl/unx/generic/gdi/cairo_xlib_cairo.hxx
 vcl/unx/generic/gdi/cairotextrender.cxx
 vcl/unx/generic/gdi/font.cxx
-vcl/unx/generic/gdi/freetypetextrender.cxx
+vcl/unx/generic/gdi/generictextrender.cxx
 vcl/unx/generic/gdi/salgdi.cxx
 vcl/unx/generic/gdi/salvd.cxx
-vcl/unx/generic/glyphs/freetype_glyphcache.cxx
-vcl/unx/generic/glyphs/glyphcache.cxx
+vcl/unx/generic/font/GenericFont.cxx
+vcl/unx/generic/font/GenericFontFace.cxx
+vcl/unx/generic/font/GenericFontList.cxx
 vcl/unx/generic/print/genprnpsp.cxx
 vcl/unx/generic/print/genpspgraphics.cxx
 vcl/unx/generic/print/prtsetup.cxx
@@ -15000,7 +14962,6 @@ xmloff/source/chart/SchXMLRegressionCurveObjectContext.hxx
 xmloff/source/chart/SchXMLSeries2Context.cxx
 xmloff/source/chart/SchXMLSeries2Context.hxx
 xmloff/source/chart/SchXMLSeriesHelper.cxx
-xmloff/source/chart/SchXMLTableContext.cxx
 xmloff/source/chart/SchXMLTableContext.hxx
 xmloff/source/chart/SchXMLTextListContext.cxx
 xmloff/source/chart/SchXMLTextListContext.hxx
@@ -15132,7 +15093,6 @@ xmloff/source/forms/formevents.cxx
 xmloff/source/forms/formlayerexport.cxx
 xmloff/source/forms/formlayerimport.cxx
 xmloff/source/forms/gridcolumnproptranslator.cxx
-xmloff/source/forms/gridcolumnproptranslator.hxx
 xmloff/source/forms/handler/form_handler_factory.cxx
 xmloff/source/forms/handler/vcl_date_handler.cxx
 xmloff/source/forms/handler/vcl_date_handler.hxx

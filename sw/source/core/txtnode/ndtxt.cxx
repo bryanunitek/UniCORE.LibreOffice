@@ -46,6 +46,7 @@
 #include <ftninfo.hxx>
 #include <fmtftn.hxx>
 #include <charfmt.hxx>
+#include <charformats.hxx>
 #include <ndtxt.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -1123,10 +1124,24 @@ SwContentNode *SwTextNode::JoinNext()
         }
         bool bOldHasNumberingWhichNeedsLayoutUpdate = HasNumberingWhichNeedsLayoutUpdate(*pTextNode);
 
+        // The "orig" numbering list is not synced when insert redlines come and go,
+        // so its membership must survive the join.
+        // After a tracked split the inserted (empty) node carries the orig entry
+        // while the surviving node holds the real content; transfer it so the
+        // merged node stays in the orig list.
+
+        const bool bJoinedWasInOrig =
+            pTextNode->GetNum(nullptr, SwListRedlineType::ORIGTEXT) != nullptr;
+        const bool bThisInOrig =
+            GetNum(nullptr, SwListRedlineType::ORIGTEXT) != nullptr;
+
         rNds.Delete(aIdx);
         SetWrong( std::move(pList) );
         SetGrammarCheck( std::move(pList3) );
         SetSmartTags( std::move(pList2) );
+
+        if (bJoinedWasInOrig && !bThisInOrig && GetNumRule())
+            AddToListOrig();
 
         resetAndQueueAccessibilityCheck();
 
@@ -1227,10 +1242,25 @@ void SwTextNode::JoinPrev()
         {
             sw::MoveDeletedPrevFrames(*pTextNode, *this);
         }
+
+        // The "orig" numbering list is not synced when insert redlines come and go,
+        // so its membership must survive the join.
+        // After a tracked split the inserted node may carry the orig entry while
+        // the surviving node holds the real content.
+        // Transfer it so the merged node stays in the orig list.
+        const bool bJoinedWasInOrig =
+            pTextNode->GetNum(nullptr, SwListRedlineType::ORIGTEXT) != nullptr;
+        const bool bThisInOrig =
+            GetNum(nullptr, SwListRedlineType::ORIGTEXT) != nullptr;
+
         rNds.Delete(aIdx);
         SetWrong( std::move(pList) );
         SetGrammarCheck( std::move(pList3) );
         SetSmartTags( std::move(pList2) );
+
+        if (bJoinedWasInOrig && !bThisInOrig && GetNumRule())
+            AddToListOrig();
+
         resetAndQueueAccessibilityCheck();
         InvalidateNumRule();
         sw::CheckResetRedlineMergeFlag(*this,
@@ -3481,7 +3511,7 @@ bool SwTextNode::GetFirstLineOfsWithNum(short& rFLOffset,
     return false;
 }
 
-SwTwips SwTextNode::GetAdditionalIndentForStartingNewList() const
+gfx::Length SwTextNode::GetAdditionalIndentForStartingNewList() const
 {
     SwTwips nAdditionalIndent = 0;
 
@@ -3537,7 +3567,7 @@ SwTwips SwTextNode::GetAdditionalIndentForStartingNewList() const
         nAdditionalIndent = GetSwAttrSet().GetTextLeftMargin().ResolveLeft(rFirst, /*metrics*/ {});
     }
 
-    return nAdditionalIndent;
+    return gfx::Length::twip(nAdditionalIndent);
 }
 
 // #i91133#
@@ -5631,7 +5661,7 @@ void SwTextNode::HandleNonLegacyHint(const SfxHint& rHint)
     }
 }
 
-void SwTextNode::UpdateDocPos(const SwTwips nDocPos, const sal_uInt32 nIndex)
+void SwTextNode::UpdateDocPos(const gfx::Length nDocPos, const sal_uInt32 nIndex)
 {
     const sw::DocPosUpdateAtIndex aHint(nDocPos, *this, nIndex);
     CallSwClientNotify(aHint);

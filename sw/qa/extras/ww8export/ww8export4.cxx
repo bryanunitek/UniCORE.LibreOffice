@@ -14,6 +14,7 @@
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
+#include <com/sun/star/text/GraphicCrop.hpp>
 #include <com/sun/star/text/TextContentAnchorType.hpp>
 #include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/text/XTextFrame.hpp>
@@ -26,6 +27,7 @@
 #include <svx/svdpage.hxx>
 
 #include <docsh.hxx>
+#include <frameformats.hxx>
 #include <drawdoc.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentMarkAccess.hxx>
@@ -71,6 +73,18 @@ DECLARE_WW8EXPORT_TEST(testTdf72511_editengLRSpace, "tdf72511_editengLRSpace.doc
     CPPUNIT_ASSERT_EQUAL(sal_Int32(5080), getProperty<sal_Int32>(xTBPara, u"ParaLeftMargin"_ustr));
     CPPUNIT_ASSERT_EQUAL_MESSAGE("sanity check: normal paragraph's indent", sal_Int32(5080),
                                  getProperty<sal_Int32>(getParagraph(1), u"ParaLeftMargin"_ustr));
+}
+
+DECLARE_WW8EXPORT_TEST(testTdf79738_footerLineNumbering, "tdf79738_footerLineNumbering.doc")
+{
+    uno::Reference<style::XStyleFamiliesSupplier> xStylesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XNameAccess> xStyleFamilies = xStylesSupplier->getStyleFamilies();
+    uno::Reference<container::XNameContainer> xStyles;
+    xStyleFamilies->getByName(u"ParagraphStyles"_ustr) >>= xStyles;
+    uno::Reference<beans::XPropertySet> xHeader(xStyles->getByName(u"Header"_ustr), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(false, xHeader->getPropertyValue(u"ParaLineNumberCount"_ustr).get<bool>());
+    uno::Reference<beans::XPropertySet> xFooter(xStyles->getByName(u"Footer"_ustr), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(false, xFooter->getPropertyValue(u"ParaLineNumberCount"_ustr).get<bool>());
 }
 
 DECLARE_WW8EXPORT_TEST(testTdf160049_anchorMargin, "tdf160049_anchorMargin.doc")
@@ -266,6 +280,27 @@ CPPUNIT_TEST_FIXTURE(Test, testEndnotesAtSectEndDOC)
     SwSectionFormat* pFormat = rSections[0];
     // Without the accompanying fix in place, this test would have failed, endnotes were at doc end.
     CPPUNIT_ASSERT(pFormat->GetEndAtTextEnd().IsAtEnd());
+}
+
+DECLARE_WW8EXPORT_TEST(testTdf173671_textlineTop, "tdf173671_textlineTop.doc")
+{
+    const auto xShape = getShape(1);
+    CPPUNIT_ASSERT_EQUAL(css::text::RelOrientation::TEXT_LINE,
+                         getProperty<sal_Int16>(xShape, u"VertOrientRelation"_ustr));
+    CPPUNIT_ASSERT_EQUAL(css::text::VertOrientation::LINE_TOP,
+                         getProperty<sal_Int16>(xShape, u"VertOrient"_ustr));
+}
+
+DECLARE_WW8EXPORT_TEST(testTdf139998_cropOverflow, "tdf139998_cropOverflow.doc")
+{
+    // Without the fix in place, this test would have failed with
+    // - Expected: -49
+    // - Actual  : -115648
+    // i.e. the padding crop overflowed due to the large image
+    const text::GraphicCrop aCrop
+        = getProperty<text::GraphicCrop>(getShape(1), u"GraphicCrop"_ustr);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(-49), aCrop.Left);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(-49), aCrop.Right);
 }
 
 DECLARE_WW8EXPORT_TEST(testTdf90408, "tdf90408.doc")
@@ -488,6 +523,11 @@ DECLARE_WW8EXPORT_TEST(testNonInlinePageBreakFirstLine, "nonInlinePageBreakFirst
 DECLARE_WW8EXPORT_TEST(testTdf104704_mangledFooter, "tdf104704_mangledFooter.odt")
 {
     CPPUNIT_ASSERT_EQUAL(2, getPages());
+}
+
+DECLARE_WW8EXPORT_TEST(testTdf164800_hiddenPara, "tdf164800_hiddenPara.doc")
+{
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testEmptyGroup)

@@ -27,6 +27,7 @@
 #include <drwlayer.hxx>
 #include <olinetab.hxx>
 #include <stlpool.hxx>
+#include <MatrixResizeGuard.hxx>
 #include <attarray.hxx>
 #include <markdata.hxx>
 #include <dociter.hxx>
@@ -953,7 +954,7 @@ public:
         }
 
         SCCOL nTransCol = mnCol1 + nRow - mnTopRow - mnFilteredRows + mnRowDestOffset;
-        mrClipTab.SetEditText(nTransCol, mnTransRow, ScEditUtil::Clone(*p, mrClipTab.GetDoc()));
+        mrClipTab.SetEditText(nTransCol, mnTransRow, std::make_unique<EditTextObject>(ScEditUtil::Clone(*p, mrClipTab.GetDoc())));
     }
 
     void operator() (size_t nRow, const ScFormulaCell* p)
@@ -2229,6 +2230,11 @@ void ScTable::SetLoadingMedium(bool bLoading)
 
 void ScTable::CalcAll()
 {
+    // Interpreting a dynamic-array formula here can resize it, deleting or
+    // inserting reference cells in the columns this loop walks. Defer any
+    // such resize to the end of the whole-table walk so the cell store is
+    // not mutated underneath the iteration.
+    sc::MatrixResizeGuard aMatrixResizeGuard(rDocument);
     for (SCCOL i=0; i < aCol.size(); i++)
         aCol[i].CalcAll();
 
@@ -2979,6 +2985,11 @@ void ScTable::ApplyPatternArea( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol,
         return;
     PutInOrder(nStartCol, nEndCol);
     PutInOrder(nStartRow, nEndRow);
+    nEndCol = LastChangedCol(nEndCol, nStartRow, nEndRow,
+                             [&rAttr](ScColumnData& applyTo, SCROW nTop, SCROW nBottom)
+                             { applyTo.ApplyPatternArea(nTop, nBottom, rAttr, nullptr, nullptr); });
+    if (nEndCol < nStartCol)
+        return;
     SCCOL maxCol = nEndCol;
     if( nEndCol == GetDoc().MaxCol())
     {
@@ -3054,6 +3065,14 @@ void ScTable::AddCondFormatData( const ScRangeList& rRangeList, sal_uInt32 nInde
         SCCOL nColEnd = rRange.aEnd.Col();
         SCROW nRowStart = rRange.aStart.Row();
         SCROW nRowEnd = rRange.aEnd.Row();
+        if (nColEnd == rDocument.MaxCol())
+        {
+            // The columns not created yet share the default column data. Create the ones left of
+            // the range before the default takes the format.
+            nColEnd = std::max(nColStart, aCol.size()) - 1;
+            CreateColumnIfNotExists(nColEnd);
+            aDefaultColData.AddCondFormat(nRowStart, nRowEnd, nIndex);
+        }
         for(SCCOL nCol = nColStart; nCol <= nColEnd; ++nCol)
         {
             CreateColumnIfNotExists(nCol).AddCondFormat(nRowStart, nRowEnd, nIndex);
@@ -3068,9 +3087,22 @@ void ScTable::RemoveCondFormatData( const ScRangeList& rRangeList, sal_uInt32 nI
     {
         const ScRange & rRange = rRangeList[i];
         SCCOL nColStart = rRange.aStart.Col();
-        SCCOL nColEnd = ClampToAllocatedColumns(rRange.aEnd.Col());
+        SCCOL nColEnd = rRange.aEnd.Col();
         SCROW nRowStart = rRange.aStart.Row();
         SCROW nRowEnd = rRange.aEnd.Row();
+        if (nColEnd >= aCol.size()
+            && aDefaultColData.HasAttrib(nRowStart, nRowEnd, HasAttrFlags::Conditional))
+        {
+            if (nColEnd == rDocument.MaxCol())
+            {
+                nColEnd = std::max(nColStart, aCol.size()) - 1;
+                CreateColumnIfNotExists(nColEnd);
+                aDefaultColData.RemoveCondFormat(nRowStart, nRowEnd, nIndex);
+            }
+            else
+                CreateColumnIfNotExists(nColEnd);
+        }
+        nColEnd = ClampToAllocatedColumns(nColEnd);
         for(SCCOL nCol = nColStart; nCol <= nColEnd; ++nCol)
         {
             aCol[nCol].RemoveCondFormat(nRowStart, nRowEnd, nIndex);
@@ -3109,6 +3141,11 @@ void ScTable::ApplyStyleArea( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, S
 
     PutInOrder(nStartCol, nEndCol);
     PutInOrder(nStartRow, nEndRow);
+    nEndCol = LastChangedCol(nEndCol, nStartRow, nEndRow,
+                             [&rStyle](ScColumnData& applyTo, SCROW nTop, SCROW nBottom)
+                             { applyTo.ApplyStyleArea(nTop, nBottom, rStyle); });
+    if (nEndCol < nStartCol)
+        return;
     if ( nEndCol == rDocument.MaxCol() )
     {
         if ( nStartCol < aCol.size() )
@@ -4488,17 +4525,57 @@ SCROW ScTable::GetRowForHeightPixels(SCROW nStartRow, tools::Long& rStartRowHeig
 
 tools::Long ScTable::GetColOffset( SCCOL nCol, bool bHiddenAsZero ) const
 {
-    tools::Long n = 0;
-    if ( mpColWidth )
+    if ( !mpColWidth )
     {
-        auto colWidthIt = mpColWidth->begin();
-        for (SCCOL i = 0; i < nCol; (++i < nCol) ? ++colWidthIt : (void)false)
-            if (!( bHiddenAsZero && ColHidden(i) ))
-                n += *colWidthIt;
+        OSL_FAIL("GetColumnOffset: Data missing");
+        return 0;
+    }
+    tools::Long n = 0;
+    if (bHiddenAsZero)
+    {
+        // Walk the two data structures in parallel, for performance.
+        size_t nColWidthIndex;
+        SCCOL nColWidthRangeEnd;
+        sal_uInt16 nColWidth = mpColWidth->GetValue(0, nColWidthIndex, nColWidthRangeEnd);
+        ScFlatBoolColSegments::RangeData aHiddenColsRange;
+        ScFlatBoolColSegments::RangeIterator aHiddenColsRangeItr(maFilterData.getHiddenCols());
+        bool bHasHiddenColsRange = aHiddenColsRangeItr.getFirst(aHiddenColsRange);
+        for (SCCOL i = 0; i < nCol; ++i)
+        {
+            // Fetch the next width range if necessary.
+            if (i > nColWidthRangeEnd)
+                nColWidth = mpColWidth->GetNextValue(nColWidthIndex, nColWidthRangeEnd);
+            // Fetch the next hidden cols range if necessary.
+            if (bHasHiddenColsRange && i > aHiddenColsRange.mnCol2)
+                bHasHiddenColsRange = aHiddenColsRangeItr.getNext(aHiddenColsRange);
+
+            if (!bHasHiddenColsRange)
+            {
+                // Zero width, because absence of data implies hidden, see FilterData::colHidden.
+            }
+            else if (i >= aHiddenColsRange.mnCol1 && i <= aHiddenColsRange.mnCol2)
+            {
+                // Inside a range for which we have "is-hidden" data
+                if (!aHiddenColsRange.mbValue)
+                    n += nColWidth;
+            }
+            else
+            {
+                n += nColWidth;
+            }
+        }
     }
     else
     {
-        OSL_FAIL("GetColumnOffset: Data missing");
+        size_t nColWidthIndex;
+        SCCOL nColWidthRangeEnd;
+        sal_uInt16 nColWidth = mpColWidth->GetValue(0, nColWidthIndex, nColWidthRangeEnd);
+        for (SCCOL i = 0; i < nCol; ++i)
+        {
+            if (i > nColWidthRangeEnd)
+                nColWidth = mpColWidth->GetNextValue(nColWidthIndex, nColWidthRangeEnd);
+            n += nColWidth;
+        }
     }
     return n;
 }

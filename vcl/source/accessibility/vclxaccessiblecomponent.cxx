@@ -66,22 +66,6 @@ VCLXAccessibleComponent::~VCLXAccessibleComponent()
     DisconnectEvents();
 }
 
-OUString VCLXAccessibleComponent::getImplementationName()
-{
-    return u"com.sun.star.comp.toolkit.AccessibleWindow"_ustr;
-}
-
-sal_Bool VCLXAccessibleComponent::supportsService( const OUString& rServiceName )
-{
-    return cppu::supportsService(this, rServiceName);
-}
-
-uno::Sequence< OUString > VCLXAccessibleComponent::getSupportedServiceNames()
-{
-    uno::Sequence< OUString > aNames { u"com.sun.star.awt.AccessibleWindow"_ustr };
-    return aNames;
-}
-
 IMPL_LINK( VCLXAccessibleComponent, WindowEventListener, VclWindowEvent&, rEvent, void )
 {
     /* Ignore VclEventId::WindowEndPopupMode, because the UNO accessibility wrapper
@@ -533,10 +517,10 @@ uno::Reference< accessibility::XAccessible > VCLXAccessibleComponent::getAccessi
 {
     OExternalLockGuard aGuard( this );
 
-    uno::Reference< accessibility::XAccessible > xAcc;
     if ( GetWindow() )
-        xAcc = GetWindow()->GetAccessibleParent();
-    return xAcc;
+        return GetWindow()->GetAccessibleParent();
+
+    return {};
 }
 
 sal_Int16 VCLXAccessibleComponent::getAccessibleRole(  )
@@ -657,16 +641,11 @@ awt::Rectangle VCLXAccessibleComponent::implGetBounds()
     AbsoluteScreenPixelRectangle aRect = pWindow->GetWindowExtentsAbsolute();
     awt::Rectangle aBounds = vcl::unohelper::ConvertToAWTRect(aRect);
 
-    css::uno::Reference<css::accessibility::XAccessible> xParent = pWindow->GetAccessibleParent();
-    if (!xParent.is())
+    rtl::Reference<comphelper::OAccessible> pParent = pWindow->GetAccessibleParent();
+    if (!pParent.is())
         return aBounds;
 
-    css::uno::Reference<css::accessibility::XAccessibleComponent> xParentComponent(
-        xParent->getAccessibleContext(), css::uno::UNO_QUERY);
-    if (!xParentComponent)
-        return aBounds;
-
-    awt::Point aParentScreenLoc = xParentComponent->getLocationOnScreen();
+    awt::Point aParentScreenLoc = pParent->getLocationOnScreen();
     aBounds.X -= aParentScreenLoc.X;
     aBounds.Y -= aParentScreenLoc.Y;
 

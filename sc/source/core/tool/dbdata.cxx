@@ -962,13 +962,20 @@ std::vector<TableColumnAttributes> ScDBData::GetTotalRowAttributes(formula::Form
                 while ((pCell = aIter.GetNext(nCol, nRow)) != nullptr)
                 {
                     TableColumnAttributes aNameAttr;
-                    if (pCell->getType() != CELLTYPE_FORMULA)
+                    aNameAttr.mbHasContent = true;
+                    CellType eCellType = pCell->getType();
+                    if (eCellType == CELLTYPE_STRING || eCellType == CELLTYPE_EDIT)
                     {
+                        // A totals row label describes text content, so only cells that
+                        // actually hold text qualify. A plain number in the totals row is
+                        // exported as a number and carries no label, since declaring it as
+                        // a label would leave the exported table column and its underlying
+                        // cell disagreeing about the cell's type.
                         OUString aStr = pCell->getString(rDoc);
                         if (!aStr.isEmpty())
                             aNameAttr.maTotalsRowLabel = aStr;
                     }
-                    else
+                    else if (eCellType == CELLTYPE_FORMULA)
                     {
                         if (ScFormulaCell* pFC = pCell->getFormula())
                         {
@@ -1312,6 +1319,12 @@ bool ScDBData::UpdateReference(const ScDocument& rDoc, UpdateRefMode eUpdateRefM
 
 void ScDBData::ExtendDataArea(const ScDocument& rDoc)
 {
+    // Only the anonymous range follows its data block; a named DB range is a
+    // fixed, user-owned extent, and a Total Row fixes the bottom edge too —
+    // neither must be auto-extended (e.g. on filter).
+    if (HasTotals() || GetTableStyleInfo() || GetName() != STR_DB_LOCAL_NONAME)
+        return;
+
     // Extend the DB area to include data rows immediately below.
     SCCOL nOldCol1 = nStartCol, nOldCol2 = nEndCol;
     SCROW nOldEndRow = nEndRow;
@@ -1498,7 +1511,7 @@ void ScDBData::RefreshTableColumnNames( ScDocument* pDoc )
     }
 
     // Never leave us with empty names, try to remember previous name that
-    // might had been used to compile formulas, but only if same number of
+    // might have been used to compile formulas, but only if same number of
     // columns and no duplicates.
     if (bHaveEmpty && aNewNames.size() == maTableColumnNames.size())
     {
@@ -1532,7 +1545,7 @@ void ScDBData::RefreshTableColumnNames( ScDocument* pDoc )
     mbTableColumnNamesDirty = false;
 }
 
-void ScDBData::RefreshTableColumnNames( ScDocument& rDoc, const ScRange& rRange )
+void ScDBData::RefreshTableColumnNames( ScDocument& rDoc, const ScRangeList& rRangeList )
 {
     // Header-less tables get names generated, completely empty a full refresh.
     if (mbTableColumnNamesDirty && (!HasHeader() || maTableColumnNames.empty()))
@@ -1542,8 +1555,7 @@ void ScDBData::RefreshTableColumnNames( ScDocument& rDoc, const ScRange& rRange 
     }
 
     // Check if this is affected for the range requested.
-    ScRange aIntersection( GetHeaderArea().Intersection( rRange));
-    if (!aIntersection.IsValid())
+    if (!rRangeList.Intersects(GetHeaderArea()))
         return;
 
     // Always fully refresh, only one cell of a range was broadcasted per area
@@ -1691,11 +1703,11 @@ OUString ScDBData::GetStringFromSubTotalFunc(ScSubTotalFunc eFunc)
     else if (eFunc == SUBTOTAL_FUNC_CNT2)
         return u"count"_ustr;
     else if (eFunc == SUBTOTAL_FUNC_PROD)
-        return u"custom"_ustr; // ooxml not support in Total row
+        return u"custom"_ustr; // ooxml not supported in Total row
     else if (eFunc == SUBTOTAL_FUNC_AVE)
         return u"average"_ustr;
     else if (eFunc == SUBTOTAL_FUNC_MED)
-        return u"custom"_ustr; // ooxml not support in Total row
+        return u"custom"_ustr; // ooxml not supported in Total row
     else if (eFunc == SUBTOTAL_FUNC_MAX)
         return u"max"_ustr;
     else if (eFunc == SUBTOTAL_FUNC_MIN)
@@ -1703,7 +1715,7 @@ OUString ScDBData::GetStringFromSubTotalFunc(ScSubTotalFunc eFunc)
     else if (eFunc == SUBTOTAL_FUNC_STD)
         return u"stdDev"_ustr;
     else if (eFunc == SUBTOTAL_FUNC_STDP)
-        return u"custom"_ustr; // ooxml not support in Total row
+        return u"custom"_ustr; // ooxml not supported in Total row
     else if (eFunc == SUBTOTAL_FUNC_VAR)
         return u"var"_ustr;
     else
@@ -1917,7 +1929,7 @@ void ScDBCollection::NamedDBs::initInserted( ScDBData* p )
     if (mrDoc.IsClipOrUndo())
         return;
 
-    p->StartTableColumnNamesListener(); // needs the container be set already
+    p->StartTableColumnNamesListener(); // needs the container to be set already
     if (!p->AreTableColumnNamesDirty())
         return;
 
@@ -2288,14 +2300,12 @@ std::vector<const ScDBData*> ScDBCollection::GetAllNamedDBsInArea(SCCOL nCol1, S
 
 void ScDBCollection::RefreshDirtyTableColumnNames()
 {
-    for (size_t i=0; i < maNamedDBs.maDirtyTableColumnNames.size(); ++i)
+    if (maNamedDBs.maDirtyTableColumnNames.empty())
+        return;
+    for (auto const& it : maNamedDBs)
     {
-        const ScRange & rRange = maNamedDBs.maDirtyTableColumnNames[i];
-        for (auto const& it : maNamedDBs)
-        {
-            if (it->AreTableColumnNamesDirty())
-                it->RefreshTableColumnNames( maNamedDBs.mrDoc, rRange);
-        }
+        if (it->AreTableColumnNamesDirty())
+            it->RefreshTableColumnNames( maNamedDBs.mrDoc, maNamedDBs.maDirtyTableColumnNames);
     }
     maNamedDBs.maDirtyTableColumnNames.RemoveAll();
 }

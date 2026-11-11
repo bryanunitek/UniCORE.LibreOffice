@@ -23,6 +23,7 @@
 #include <memory>
 #include <optional>
 
+#include <formula/callable.hxx>
 #include <formula/tokenarray.hxx>
 #include <formula/errorcodes.hxx>
 #include <svl/listener.hxx>
@@ -137,6 +138,13 @@ private:
     bool            mbIsExtRef       : 1; // has references in ScExternalRefManager; never cleared after set
     bool            mbSeenInPath     : 1; // For detecting cycle involving formula groups and singleton formulacells
     bool            mbFreeFlying     : 1; // Cell is out of sheets interpreted, like in conditional format
+    // Matrix master that recomputes its range at interpret time. False on a
+    // static array master, which keeps its declared range frozen.
+    bool mbDynamicArrayMaster : 1 = false;
+    // True if the cell is allowed to auto-promote to a dynamic-array
+    // master. False keeps the cell as a plain single-cell formula that
+    // returns the upper-left of any array result.
+    bool mbAutoDynamicArrayEligible : 1 = false;
     ScMatrixMode    cMatrixFlag      : 8;
     sal_uInt16      nSeenInIteration : 16;   // Iteration cycle in which the cell was last encountered
     SvNumFormatType nFormatType      : 16;
@@ -198,7 +206,7 @@ public:
 
     /**
      * Transfer the ownership of the passed token array instance to the
-     * formula cell being constructed.  The caller <i>must not</i> pass a NULL
+     * formula cell being constructed.  The caller <i>must not</i> pass a nullptr
      * token array pointer.
      */
     SC_DLLPUBLIC ScFormulaCell( ScDocument& rDoc, const ScAddress& rPos, std::unique_ptr<ScTokenArray> pArray,
@@ -214,7 +222,7 @@ public:
                    ScMatrixMode = ScMatrixMode::NONE );
 
     /** With formula string and grammar to compile with.
-       formula::FormulaGrammar::GRAM_DEFAULT effectively isformula::FormulaGrammar::GRAM_NATIVE_UI that
+        formula::FormulaGrammar::GRAM_DEFAULT effectively is formula::FormulaGrammar::GRAM_NATIVE_UI that
         also includes formula::FormulaGrammar::CONV_UNSPECIFIED, therefore uses the address
         convention associated with rPos::nTab by default. */
     SC_DLLPUBLIC ScFormulaCell( ScDocument& rDoc, const ScAddress& rPos,
@@ -318,7 +326,6 @@ public:
 
     void            UpdateInsertTab( const sc::RefUpdateInsertTabContext& rCxt );
     void            UpdateInsertTabAbs(SCTAB nTable);
-    void            AdjustRelativeTabRefs(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode);
     void            UpdateDeleteTab( const sc::RefUpdateDeleteTabContext& rCxt );
     void            UpdateMoveTab( const sc::RefUpdateMoveTabContext& rCxt, SCTAB nTabNo );
     bool            TestTabRefAbs(SCTAB nTable);
@@ -333,8 +340,12 @@ public:
     SC_DLLPUBLIC bool IsValue();      // also true if formula::svEmptyCell
     bool            IsValueNoError();
     bool            IsValueNoError() const;
+    SC_DLLPUBLIC bool IsString();
+    SC_DLLPUBLIC bool IsCallable();
     SC_DLLPUBLIC double GetValue();
     SC_DLLPUBLIC const svl::SharedString & GetString();
+    SC_DLLPUBLIC formula::FormulaCallableRef GetCallable();
+    SC_DLLPUBLIC formula::FormulaTokenRef CloneResultToken();
 
     /**
      * Get a numeric value without potentially triggering re-calculation.
@@ -345,6 +356,21 @@ public:
      * Get a string value without potentially triggering re-calculation.
      */
     const svl::SharedString & GetRawString() const;
+
+    /**
+     * Get a callable value without potentially triggering re-calculation.
+     */
+    formula::FormulaCallableRef GetRawCallable() const;
+    /**
+     * Get a value without potentially triggering re-calculation. May return nullptr if the
+     * result is not a token.
+     */
+    formula::FormulaConstTokenRef GetRawResultToken() const;
+    /**
+     * Get a copy of the token without potentially triggering re-calculation. Will not
+     * return nullptr, but the caller is responsible for the reference.
+     */
+    formula::FormulaTokenRef CloneRawResultToken() const;
     const ScMatrix* GetMatrix();
     SC_DLLPUBLIC bool GetMatrixOrigin( const ScDocument& rDoc, ScAddress& rPos ) const;
     void            GetResultDimensions( SCSIZE& rCols, SCSIZE& rRows );
@@ -355,6 +381,17 @@ public:
     SC_DLLPUBLIC sc::FormulaResultValue GetResult();
     SC_DLLPUBLIC sc::FormulaResultValue GetResult() const;
     ScMatrixMode    GetMatrixFlag() const { return cMatrixFlag;}
+    bool IsDynamicArrayMaster() const { return mbDynamicArrayMaster; }
+    SC_DLLPUBLIC void SetDynamicArrayMaster( bool bDynamic );
+    SC_DLLPUBLIC void ResolveImplicitIntersection();
+    // Run this on the bare token array before it is wrapped in a cell.
+    // The cell constructor finalizes the parse array. Once finalized,
+    // appending a new token silently no-ops. The document and position
+    // arguments compile a missing RPN so the array-intent walk has the
+    // post-fix order it needs.
+    SC_DLLPUBLIC static void ResolveImplicitIntersection(ScTokenArray& rCode, ScDocument& rDoc,
+                                                        const ScAddress& rPos);
+    void SetAutoDynamicArrayEligible( bool bEligible ) { mbAutoDynamicArrayEligible = bEligible; }
     ScTokenArray*   GetCode() { return pCode;}
     const ScTokenArray* GetCode() const { return pCode;}
 
@@ -437,7 +474,7 @@ public:
     void MarkAsSpilled();
 
     SC_DLLPUBLIC bool IsHyperLinkCell() const;
-    std::unique_ptr<EditTextObject> CreateURLObject();
+    EditTextObject CreateURLObject();
     SC_DLLPUBLIC void GetURLResult( OUString& rURL, OUString& rCellText );
 
     /** Determines whether or not the result string contains more than one paragraph */
@@ -453,8 +490,9 @@ public:
         if (!IsDirtyOrInTableOpDirty())
             return false;
 
-        return rDocument.GetAutoCalc() || (cMatrixFlag != ScMatrixMode::NONE)
-            || (pCode->IsRecalcModeMustAfterImport() && !pCode->IsRecalcModeAlways());
+        // tdf#43003 - matrix formulas must respect AutoCalculate
+        return rDocument.GetAutoCalc()
+               || (pCode->IsRecalcModeMustAfterImport() && !pCode->IsRecalcModeAlways());
     }
 
     void MaybeInterpret()

@@ -343,7 +343,6 @@ static int gFontNameBoxes;
 static size_t gPreviewsPerDevice;
 static std::vector<VclPtr<VirtualDevice>> gFontPreviewVirDevs;
 static std::vector<OUString> gRenderedFontNames;
-static int gHighestDPI = 0;
 
 namespace
 {
@@ -378,8 +377,6 @@ namespace
         size_t nMaxDeviceHeight = SAL_MAX_INT16 / 16; // see limitXCreatePixmap and be generous wrt up to x16 hidpi
         assert(gUserItemSz.Height() != 0);
         gPreviewsPerDevice = gUserItemSz.Height() == 0 ? 16 : nMaxDeviceHeight / gUserItemSz.Height();
-        if (comphelper::LibreOfficeKit::isActive())
-            gPreviewsPerDevice = 1;
     }
 }
 
@@ -466,19 +463,19 @@ void FontNameBox::SaveMRUEntries(const OUString& aFontMRUEntriesFile) const
     aStream.WriteLine( "" );
 }
 
-void FontNameBox::LoadMRUEntries( const OUString& aFontMRUEntriesFile )
+std::vector<OUString> FontNameBox::LoadMRUEntries(const OUString& aFontMRUEntriesFile)
 {
     if (aFontMRUEntriesFile.isEmpty())
-        return;
+        return {};
 
     if (!officecfg::Office::Common::Font::View::ShowFontBoxWYSIWYG::get())
-        return;
+        return {};
 
     SvFileStream aStream( aFontMRUEntriesFile, StreamMode::READ );
     if( ! aStream.IsOpen() )
     {
         SAL_INFO("svtools.control", "FontNameBox::LoadMRUEntries: opening mru entries file " << aFontMRUEntriesFile << " failed");
-        return;
+        return {};
     }
 
     OStringBuffer aLine;
@@ -494,7 +491,7 @@ void FontNameBox::LoadMRUEntries( const OUString& aFontMRUEntriesFile )
             aFontEntries.push_back(sEntry);
     }
 
-    m_xComboBox->set_mru_entries(aFontEntries);
+    return aFontEntries;
 }
 
 void FontNameBox::InitFontMRUEntriesFile()
@@ -520,8 +517,8 @@ void FontNameBox::Fill( const FontList* pList )
 {
     // store old text and clear box
     OUString aOldText = m_xComboBox->get_active_text();
-    std::vector<OUString> rEntries = m_xComboBox->get_mru_entries();
-    bool bLoadFromFile = rEntries.empty();
+    std::vector<OUString> aEntries = m_xComboBox->get_mru_entries();
+    bool bLoadFromFile = aEntries.empty();
     m_xComboBox->freeze();
     m_xComboBox->clear();
 
@@ -538,9 +535,9 @@ void FontNameBox::Fill( const FontList* pList )
     }
 
     if (bLoadFromFile)
-        LoadMRUEntries(maFontMRUEntriesFile);
-    else
-        m_xComboBox->set_mru_entries(rEntries);
+        aEntries = LoadMRUEntries(maFontMRUEntriesFile);
+
+    m_xComboBox->set_mru_entries(aEntries);
 
     m_xComboBox->thaw();
 
@@ -577,14 +574,8 @@ void FontNameBox::EnableWYSIWYG(bool bEnable)
     m_xComboBox->set_custom_renderer(mbWYSIWYG);
 }
 
-IMPL_LINK(FontNameBox, CustomGetSizeHdl, OutputDevice&, rDevice, Size)
+IMPL_LINK_NOARG(FontNameBox, CustomGetSizeHdl, OutputDevice&, Size)
 {
-    if (comphelper::LibreOfficeKit::isActive())
-    {
-        calcCustomItemSize(*m_xComboBox);
-        gUserItemSz.setWidth(1.0 * rDevice.GetDPIX() / 96.0 * gUserItemSz.getWidth());
-        gUserItemSz.setHeight(1.0 * rDevice.GetDPIY() / 96.0 * gUserItemSz.getHeight());
-    }
     return mbWYSIWYG ? gUserItemSz : Size();
 }
 
@@ -808,28 +799,11 @@ static void DrawPreview(const FontMetric& rFontMetric, const Point& rTopLeft, Ou
     rDevice.SetFont(aOldFont);
 }
 
-OutputDevice& FontNameBox::CachePreview(size_t nIndex, Point* pTopLeft,
-                                        sal_Int32 nDPIX, sal_Int32 nDPIY)
+OutputDevice& FontNameBox::CachePreview(size_t nIndex, Point* pTopLeft)
 {
     SolarMutexGuard aGuard;
     const FontMetric& rFontMetric = (*mpFontList)[nIndex];
     const OUString& rFontName = rFontMetric.GetFamilyName();
-
-    if (comphelper::LibreOfficeKit::isActive())
-    {
-        // we want to cache only best quality previews
-        if (gHighestDPI < nDPIX || gHighestDPI < nDPIY)
-        {
-            clearRenderedFontNames();
-            clearFontPreviewVirDevs();
-            gHighestDPI = std::max(nDPIX, nDPIY);
-        }
-        else if (gHighestDPI > nDPIX || gHighestDPI > nDPIY)
-        {
-            nDPIX = gHighestDPI;
-            nDPIY = gHighestDPI;
-        }
-    }
 
     size_t nPreviewIndex;
     auto& rFontNames = getRenderedFontNames();
@@ -853,7 +827,6 @@ OutputDevice& FontNameBox::CachePreview(size_t nIndex, Point* pTopLeft,
     {
         if (nPage >= rVirtualDevs.size())
         {
-            bool bIsLOK = comphelper::LibreOfficeKit::isActive();
             rVirtualDevs.emplace_back(VclPtr<VirtualDevice>::Create(DeviceFormat::WITH_ALPHA));
 
             VirtualDevice& rDevice = *rVirtualDevs.back();
@@ -861,13 +834,8 @@ OutputDevice& FontNameBox::CachePreview(size_t nIndex, Point* pTopLeft,
             const Color aColor = Application::GetSettings().GetStyleSettings().GetFieldColor();
             rDevice.SetBackground(Wallpaper(aColor));
             rDevice.Erase();
-            if (bIsLOK)
-            {
-                rDevice.SetDPIX(nDPIX);
-                rDevice.SetDPIY(nDPIY);
-            }
 
-            weld::SetPointFont(rDevice, m_xComboBox->get_font(), bIsLOK);
+            weld::SetPointFont(rDevice, m_xComboBox->get_font());
             assert(rVirtualDevs.size() == nPage + 1);
         }
 
@@ -903,9 +871,7 @@ IMPL_LINK(FontNameBox, CustomRenderHdl, weld::ComboBox::render_args, aPayload, v
     {
         // use cache of unselected entries
         Point aTopLeft;
-        OutputDevice& rDevice = CachePreview(nIndex, &aTopLeft,
-                                             rRenderContext.GetDPIX(),
-                                             rRenderContext.GetDPIY());
+        OutputDevice& rDevice = CachePreview(nIndex, &aTopLeft);
 
         Size aSourceSize = comphelper::LibreOfficeKit::isActive() ? rDevice.GetOutputSizePixel() : gUserItemSz;
         rRenderContext.DrawOutDev(aDestPoint, gUserItemSz,
@@ -947,6 +913,17 @@ IMPL_LINK(FontStyleBox, ChangeHdl, weld::ComboBox&, rComboBox, void)
     m_aChangedLink.Call(rComboBox);
 }
 
+void FontStyleBox::set_active_or_entry_text(const OUString& rText)
+{
+    const int nFound = m_xComboBox->find_text(rText);
+    if (nFound != -1)
+    {
+        m_aLastStyle = rText;
+        m_xComboBox->set_active(nFound);
+    }
+    m_xComboBox->set_entry_text(rText);
+}
+
 void FontStyleBox::Fill( std::u16string_view rName, const FontList* pList )
 {
     OUString aOldText = m_xComboBox->get_active_text();
@@ -962,6 +939,7 @@ void FontStyleBox::Fill( std::u16string_view rName, const FontList* pList )
         FontWeight  eLastWeight = WEIGHT_DONTKNOW;
         FontItalic  eLastItalic = ITALIC_NONE;
         FontWidth   eLastWidth = WIDTH_DONTKNOW;
+        OUString    aLastStyleName;
         bool        bNormal = false;
         bool        bItalic = false;
         bool        bBold = false;
@@ -975,10 +953,14 @@ void FontStyleBox::Fill( std::u16string_view rName, const FontList* pList )
             FontWeight  eWeight = aFontMetric.GetWeightMaybeAskConfig();
             FontItalic  eItalic = aFontMetric.GetItalicMaybeAskConfig();
             FontWidth   eWidth = aFontMetric.GetWidthTypeMaybeAskConfig();
+            const OUString& rStyleName = aFontMetric.GetStyleName();
             // Only if the attributes are different, we insert the
             // Font to avoid double Entries in different languages
+            // tdf#87288 also insert if attributes are the same but style name
+            // is different (e.g. “Small Caps” that have the same attributes as
+            // “Regular”).
             if ( (eWeight != eLastWeight) || (eItalic != eLastItalic) ||
-                 (eWidth != eLastWidth) )
+                 (eWidth != eLastWidth) || (rStyleName != aLastStyleName) )
             {
                 if ( bInsert )
                     m_xComboBox->append_text(aStyleText);
@@ -1010,6 +992,7 @@ void FontStyleBox::Fill( std::u16string_view rName, const FontList* pList )
                 eLastWeight = eWeight;
                 eLastItalic = eItalic;
                 eLastWidth = eWidth;
+                aLastStyleName = rStyleName;
             }
             else
             {
@@ -1622,11 +1605,11 @@ void SvtLineListBox::SelectEntry(SvxBorderLineStyle nStyle)
 }
 
 void SvtLineListBox::InsertEntry(
-    const BorderWidthImpl& rWidthImpl, SvxBorderLineStyle nStyle, tools::Long nMinWidth,
+    const BorderWidthImpl& rWidthImpl, SvxBorderLineStyle nStyle,
     ColorFunc pColor1Fn, ColorFunc pColor2Fn, ColorDistFunc pColorDistFn )
 {
     m_vLineList.emplace_back(new ImpLineListData(
-        rWidthImpl, nStyle, nMinWidth, pColor1Fn, pColor2Fn, pColorDistFn));
+        rWidthImpl, nStyle, pColor1Fn, pColor2Fn, pColorDistFn));
 }
 
 void SvtLineListBox::UpdateEntries()

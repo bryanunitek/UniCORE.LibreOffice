@@ -325,6 +325,217 @@ DECLARE_OOXMLEXPORT_TEST(testMathAccents, "math-accents.docx")
         getFormula( getRun( getParagraph( 1 ), 1 )));
 }
 
+CPPUNIT_TEST_FIXTURE(Test, testMathColor)
+{
+    createSwDoc("math-color.docx");
+
+    // A font color on part of a formula becomes a color command around that part.
+    // FF0000 is a color StarMath names, 00B050 is not, so one comes back as a name
+    // and the other as hexadecimal digits.
+    CHECK_FORMULA(u"color red {x} + color hex 00B050 {y}"_ustr,
+                  getFormula(getRun(getParagraph(1), 1)));
+    // An operator on its own cannot stand as an expression, so it goes in as a literal
+    // and the formula still parses
+    CHECK_FORMULA(u"a color blue {\"+\"} b"_ustr, getFormula(getRun(getParagraph(2), 1)));
+    // A color of auto is the default color, so the formula stays plain
+    CHECK_FORMULA(u"c"_ustr, getFormula(getRun(getParagraph(3), 1)));
+    // The color is found wherever the run properties keep it, not only when it comes
+    // first. This run puts several other properties in front of it.
+    CHECK_FORMULA(u"color yellow {z}"_ustr, getFormula(getRun(getParagraph(4), 1)));
+    // The parser reads only uppercase hexadecimal digits, so a value written in
+    // lowercase comes back in uppercase and stays one command
+    CHECK_FORMULA(u"color hex 00B050 {w}"_ustr, getFormula(getRun(getParagraph(5), 1)));
+    // and a run of several operators is no more an expression than a single one
+    CHECK_FORMULA(u"a color blue {\"+-\"} b"_ustr, getFormula(getRun(getParagraph(6), 1)));
+    // A run that is not an expression on its own keeps no color command at all, so the
+    // formula reads the way it did before any color was carried over
+    CHECK_FORMULA(u"a+ b"_ustr, getFormula(getRun(getParagraph(7), 1)));
+
+    saveAndReload(TestFilter::DOCX);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
+
+    // Each color goes back on the run it belongs to, and the run between them
+    // keeps the default color
+    assertXPath(pXmlDoc, "//w:p[1]//m:oMath/m:r[1]/w:rPr/w:color", "val", u"FF0000");
+    assertXPath(pXmlDoc, "//w:p[1]//m:oMath/m:r[2]/w:rPr/w:color", 0);
+    assertXPath(pXmlDoc, "//w:p[1]//m:oMath/m:r[3]/w:rPr/w:color", "val", u"00B050");
+    assertXPath(pXmlDoc, "//w:p[3]//m:oMath/m:r[1]/w:rPr/w:color", 0);
+    assertXPath(pXmlDoc, "//w:p[4]//m:oMath/m:r[1]/w:rPr/w:color", "val", u"FFFF00");
+    assertXPath(pXmlDoc, "//w:p[5]//m:oMath/m:r[1]/w:rPr/w:color", "val", u"00B050");
+    assertXPath(pXmlDoc, "//w:p[6]//m:oMath/m:r[2]/w:rPr/w:color", "val", u"0000FF");
+    assertXPath(pXmlDoc, "//w:p[7]//m:oMath/m:r[1]/w:rPr/w:color", 0);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testMathFractionBarColor)
+{
+    createSwDoc("math-color-ctrlpr.docx");
+
+    // A fraction bar and a root sign are drawn by the construct itself, and their color
+    // travels in the m:ctrlPr. One command around the whole construct colors the part it
+    // draws as well as the terms inside it.
+    CHECK_FORMULA(u"color red {{x} over {2}}"_ustr, getFormula(getRun(getParagraph(1), 1)));
+    CHECK_FORMULA(u"color blue {sqrt {y}}"_ustr, getFormula(getRun(getParagraph(2), 1)));
+    // An m:ctrlPr that names no color leaves the fraction at the default color
+    CHECK_FORMULA(u"{a} over {b}"_ustr, getFormula(getRun(getParagraph(3), 1)));
+    // A border box that draws no line of its own is dropped, and the color it named
+    // stays on the content that is left
+    CHECK_FORMULA(u"color red {c}"_ustr, getFormula(getRun(getParagraph(4), 1)));
+
+    saveAndReload(TestFilter::DOCX);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
+
+    // The color goes back on the m:ctrlPr, so the bar and the root sign keep it
+    assertXPath(pXmlDoc, "//w:p[1]//m:f/m:fPr/m:ctrlPr/w:rPr/w:color", "val", u"FF0000");
+    assertXPath(pXmlDoc, "//w:p[1]//m:f/m:num/m:r/w:rPr/w:color", "val", u"FF0000");
+    assertXPath(pXmlDoc, "//w:p[1]//m:f/m:den/m:r/w:rPr/w:color", "val", u"FF0000");
+    assertXPath(pXmlDoc, "//w:p[2]//m:rad/m:radPr/m:ctrlPr/w:rPr/w:color", "val", u"0000FF");
+    // and a construct at the default color says nothing about it
+    assertXPath(pXmlDoc, "//w:p[3]//m:f/m:fPr/m:ctrlPr/w:rPr/w:color", 0);
+    assertXPath(pXmlDoc, "//w:p[4]//m:oMath/m:r[1]/w:rPr/w:color", "val", u"FF0000");
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testMathColorConstructs)
+{
+    createSwDoc("math-color-constructs.docx");
+
+    // Each construct that draws a part of itself takes the color of its m:ctrlPr, and one
+    // command colors the whole construct
+    CHECK_FORMULA(u"color red {widehat {a}}"_ustr, getFormula(getRun(getParagraph(1), 1)));
+    CHECK_FORMULA(u"color red {underline {b}}"_ustr, getFormula(getRun(getParagraph(2), 1)));
+    CHECK_FORMULA(u"color red {overstrike {c}}"_ustr, getFormula(getRun(getParagraph(3), 1)));
+    CHECK_FORMULA(u"color red {left (d right )}"_ustr, getFormula(getRun(getParagraph(4), 1)));
+    CHECK_FORMULA(u"color red {{e} overbrace {}}"_ustr, getFormula(getRun(getParagraph(5), 1)));
+    CHECK_FORMULA(u"color red {{e} csub {\u2192}}"_ustr,
+                  getFormula(getRun(getParagraph(6), 1)));
+    CHECK_FORMULA(u"color red {{e} csup {\u2192}}"_ustr,
+                  getFormula(getRun(getParagraph(7), 1)));
+    CHECK_FORMULA(u"color red {sum from {i} to {n} {i}}"_ustr,
+                  getFormula(getRun(getParagraph(8), 1)));
+    CHECK_FORMULA(u"color red {{x} / {y}}"_ustr, getFormula(getRun(getParagraph(9), 1)));
+    CHECK_FORMULA(u"color red {binom {x} {y}}"_ustr, getFormula(getRun(getParagraph(10), 1)));
+    CHECK_FORMULA(u"color red {nroot {3} {z}}"_ustr, getFormula(getRun(getParagraph(11), 1)));
+    // A construct inside another of the same color is already colored, so the color is
+    // named once
+    CHECK_FORMULA(u"color red {left ({x} over {y} right )}"_ustr,
+                  getFormula(getRun(getParagraph(12), 1)));
+    // A value that is not six hexadecimal digits is no color, and black is the default
+    // color, so neither run gets a command
+    CHECK_FORMULA(u"p"_ustr, getFormula(getRun(getParagraph(13), 1)));
+    CHECK_FORMULA(u"q"_ustr, getFormula(getRun(getParagraph(14), 1)));
+
+    saveAndReload(TestFilter::DOCX);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
+
+    // The color goes back on the m:ctrlPr of each construct
+    assertXPath(pXmlDoc, "//w:p[1]//m:acc/m:accPr/m:ctrlPr/w:rPr/w:color", "val", u"FF0000");
+    assertXPath(pXmlDoc, "//w:p[2]//m:bar/m:barPr/m:ctrlPr/w:rPr/w:color", "val", u"FF0000");
+    assertXPath(pXmlDoc, "//w:p[3]//m:borderBox/m:borderBoxPr/m:ctrlPr/w:rPr/w:color", "val",
+                u"FF0000");
+    assertXPath(pXmlDoc, "//w:p[4]//m:d/m:dPr/m:ctrlPr/w:rPr/w:color", "val", u"FF0000");
+    assertXPath(pXmlDoc, "//w:p[5]//m:groupChr/m:groupChrPr/m:ctrlPr/w:rPr/w:color", "val",
+                u"FF0000");
+    assertXPath(pXmlDoc, "//w:p[11]//m:rad/m:radPr/m:ctrlPr/w:rPr/w:color", "val", u"FF0000");
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testMathRunStyles)
+{
+    createSwDoc("math-run-styles.docx");
+
+    // Normal text keeps the italic of its w:rPr, alone and together with bold
+    CHECK_FORMULA(u"ital {\"if\"}"_ustr, getFormula(getRun(getParagraph(1), 1)));
+    // This one is compared with its spaces, which keep the two commands apart
+    CPPUNIT_ASSERT_EQUAL(u"bold ital {\"if\"}"_ustr, getFormula(getRun(getParagraph(2), 1)));
+    // A bold in the m:ctrlPr of a function belongs to the function name
+    CHECK_FORMULA(u"bold {sin} {x}"_ustr, getFormula(getRun(getParagraph(3), 1)));
+    // A digit is upright in any style, so a bold digit is only bold
+    CHECK_FORMULA(u"bold {2}"_ustr, getFormula(getRun(getParagraph(4), 1)));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testMathBoldItalic)
+{
+    createSwDoc("math-bold-italic.docx");
+
+    // The bold and italic in the m:ctrlPr of the fraction belong to its bar, not to the
+    // terms.
+    CHECK_FORMULA(u"{bold {x}} over {2I}"_ustr, getFormula(getRun(getParagraph(1), 1)));
+
+    // The second formula follows a line of text in its paragraph
+    uno::Reference<container::XEnumerationAccess> xParagraph(getParagraph(2), uno::UNO_QUERY);
+    uno::Reference<container::XEnumeration> xRuns = xParagraph->createEnumeration();
+    uno::Reference<text::XTextRange> xFormulaRun;
+    while (!xFormulaRun && xRuns->hasMoreElements())
+    {
+        uno::Reference<text::XTextRange> xRun(xRuns->nextElement(), uno::UNO_QUERY);
+        if (getProperty<OUString>(xRun, u"TextPortionType"_ustr) == "Frame")
+            xFormulaRun = xRun;
+    }
+    CPPUNIT_ASSERT(xFormulaRun.is());
+    CHECK_FORMULA(u"color red {\" \"} {xBI} over {2B}"_ustr, getFormula(xFormulaRun));
+
+    CHECK_FORMULA(u"f left (bold {x} right ) = {a} rsub {bold {0}} + sum from {n=1} to "
+                  u"{\u221E} {left ({bold {a}} rsub {bold {n}} cos {{bold {n\u03C0x}} over "
+                  u"{L}} + {b} rsub {n} bold {sin} {{n\u03C0x} over {L}} right )}"_ustr,
+                  getFormula(getRun(getParagraph(3), 1)));
+    CHECK_FORMULA(u"{bold nitalic {e}} ^ {x} =1+ {nitalic {x}} over {1!} + {{color hex EE0000 "
+                  u"{bold {x}}} ^ {2}} over {2!} + {{x} ^ {3}} over {3!} +\u2026, \" \"\" \" "
+                  u"-\u221E<x<\u221E"_ustr,
+                  getFormula(getRun(getParagraph(5), 1)));
+    CHECK_FORMULA(u"cos {\u03B1} + bold {cos} {\u03B2} =2 bold ital {cos} {{1} over {2} left "
+                  u"(\u03B1+\u03B2 right )} cos {{1} over {2} left (\u03B1-\u03B2 right )}"_ustr,
+                  getFormula(getRun(getParagraph(6), 1)));
+    CHECK_FORMULA(u"ital {sin} {x} = bold {\"if\"} \" \"x>0"_ustr,
+                  getFormula(getRun(getParagraph(8), 1)));
+
+    saveAndReload(TestFilter::DOCX);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
+
+    assertXPath(pXmlDoc, "//w:p[1]//m:f/m:num/m:r/m:rPr/m:sty", "val", u"bi");
+    assertXPath(pXmlDoc, "//w:p[1]//m:f/m:den/m:r/m:rPr", 0);
+    // The fraction's control properties carry the size it is drawn at and nothing else: a
+    // bold or italic there belongs to the bar alone, and a command around the fraction would
+    // reach the terms as well. The size comes first, so the three counts below are taken on
+    // a path that is there.
+    assertXPath(pXmlDoc, "//w:p[1]//m:f/m:fPr/m:ctrlPr/w:rPr/w:sz", 1);
+    assertXPath(pXmlDoc, "//w:p[1]//m:f/m:fPr/m:ctrlPr/w:rPr/w:b", 0);
+    assertXPath(pXmlDoc, "//w:p[1]//m:f/m:fPr/m:ctrlPr/w:rPr/w:i", 0);
+    assertXPath(pXmlDoc, "//w:p[1]//m:f/m:fPr/m:ctrlPr/w:rPr/w:color", 0);
+    assertXPath(pXmlDoc, "//w:p[2]//m:oMath/m:r[1]/w:rPr/w:b", 0);
+    assertXPath(pXmlDoc, "(//w:p[3]//m:sSub)[1]/m:sub/m:r/m:rPr/m:sty", "val", u"b");
+    assertXPath(pXmlDoc, "(//w:p[3]//m:f)[1]/m:num/m:r/m:rPr/m:sty", "val", u"bi");
+    assertXPath(pXmlDoc, "(//w:p[3]//m:f)[2]/m:num/m:r/m:rPr", 0);
+    assertXPath(pXmlDoc, "//w:p[3]//m:r[m:t='cos']/m:rPr/m:sty", "val", u"p");
+    assertXPath(pXmlDoc, "//w:p[3]//m:r[m:t='sin']/m:rPr/m:sty", "val", u"b");
+    assertXPath(pXmlDoc, "//w:p[5]//m:r[m:t='e']/m:rPr/m:sty", "val", u"b");
+    assertXPath(pXmlDoc, "//w:p[5]//m:r[m:rPr/m:sty/@m:val='p']", 1);
+    assertXPathContent(pXmlDoc, "//w:p[5]//m:r[m:rPr/m:sty/@m:val='p']/m:t", u"x");
+    assertXPath(pXmlDoc, "//w:p[5]//m:r[w:rPr/w:color]/m:rPr/m:sty", "val", u"bi");
+    assertXPath(pXmlDoc, "//w:p[5]//m:r[w:rPr/w:color]/w:rPr/w:color", "val", u"EE0000");
+    assertXPath(pXmlDoc, "(//w:p[6]//m:r[m:t='cos'])[2]/m:rPr/m:sty", "val", u"b");
+    assertXPath(pXmlDoc, "(//w:p[6]//m:r[m:t='cos'])[3]/m:rPr/m:sty", "val", u"bi");
+    assertXPath(pXmlDoc, "//w:p[8]//m:r[m:t='sin']/m:rPr/m:sty", "val", u"i");
+    assertXPath(pXmlDoc, "//w:p[8]//m:r[m:t='if']/m:rPr/m:nor", 1);
+    assertXPath(pXmlDoc, "//w:p[8]//m:r[m:t='if']/m:rPr/m:sty", 0);
+    assertXPath(pXmlDoc, "//w:p[8]//m:r[m:t='if']/w:rPr/w:b", 1);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testMathBoldItalicCtrlPr)
+{
+    createSwDoc("math-bold-italic-export.fodt");
+    save(TestFilter::DOCX);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
+
+    // A bold or ital command around a construct reaches the part that it draws itself
+    assertXPath(pXmlDoc, "(//m:oMath)[1]/m:f/m:fPr/m:ctrlPr/w:rPr/w:b", 1);
+    assertXPath(pXmlDoc, "(//m:oMath)[1]/m:f/m:fPr/m:ctrlPr/w:rPr/w:i", 0);
+    assertXPath(pXmlDoc, "(//m:oMath)[2]/m:rad/m:radPr/m:ctrlPr/w:rPr/w:i", 1);
+    assertXPath(pXmlDoc, "(//m:oMath)[3]/m:nary/m:naryPr/m:ctrlPr/w:rPr/w:b", 1);
+    assertXPath(pXmlDoc, "(//m:oMath)[4]/m:f/m:fPr/m:ctrlPr/w:rPr/w:b", 1);
+    assertXPath(pXmlDoc, "(//m:oMath)[4]/m:f/m:fPr/m:ctrlPr/w:rPr/w:color", "val", u"FF0000");
+    assertXPath(pXmlDoc, "(//m:oMath)[5]/m:r/w:rPr/w:b", 1);
+    assertXPath(pXmlDoc, "(//m:oMath)[6]/m:r/w:rPr/w:i", 1);
+    assertXPath(pXmlDoc, "(//m:oMath)[7]/m:r/m:rPr/m:sty", "val", u"p");
+}
+
 DECLARE_OOXMLEXPORT_TEST(testMathD, "math-d.docx")
 {
     CHECK_FORMULA( u"left (x mline y mline z right )"_ustr, getFormula( getRun( getParagraph( 1 ), 1 )));
@@ -342,6 +553,24 @@ DECLARE_OOXMLEXPORT_TEST(testMathEscaping, "math-escaping.docx")
 {
     CHECK_FORMULA(u"\u2212 \u221E < x < \u221E"_ustr,
                   getFormula(getRun(getParagraph(1), 1)));
+}
+
+DECLARE_OOXMLEXPORT_TEST(testMathOperatorWithoutOperand, "math-operator-without-operand.docx")
+{
+    // An equals sign with nothing on one side gets an empty group there, so the formula
+    // parses and the sign keeps its math glyph
+    CHECK_FORMULA(u"{} = {x} over {2}"_ustr, getFormula(getRun(getParagraph(1), 1)));
+    CHECK_FORMULA(u"{x} over {2} = {}"_ustr, getFormula(getRun(getParagraph(2), 1)));
+    CHECK_FORMULA(u"{} = {}"_ustr, getFormula(getRun(getParagraph(3), 1)));
+    // The same holds inside a part of the formula, such as a numerator
+    CHECK_FORMULA(u"{x = {}} over {2}"_ustr, getFormula(getRun(getParagraph(4), 1)));
+    // A minus sign at the start is a sign of its own and needs nothing added
+    CHECK_FORMULA(u"- x"_ustr, getFormula(getRun(getParagraph(5), 1)));
+    // An operator that is all there is of a superscript is written as text, which has no
+    // operand to miss
+    CHECK_FORMULA(u"{x} ^ {\"+\"}"_ustr, getFormula(getRun(getParagraph(6), 1)));
+    // An operator in a run with its operands stays a math operator rather than text
+    CHECK_FORMULA(u"x-4"_ustr, getFormula(getRun(getParagraph(7), 1)));
 }
 
 DECLARE_OOXMLEXPORT_TEST(testMathLim, "math-lim.docx")
@@ -1117,7 +1346,7 @@ DECLARE_OOXMLEXPORT_TEST(testTableFloating, "table-floating.docx")
         // After import, table is inside a TextFrame.
         uno::Reference<beans::XPropertySet> xFrame(xIndexAccess->getByIndex(0), uno::UNO_QUERY);
         // This was 0, should be the opposite of (left margin + half of the border width).
-        CPPUNIT_ASSERT_EQUAL(sal_Int32(-199), getProperty<sal_Int32>(xFrame, u"HoriOrientPosition"_ustr));
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(-200), getProperty<sal_Int32>(xFrame, u"HoriOrientPosition"_ustr));
         // Was 0 as well, should be the right margin.
         CPPUNIT_ASSERT_EQUAL(sal_Int32(250), getProperty<sal_Int32>(xFrame, u"RightMargin"_ustr));
     }
@@ -1126,7 +1355,7 @@ DECLARE_OOXMLEXPORT_TEST(testTableFloating, "table-floating.docx")
         // After import, table is inside a TextFrame.
         uno::Reference<beans::XPropertySet> xShape(getShape(1), uno::UNO_QUERY);
         // This was 0, should be the opposite of (left margin + half of the border width).
-        CPPUNIT_ASSERT_EQUAL(sal_Int32(-199), getProperty<sal_Int32>(xShape, u"HoriOrientPosition"_ustr));
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(-200), getProperty<sal_Int32>(xShape, u"HoriOrientPosition"_ustr));
         // Was 0 as well, should be the right margin.
         CPPUNIT_ASSERT_EQUAL(sal_Int32(250), getProperty<sal_Int32>(xShape, u"RightMargin"_ustr));
     }

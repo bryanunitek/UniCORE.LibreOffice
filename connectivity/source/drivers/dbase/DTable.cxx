@@ -254,7 +254,7 @@ void ODbaseTable::readHeader()
             case FoxProMemo:
                 m_pFileStream->SetEndian(SvStreamEndian::LITTLE);
                 if( getConnection()->isTextEncodingDefaulted() &&
-                   !dbfDecodeCharset(m_eEncoding, nType, m_aHeader.trailer[17]))
+                   !dbfDecodeEncoding(m_eEncoding, nType, m_aHeader.trailer[17]))
                 {
                     m_eEncoding = RTL_TEXTENCODING_IBM_850;
                 }
@@ -287,6 +287,7 @@ void ODbaseTable::fillColumns()
     m_aTypes.clear();
     m_aPrecisions.clear();
     m_aScales.clear();
+    m_aRealFieldLengths.clear();
 
     // Number of fields:
     sal_Int32 nFieldCount = (m_aHeader.headerLength - 1) / 32 - 1;
@@ -361,7 +362,7 @@ void ODbaseTable::fillColumns()
                 aTypeName = "NUMERIC";
             eType = DataType::DECIMAL;
 
-            // for numeric fields two characters more are written, then the precision of the column description predescribes,
+            // for numeric fields two characters more are written, then the precision of the column description prescribes,
             // to keep room for the possible sign and the comma. This has to be considered...
             nPrecision = SvDbaseConverter::ConvertPrecisionToOdbc(nPrecision,aDBFColumn.db_dez);
             // This is not true for older versions...
@@ -545,8 +546,8 @@ void ODbaseTable::construct()
         {
             m_pMemoStream = createStream_simpleError( aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE), StreamMode::READ | StreamMode::NOCREATE | StreamMode::SHARE_DENYNONE);
         }
-        if (m_pMemoStream)
-            ReadMemoHeader();
+        if (m_pMemoStream && !ReadMemoHeader())
+            m_pMemoStream.reset();
     }
 
     fillColumns();
@@ -574,7 +575,7 @@ void ODbaseTable::construct()
     AllocBuffer();
 }
 
-void ODbaseTable::ReadMemoHeader()
+bool ODbaseTable::ReadMemoHeader()
 {
     m_pMemoStream->SetEndian(SvStreamEndian::LITTLE);
     m_pMemoStream->RefreshBuffer();         // make sure that the header information is actually read again
@@ -620,6 +621,7 @@ void ODbaseTable::ReadMemoHeader()
             SAL_WARN( "connectivity.drivers", "ODbaseTable::ReadMemoHeader: unsupported memo type!" );
             break;
     }
+    return m_aMemoHeader.db_size != 0;
 }
 
 OUString ODbaseTable::getEntry(file::OConnection const * _pConnection, std::u16string_view _sName )
@@ -1013,7 +1015,7 @@ bool ODbaseTable::CreateImpl()
     if(aName.isEmpty())
     {
         OUString aIdent = m_pConnection->getContent()->getIdentifier()->getContentIdentifier();
-        if ( aIdent.lastIndexOf('/') != (aIdent.getLength()-1) )
+        if (!aIdent.endsWith('/'))
             aIdent += "/";
         aIdent += m_Name;
         aName = aIdent;
@@ -1651,7 +1653,7 @@ bool ODbaseTable::UpdateBuffer(OValueRefVector& rRow, const OValueRefRow& pOrgRo
     ::comphelper::UStringMixEqual aCase(isCaseSensitive());
 
     Reference<XIndexAccess> xColumns(m_xColumns.get());
-    // first search a key that exist already in the table
+    // first search a key that exists already in the table
     for (sal_Int32 i = 0; i < nColumnCount; ++i)
     {
         sal_Int32 nPos = i;
@@ -1787,6 +1789,11 @@ bool ODbaseTable::UpdateBuffer(OValueRefVector& rRow, const OValueRefRow& pOrgRo
             nByteOffset += nLen;
             continue;
         }
+        if (nLen < 0 || nByteOffset + nLen > m_nBufferSize)
+            return false;
+        // dates and timestamps are written as 8 bytes
+        if ((nType == DataType::DATE || nType == DataType::TIMESTAMP) && !thisColIsNull && nLen < 8)
+            return false;
         if (aIndexedCols[i].is())
         {
             ODbaseIndex* pIndex = dynamic_cast<ODbaseIndex*>(aIndexedCols[i].get());
@@ -2288,7 +2295,7 @@ namespace
         if(aName.isEmpty())
         {
             OUString aIdent = _pConnection->getContent()->getIdentifier()->getContentIdentifier();
-            if ( aIdent.lastIndexOf('/') != (aIdent.getLength()-1) )
+            if (!aIdent.endsWith('/'))
                 aIdent += "/";
             aIdent += oldName;
             aName = aIdent;
@@ -2447,7 +2454,7 @@ void ODbaseTable::dropColumn(sal_Int32 _nPos)
 OUString ODbaseTable::createTempFile()
 {
     OUString aIdent = m_pConnection->getContent()->getIdentifier()->getContentIdentifier();
-    if ( aIdent.lastIndexOf('/') != (aIdent.getLength()-1) )
+    if (!aIdent.endsWith('/'))
         aIdent += "/";
 
     OUString sExt("." + m_pConnection->getExtension());
@@ -2519,7 +2526,7 @@ void ODbaseTable::copyData(ODbaseTable* _pNewTable,sal_Int32 _nPos)
         {
             OSL_ASSERT(false);
         }
-    } // for(sal_uInt32 nRowPos = 0; nRowPos < m_aHeader.db_anz;++nRowPos)
+    } // for(sal_uInt32 nRowPos = 0; nRowPos < m_aHeader.nbRecords;++nRowPos)
 }
 
 void ODbaseTable::throwInvalidDbaseFormat()
@@ -2685,6 +2692,14 @@ bool ODbaseTable::ReadMemo(std::size_t nBlockNo, ORowSetValue& aVariable)
                     return false;
                 }
                 nLength -= 8;
+            }
+
+            const sal_uInt64 nRemaining = m_pMemoStream->remainingSize();
+            if (nLength > nRemaining)
+            {
+                SAL_WARN("connectivity.drivers", "memo length " << nLength
+                         << " is more than the " << nRemaining << " bytes left in the memo file");
+                nLength = nRemaining;
             }
 
             if ( nLength )

@@ -158,7 +158,8 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
 
             // tdf#153092 Ideally we don't have to scale the font and dxarray, but we might have
             // to nevertheless if dealing with non integer sizes
-            const bool bScaleFont(aFontSize.getY() != std::round(aFontSize.getY())
+            const double fY = aFontSize.getY();
+            const bool bScaleFont(!basegfx::fTools::equal(fY, std::round(fY))
                                   || comphelper::LibreOfficeKit::isActive());
             vcl::Font aFont;
 
@@ -396,25 +397,6 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
                         = aFontScaling.getX()
                           / (aResultFontSize.Width() ? aResultFontSize.Width()
                                                      : aResultFontSize.Height());
-
-#ifdef _WIN32
-                    if (aResultFontSize.Width()
-                        && aResultFontSize.Width() != aResultFontSize.Height())
-                    {
-                        // See getVclFontFromFontAttribute in drawinglayer/source/primitive2d/textlayoutdevice.cxx
-                        vcl::Font aUnscaledTest(aFont);
-                        aUnscaledTest.SetFontSize({ 0, aResultFontSize.Height() });
-                        const FontMetric aUnscaledFontMetric(
-                            Application::GetDefaultDevice()->GetFontMetric(aUnscaledTest));
-                        if (aUnscaledFontMetric.GetAverageFontWidth() > 0)
-                        {
-                            double nExistingXScale = static_cast<double>(aResultFontSize.Width())
-                                                     / aUnscaledFontMetric.GetAverageFontWidth();
-                            nFontScalingFixX
-                                = aFontScaling.getX() / aFontScaling.getY() / nExistingXScale;
-                        }
-                    }
-#endif
 
                     if (!rtl_math_approxEqual(nFontScalingFixY, 1.0)
                         || !rtl_math_approxEqual(nFontScalingFixX, 1.0))

@@ -44,23 +44,15 @@ namespace cairocanvas
     {
     }
 
-    void DeviceHelper::implInit( SurfaceProvider& rSurfaceProvider,
-                                 OutputDevice&    rRefDevice )
+    void DeviceHelper::init( SurfaceProvider& rSurfaceProvider,
+                             OutputDevice&    rRefDevice )
     {
         mpSurfaceProvider = &rSurfaceProvider;
         mpRefDevice = &rRefDevice;
 
-        // no own surface, this is handled by derived classes
-    }
-
-    void DeviceHelper::init( SurfaceProvider& rSurfaceProvider,
-                             OutputDevice&    rRefDevice )
-    {
-        implInit(rSurfaceProvider, rRefDevice);
-
         OutputDevice* pOutDev = getOutputDevice();
-        mpSurface = pOutDev->CreateSurface(pOutDev->GetOutOffXPixel(),
-                                           pOutDev->GetOutOffYPixel(),
+        mpSurface = pOutDev->CreateSurface(pOutDev->GetDeviceOriginX(),
+                                           pOutDev->GetDeviceOriginY(),
                                            pOutDev->GetOutputWidthPixel(),
                                            pOutDev->GetOutputHeightPixel());
     }
@@ -86,14 +78,14 @@ namespace cairocanvas
 
         // X11 only
         bool bReuseSurface = mpSurface &&
-                             mpSurface->Resize(rSize.getWidth() + pOutDev->GetOutOffXPixel(),
-                                               rSize.getHeight() + pOutDev->GetOutOffYPixel());
+                             mpSurface->Resize(rSize.getWidth() + pOutDev->GetDeviceOriginX(),
+                                               rSize.getHeight() + pOutDev->GetDeviceOriginY());
 
         if (!bReuseSurface)
         {
             mpSurface = pOutDev->CreateSurface(
-                pOutDev->GetOutOffXPixel(),
-                pOutDev->GetOutOffYPixel(),
+                pOutDev->GetDeviceOriginX(),
+                pOutDev->GetDeviceOriginY(),
                 rSize.getWidth(), rSize.getHeight() );
         }
     }
@@ -165,13 +157,6 @@ namespace cairocanvas
                 false ));
     }
 
-    uno::Reference< rendering::XVolatileBitmap > DeviceHelper::createVolatileBitmap(
-        const uno::Reference< rendering::XGraphicDevice >&  ,
-        const geometry::IntegerSize2D&                      /*size*/ )
-    {
-        return uno::Reference< rendering::XVolatileBitmap >();
-    }
-
     uno::Reference< rendering::XBitmap > DeviceHelper::createCompatibleAlphaBitmap(
         const uno::Reference< rendering::XGraphicDevice >&  rDevice,
         const geometry::IntegerSize2D&                      size )
@@ -188,22 +173,12 @@ namespace cairocanvas
                 true ));
     }
 
-    uno::Reference< rendering::XVolatileBitmap > DeviceHelper::createVolatileAlphaBitmap(
-        const uno::Reference< rendering::XGraphicDevice >&  ,
-        const geometry::IntegerSize2D&                      /*size*/ )
-    {
-        return uno::Reference< rendering::XVolatileBitmap >();
-    }
-
     uno::Any DeviceHelper::isAccelerated() const
     {
         return css::uno::Any(false);
     }
 
-    uno::Any DeviceHelper::getDeviceHandle() const
-    {
-        return uno::Any( reinterpret_cast< sal_Int64 >(mpRefDevice.get()) );
-    }
+    const OutputDevice* DeviceHelper::getDeviceHandle() const { return mpRefDevice.get(); }
 
     uno::Any DeviceHelper::getSurfaceHandle() const
     {

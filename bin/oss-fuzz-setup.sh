@@ -11,7 +11,7 @@ mkdir $SRC/external-tar
 cd $SRC/external-tar
 
 #cache build dependencies
-curl --no-progress-meter -S \
+curl --no-progress-meter -S --fail \
     -C - -O https://dev-www.libreoffice.org/src/$FONT_LIBERATION_TARBALL \
     -C - -O https://dev-www.libreoffice.org/extern/$OPENSYMBOL_TTF \
     -C - -O https://dev-www.libreoffice.org/src/$RASQAL_TARBALL \
@@ -79,7 +79,7 @@ curl --no-progress-meter -S \
 cd $SRC
 
 #fuzzing dictionaries
-curl --no-progress-meter -S \
+curl --no-progress-meter -S --fail \
     -C - -O https://raw.githubusercontent.com/google/fuzzing/master/dictionaries/gif.dict \
     -C - -O https://raw.githubusercontent.com/google/fuzzing/master/dictionaries/jpeg.dict \
     -C - -O https://raw.githubusercontent.com/google/fuzzing/master/dictionaries/pdf.dict \
@@ -95,8 +95,12 @@ curl --no-progress-meter -S \
     -C - -O https://raw.githubusercontent.com/google/fuzzing/master/dictionaries/webp.dict \
     -C - -O https://raw.githubusercontent.com/google/fuzzing/master/dictionaries/zip.dict \
     -C - -O https://raw.githubusercontent.com/google/fuzzing/master/dictionaries/mathml.dict
-# upstream rtf.dict has an unescaped \h on line 90 that libFuzzer's ParseDictionaryFile rejects
-sed -i '/"\\headerr"/d' rtf.dict
+# Every backslash in rtf.dict stands for the backslash that starts an RTF control
+# word, and libFuzzer wants each one written as a pair. A few entries are written
+# with a single backslash, which libFuzzer rejects. First turn every run of
+# backslashes into one backslash, then write each one as a pair.
+sed -i -e 's/\\\\*/\\/g' rtf.dict
+sed -i -e 's/\\/\\\\/g' rtf.dict
 # build our own fuzz dict for odf, following the pattern of svg.dict
 echo "# Keywords taken from libreoffice/schema/odf1.3/OpenDocument-v1.3-schema.rng" > odf.dict
 echo "# and libreoffice/schema/libreoffice/OpenDocument-v1.4+libreoffice-schema.rng" >> odf.dict
@@ -107,9 +111,9 @@ grep -h "rng:attribute name=" libreoffice/schema/odf1.3/OpenDocument-v1.3-schema
 echo "# attributes' values" >> odf.dict
 grep -h "rng:value" libreoffice/schema/odf1.3/OpenDocument-v1.3-schema.rng libreoffice/schema/libreoffice/OpenDocument-v1.4+libreoffice-schema.rng | sed -n 's#.*<rng:value>\([^<]*\)</rng:value>.*#"\1"#p' | sort | uniq >> odf.dict
 
-#fuzzing corpuses
-#afl jpeg, gif, bmp, png, webp
-curl --no-progress-meter -S -C - -O https://lcamtuf.coredump.cx/afl/demo/afl_testcases.tgz
+# fuzzing corpora
+# afl jpeg, gif, bmp, png, webp
+curl --no-progress-meter -S --fail -C - -O https://lcamtuf.coredump.cx/afl/demo/afl_testcases.tgz
 mkdir -p afl-testcases && cd afl-testcases/ && tar xf $SRC/afl_testcases.tgz && cd .. && \
     zip -q $SRC/jpgfuzzer_seed_corpus.zip afl-testcases/jpeg*/full/images/* && \
     zip -q $SRC/giffuzzer_seed_corpus.zip afl-testcases/gif*/full/images/* && \
@@ -119,17 +123,19 @@ mkdir -p afl-testcases && cd afl-testcases/ && tar xf $SRC/afl_testcases.tgz && 
 
 # TTF/OTF/SFT
 mkdir -p $SRC/sample-sft-fonts/adobe
-curl --no-progress-meter -S \
+curl --no-progress-meter -S --fail \
     -C - -o $SRC/sample-sft-fonts/adobe/AdobeVFPrototype.otf https://github.com/adobe-fonts/adobe-variable-font-prototype/releases/download/1.005a/AdobeVFPrototype.otf
-git clone --depth 1 --filter=blob:none --sparse https://github.com/khaledhosny/ots.git && \
-    cd ots && git sparse-checkout set tests/fonts && cd .. && \
-    cp -r ots/tests/fonts $SRC/sample-sft-fonts/ots && rm -rf ots
-git clone --depth 1 --filter=blob:none --sparse https://github.com/harfbuzz/harfbuzz.git && \
-    cd harfbuzz && git sparse-checkout set test/shape/data/in-house/fonts && cd .. && \
-    cp -r harfbuzz/test/shape/data/in-house/fonts $SRC/sample-sft-fonts/harfbuzz && rm -rf harfbuzz
+git clone --depth 1 --filter=blob:none --no-checkout https://github.com/khaledhosny/ots.git
+git -C ots checkout HEAD -- tests/fonts
+cp -r ots/tests/fonts $SRC/sample-sft-fonts/ots
+rm -rf ots
+git clone --depth 1 --filter=blob:none --no-checkout https://github.com/harfbuzz/harfbuzz.git
+git -C harfbuzz checkout HEAD -- test/shape/data/in-house/fonts
+cp -r harfbuzz/test/shape/data/in-house/fonts $SRC/sample-sft-fonts/harfbuzz
+rm -rf harfbuzz
 # exclude very large fonts that are slow to process under sanitizers
 find $SRC/sample-sft-fonts -size +1M -delete
-zip -qr $SRC/sftfuzzer_seed_corpus.zip $SRC/sample-sft-fonts
+zip -qr $SRC/eotfuzzer_seed_corpus.zip $SRC/sample-sft-fonts
 
 # PDF
 git clone --depth 1 https://github.com/strongcourage/fuzzing-corpus.git && \
@@ -139,8 +145,8 @@ git clone --depth 1 https://github.com/mozilla/pdf.js pdf.js && \
     zip -q $SRC/pdffuzzer_seed_corpus.zip pdf.js/test/pdfs/*.pdf && \
     rm -rf pdf.js
 
-curl --no-progress-meter -S -C - https://storage.googleapis.com/skia-fuzzer/oss-fuzz/svg_seed_corpus.zip -o svgfuzzer_seed_corpus.zip
-curl --no-progress-meter -S \
+zip -qj $SRC/svgfuzzer_seed_corpus.zip $SRC/libreoffice/svgio/qa/cppunit/data/*.svg
+curl --no-progress-meter -S --fail \
     -C - -O https://dev-www.libreoffice.org/corpus/wmffuzzer_seed_corpus.zip \
     -C - -O https://dev-www.libreoffice.org/corpus/xbmfuzzer_seed_corpus.zip \
     -C - -O https://dev-www.libreoffice.org/corpus/xpmfuzzer_seed_corpus.zip \
@@ -185,10 +191,18 @@ curl --no-progress-meter -S \
     -C - -O https://dev-www.libreoffice.org/corpus/htmlfuzzer_seed_corpus.zip \
     -C - -O https://dev-www.libreoffice.org/corpus/zipfuzzer_seed_corpus.zip
 cp fodtfuzzer_seed_corpus.zip fodt2pdffuzzer_seed_corpus.zip
+cp eotfuzzer_seed_corpus.zip sftfuzzer_seed_corpus.zip
 cp rtffuzzer_seed_corpus.zip rtf2pdffuzzer_seed_corpus.zip
 cp fodsfuzzer_seed_corpus.zip fods2xlsfuzzer_seed_corpus.zip
 cp htmlfuzzer_seed_corpus.zip schtmlfuzzer_seed_corpus.zip
-cp sftfuzzer_seed_corpus.zip eotfuzzer_seed_corpus.zip
 cp pdffuzzer_seed_corpus.zip pdf2fodgfuzzer_seed_corpus.zip
+#packaged ODT test documents
+(cd $SRC/libreoffice && find sw/qa -name '*.odt' -size -64k -print | zip -q $SRC/odtfuzzer_seed_corpus.zip -@)
+#encrypted packages, password "test"
+zip -qj zipfuzzer_seed_corpus.zip \
+    $SRC/libreoffice/sc/qa/unit/data/ods/password.ods \
+    $SRC/libreoffice/sc/qa/unit/data/ods/passwordOld.ods \
+    $SRC/libreoffice/sc/qa/unit/data/ods/passwordWrongSHA.ods \
+    $SRC/libreoffice/sw/qa/extras/ooxmlexport/data/tdf133771.odt
 
 echo end downloading dependencies at `date -u`

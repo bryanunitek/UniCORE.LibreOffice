@@ -90,6 +90,18 @@ double convertStringToValue( ScInterpreter* pErrorInterpreter, const OUString& r
     return CreateDoubleError( FormulaError::NoValue);
 }
 
+// Format a value through the LOGICAL key so the string form is
+// "TRUE" for a non-zero value or "FALSE" for zero.
+OUString formatLogical(ScInterpreterContext& rContext, double fValue)
+{
+    sal_uInt32 nKey = rContext.NFGetStandardFormat(SvNumFormatType::LOGICAL,
+            ScGlobal::eLnge);
+    OUString aString;
+    const Color* pColor = nullptr;
+    rContext.NFGetOutputString(fValue, nKey, aString, &pColor);
+    return aString;
+}
+
 struct ElemEqualZero
 {
     double operator() (double val) const
@@ -339,6 +351,9 @@ public:
 
     void MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& xMat1, const ScMatrixRef& xMat2,
             ScInterpreterContext& rContext, svl::SharedStringPool& rPool);
+
+    void IterateNumericPairs(const ScMatrixImpl& rOther,
+                             const std::function<void(double, double)>& rFunc) const;
 
     void ExecuteBinaryOp(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrix& rInputMat1, const ScMatrix& rInputMat2,
             ScInterpreter* pInterpreter, const ScMatrix::CalculateOpFunction& op);
@@ -612,14 +627,7 @@ void ScMatrixImpl::PutEmptyPath(SCSIZE nC, SCSIZE nR)
     if (ValidColRow( nC, nR))
     {
         maMat.set_empty(nR, nC);
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 12 && __cplusplus == 202002L
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Warray-bounds"
-#endif
         maMatFlag.set(nR, nC, SC_MATFLAG_EMPTYPATH);
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 12 && __cplusplus == 202002L
-#pragma GCC diagnostic pop
-#endif
     }
     else
     {
@@ -740,6 +748,7 @@ svl::SharedString ScMatrixImpl::GetString( ScInterpreterContext& rContext, SCSIZ
     }
 
     double fVal = 0.0;
+    SvNumFormatType eFormatType = SvNumFormatType::NUMBER;
     MatrixImplType::const_position_type aPos = maMat.position(nR, nC);
     switch (maMat.get_type(aPos))
     {
@@ -759,8 +768,13 @@ svl::SharedString ScMatrixImpl::GetString( ScInterpreterContext& rContext, SCSIZ
             rContext.NFGetOutputString( 0.0, nKey, aStr, &pColor);
             return svl::SharedString( aStr);    // string not interned
         }
-        case mdds::mtm::element_numeric:
         case mdds::mtm::element_boolean:
+            // Format the cell through the LOGICAL key so the string
+            // form is "TRUE" or "FALSE".
+            fVal = maMat.get_numeric(aPos);
+            eFormatType = SvNumFormatType::LOGICAL;
+        break;
+        case mdds::mtm::element_numeric:
             fVal = maMat.get_numeric(aPos);
         break;
         default:
@@ -773,6 +787,9 @@ svl::SharedString ScMatrixImpl::GetString( ScInterpreterContext& rContext, SCSIZ
         SetErrorAtInterpreter( nError);
         return svl::SharedString( ScGlobal::GetErrorString( nError));   // string not interned
     }
+
+    if (eFormatType == SvNumFormatType::LOGICAL)
+        return svl::SharedString(formatLogical(rContext, fVal)); // string not interned
 
     sal_uInt32 nKey = rContext.NFGetStandardFormat( SvNumFormatType::NUMBER,
             ScGlobal::eLnge);
@@ -2828,8 +2845,9 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
     std::function<void(size_t, size_t, bool)> aBoolFunc =
         [&](size_t nRow, size_t nCol, bool nVal)
         {
-            OUString aStr = rContext.NFGetInputLineString( nVal ? 1.0 : 0.0, nKey);
-            aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr;
+            OUString aLogicalText = formatLogical(rContext, nVal ? 1.0 : 0.0);
+            size_t nIndex = get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset);
+            aString[nIndex] = aString[nIndex] + aLogicalText;
         };
 
     std::function<void(size_t, size_t, const svl::SharedString&)> aStringFunc =
@@ -2866,7 +2884,7 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
     else
         xMat1->ExecuteOperation(
                 std::pair<size_t, size_t>(0, 0),
-                std::pair<size_t, size_t>(nMaxRow - 1, nMaxCol - 1),
+                std::pair<size_t, size_t>(std::min(nR1, nMaxRow) - 1, std::min(nC1, nMaxCol) - 1),
                 std::move(aDoubleFunc), std::move(aBoolFunc), std::move(aStringFunc), std::move(aEmptyFunc));
 
     std::vector<svl::SharedString> aSharedString(nMaxCol*nMaxRow);
@@ -2888,8 +2906,9 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
     std::function<void(size_t, size_t, bool)> aBoolFunc2 =
         [&](size_t nRow, size_t nCol, bool nVal)
         {
-            OUString aStr = rContext.NFGetInputLineString( nVal ? 1.0 : 0.0, nKey);
-            aSharedString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = rStringPool.intern(aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr);
+            OUString aLogicalText = formatLogical(rContext, nVal ? 1.0 : 0.0);
+            size_t nIndex = get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset);
+            aSharedString[nIndex] = rStringPool.intern(aString[nIndex] + aLogicalText);
         };
 
     std::function<void(size_t, size_t, const svl::SharedString&)> aStringFunc2 =
@@ -2929,7 +2948,7 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
     else
         xMat2->ExecuteOperation(
                 std::pair<size_t, size_t>(0, 0),
-                std::pair<size_t, size_t>(nMaxRow - 1, nMaxCol - 1),
+                std::pair<size_t, size_t>(std::min(nR2, nMaxRow) - 1, std::min(nC2, nMaxCol) - 1),
                 std::move(aDoubleFunc2), std::move(aBoolFunc2), std::move(aStringFunc2), std::move(aEmptyFunc2));
 
     aString.clear();
@@ -3027,6 +3046,35 @@ bool ScMatrixImpl::IsStringOrEmpty(const MatrixImplType::const_position_type & r
             ;
     }
     return false;
+}
+
+void ScMatrixImpl::IterateNumericPairs(const ScMatrixImpl& rOther,
+                                     const std::function<void(double, double)>& rFunc) const
+{
+    const SCSIZE nElements = GetElementCount();
+    assert(nElements == rOther.GetElementCount());
+    if (!nElements)
+        return;
+    auto aPos1 = maMat.position(0, 0);
+    auto aPos2 = rOther.maMat.position(0, 0);
+    for (SCSIZE i = 0; i < nElements; ++i)
+    {
+        if (!IsStringOrEmpty(aPos1) && !rOther.IsStringOrEmpty(aPos2))
+        {
+            // Preserve x-before-y interpreter error propagation.
+            const double fX = GetDouble(aPos1);
+            const double fY = rOther.GetDouble(aPos2);
+            rFunc(fX, fY);
+        }
+        aPos1 = MatrixImplType::next_position(aPos1);
+        aPos2 = MatrixImplType::next_position(aPos2);
+    }
+}
+
+void ScMatrix::IterateNumericPairs(const ScMatrix& rOther,
+                                 const std::function<void(double, double)>& rFunc) const
+{
+    pImpl->IterateNumericPairs(*rOther.pImpl, rFunc);
 }
 
 void ScMatrixImpl::ExecuteBinaryOp(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrix& rInputMat1, const ScMatrix& rInputMat2,
@@ -3140,7 +3188,10 @@ void ScMatrixImpl::ExecuteBinaryOp(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatri
                     }
                 }
                 else
-                    aOutPos = maMat.set(aOutPos, CreateDoubleError(FormulaError::NoValue));
+                    // Out of bounds against the shorter operand.
+                    // Mismatched-extent arithmetic fills these slots
+                    // with #N/A so the longer side still has a result.
+                    aOutPos = maMat.set(aOutPos, CreateDoubleError(FormulaError::NotAvailable));
                 aOutPos = MatrixImplType::next_position(aOutPos);
             }
         }
@@ -3266,11 +3317,13 @@ void ScMatrix::SetImmutable() const
 
 void ScMatrix::Resize( SCSIZE nC, SCSIZE nR)
 {
+    maNumberFormats.clear();
     pImpl->Resize(nC, nR);
 }
 
 void ScMatrix::Resize(SCSIZE nC, SCSIZE nR, double fVal)
 {
+    maNumberFormats.clear();
     pImpl->Resize(nC, nR, fVal);
 }
 
@@ -3305,6 +3358,21 @@ bool ScMatrix::ValidColRow( SCSIZE nC, SCSIZE nR) const
 bool ScMatrix::ValidColRowReplicated( SCSIZE & rC, SCSIZE & rR ) const
 {
     return pImpl->ValidColRowReplicated(rC, rR);
+}
+
+void ScMatrix::SetNumberFormats( std::vector<sal_uInt32>&& rFormats )
+{
+    assert(rFormats.empty() || rFormats.size() == GetElementCount());
+    maNumberFormats = std::move(rFormats);
+}
+
+sal_uInt32 ScMatrix::GetNumberFormat( SCSIZE nC, SCSIZE nR ) const
+{
+    if (maNumberFormats.empty() || !ValidColRowOrReplicated(nC, nR))
+        return NUMBERFORMAT_ENTRY_NOT_FOUND;
+    SCSIZE nCols, nRows;
+    GetDimensions(nCols, nRows);
+    return maNumberFormats[nR * nCols + nC];
 }
 
 bool ScMatrix::ValidColRowOrReplicated( SCSIZE & rC, SCSIZE & rR ) const

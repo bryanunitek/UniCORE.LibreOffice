@@ -62,7 +62,7 @@ using namespace formula;
     Regula Falsi (aka false position) algorithm to find a root of f(x).  The
     start value and the target value are to be given by the user in the
     goal seek dialog.  The f(x) in this case is defined as the formula in the
-    formula cell minus target value.  This function may also perform additional
+    formula cell minus the target value.  This function may also perform additional
     search in the horizontal directions when the f(x) is discrete in order to
     ensure a non-zero slope necessary for deriving a subsequent x that is
     reasonably close to the root of interest.
@@ -332,7 +332,7 @@ void ScDocument::InsertMatrixFormula(SCCOL nCol1, SCROW nRow1,
                                      const OUString& rFormula,
                                      const ScTokenArray* pArr,
                                      const formula::FormulaGrammar::Grammar eGram,
-                                     bool bCheckForSpill)
+                                     bool bDynamicArrayMaster)
 {
     PutInOrder(nCol1, nCol2);
     PutInOrder(nRow1, nRow2);
@@ -362,6 +362,8 @@ void ScDocument::InsertMatrixFormula(SCCOL nCol1, SCROW nRow1,
     else
         pCell = new ScFormulaCell(*this, aPos, rFormula, eGram, ScMatrixMode::Formula);
     pCell->SetMatColsRows( nCol2 - nCol1 + 1, nRow2 - nRow1 + 1 );
+    if (bDynamicArrayMaster)
+        pCell->SetDynamicArrayMaster(true);
     SCTAB nMax = GetTableCount();
     for (const auto& rTab : rMark)
     {
@@ -384,15 +386,14 @@ void ScDocument::InsertMatrixFormula(SCCOL nCol1, SCROW nRow1,
                     *pCell, *this, ScAddress(nCol1, nRow1, rTab), ScCloneFlags::StartListening));
     }
 
-    // Check for spill: if any non-origin cell in the auto expanded target
-    // range is non-empty, collapse the master to 1x1 with a re-evaluable
-    // #SPILL! error and don't create reference cells over the blocker. A
-    // later cell change operation can re-resolve via the runtime spill check
-    // and expand the matrix to the result dimensions. Applies the same way
-    // to dynamic array functions (UNIQUE, SEQUENCE, ...) and to functions returning
-    // an array (TRANSPOSE, MMULT, ...) whose result outgrew the auto-expanded
-    // selection.
-    if (bCheckForSpill && (nCol2 > nCol1 || nRow2 > nRow1))
+    // Check for spill on dynamic-array masters: if any non-origin cell in
+    // the declared range is non-empty, collapse the master to 1x1 with a
+    // re-evaluable #SPILL! error and don't create reference cells over the
+    // blocker. A later cell change operation can re-resolve through the
+    // runtime spill check and expand the matrix to the result dimensions.
+    // Static array masters (flag off) keep the user-chosen range as is
+    // and overwrite whatever sat there.
+    if (bDynamicArrayMaster && (nCol2 > nCol1 || nRow2 > nRow1))
     {
         bool bSpillBlocked = false;
         for (const SCTAB& nTab : rMark)
@@ -782,7 +783,7 @@ bool ScDocument::MarkUsedExternalReferences( const ScTokenArray& rArr, const ScA
         {
             // this is a named range.  Check if the range contains an external
             // reference.
-            ScRangeData* pRangeData = GetRangeName()->findByIndex(static_cast<FormulaIndexToken*>(t)->GetIndex());
+            ScRangeData* pRangeData = GetRangeName().findByIndex(static_cast<FormulaIndexToken*>(t)->GetIndex());
             if (!pRangeData)
                 continue;
 
@@ -860,10 +861,10 @@ void ScDocument::InvalidateTableArea()
 }
 
 sal_Int32 ScDocument::GetMaxStringLen( SCTAB nTab, SCCOL nCol,
-        SCROW nRowStart, SCROW nRowEnd, rtl_TextEncoding eCharSet ) const
+        SCROW nRowStart, SCROW nRowEnd, rtl_TextEncoding eEncoding ) const
 {
     if (const ScTable* pTable = FetchTable(nTab))
-        return pTable->GetMaxStringLen(nCol, nRowStart, nRowEnd, eCharSet);
+        return pTable->GetMaxStringLen(nCol, nRowStart, nRowEnd, eEncoding);
     return 0;
 }
 

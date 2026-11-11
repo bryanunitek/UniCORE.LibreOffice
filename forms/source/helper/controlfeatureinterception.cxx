@@ -72,7 +72,7 @@ namespace frm
         {   // our chain will have a new first element
             m_xFirstDispatchInterceptor.set(m_xFirstDispatchInterceptor->getSlaveDispatchProvider(), UNO_QUERY);
         }
-        // do this before removing the interceptor from the chain as we won't know it's slave afterwards)
+        // do this before removing the interceptor from the chain as we won't know its slave afterwards
 
         while ( xChainWalk.is() )
         {
@@ -116,7 +116,7 @@ namespace frm
 
             // ask for its successor
             Reference< XDispatchProvider > xSlave = xInterceptor->getSlaveDispatchProvider();
-            // and give it the new (means no) successoert
+            // and give it the new (means no) successor
             xInterceptor->setSlaveDispatchProvider( nullptr );
 
             // start over with the next chain element

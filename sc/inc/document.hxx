@@ -57,7 +57,6 @@
 #include <vector>
 
 #include "markdata.hxx"
-#include "drwlayer.hxx"
 
 #include "SheetViewTypes.hxx"
 
@@ -137,6 +136,7 @@ class SfxItemPool;
 class SfxPrinter;
 class SfxStyleSheetBase;
 class SvMemoryStream;
+class SvStream;
 class SvxBoxInfoItem;
 class SvxBoxItem;
 class SvxForbiddenCharactersTable;
@@ -161,6 +161,7 @@ class ScDetOpList;
 class ScDocOptions;
 class ScDocProtection;
 class ScDocumentPool;
+class ScDrawLayer;
 class ScExtDocOptions;
 class ScExternalRefManager;
 class ScFormulaCell;
@@ -274,15 +275,15 @@ enum ScDocumentMode
 
 enum CommentCaptionState
 {
-    ALLSHOWN,                   // All comments captions are shown
-    ALLHIDDEN,                  // All comments captions are hidden
-    MIXED                       // There are comments in shown and hidden.
+    ALLSHOWN,                   // All comment captions are shown
+    ALLHIDDEN,                  // All comment captions are hidden
+    MIXED                       // There are comments in shown and hidden states.
 };
 
 enum RangeNameScope
 {
     GLOBAL,                    // A range name can be defined
-    SHEET                      // with two scope on Manage Names dialog.
+    SHEET                      // with two scopes on Manage Names dialog.
 };
 
 /// Represents the type of sheet geometry data.
@@ -708,6 +709,7 @@ public:
     SC_DLLPUBLIC sal_uInt64  GetFormulaGroupCount() const;       // all cells
     sal_uInt64               GetCodeCount() const;       // RPN-Code in formulas
     DECL_LINK( GetUserDefinedColor, sal_uInt16, Color* );
+    DECL_LINK( GetUserDefinedColorIndex, const Color&, sal_Int32 );
 
 public:
     SC_DLLPUBLIC                ScDocument( ScDocumentMode eMode = SCDOCMODE_DOCUMENT,
@@ -782,7 +784,7 @@ public:
     SC_DLLPUBLIC void          SetAllRangeNames(const std::map<OUString, ScRangeName>& rRangeMap);
     SC_DLLPUBLIC void          GetRangeNameMap(std::map<OUString, ScRangeName*>& rRangeName);
     SC_DLLPUBLIC ScRangeName*  GetRangeName(SCTAB nTab) const;
-    SC_DLLPUBLIC ScRangeName*  GetRangeName() const;
+    SC_DLLPUBLIC ScRangeName&  GetRangeName() const;
     void                       SetRangeName(SCTAB nTab, std::unique_ptr<ScRangeName> pNew);
     void                       SetRangeName( std::unique_ptr<ScRangeName> pNewRangeName );
     bool                       IsAddressInRangeName( RangeNameScope eScope, const ScAddress& rAddress);
@@ -954,6 +956,22 @@ public:
                                                       SCROW nRow2, SCTAB nTab) const;
     void                         RefreshDirtyTableColumnNames();
     SC_DLLPUBLIC sc::ExternalDataMapper& GetExternalDataMapper();
+    /** True when the document holds at least one external data mapping. Checks
+        without creating the mapper, so it stays cheap for documents that have
+        none. */
+    SC_DLLPUBLIC bool HasDataProviderMappings() const;
+
+    /** True when the document holds a database range that imports from a data source again each
+        time its refresh delay runs out. */
+    bool HasRefreshingDBImport() const;
+
+    /** True when a pivot table takes its data from a database document named by URL rather than
+        from a registered data source. */
+    bool HasDataPilotDatabaseLink() const;
+
+    /** True when the document holds anything that fetches content from outside
+        the document and so needs the user to agree before it updates. */
+    SC_DLLPUBLIC bool HasExternalLinks() const;
 
     SC_DLLPUBLIC const ScRangeData* GetRangeAtBlock( const ScRange& rBlock, OUString& rName,
                                                      bool* pSheetLocal = nullptr ) const;
@@ -1203,7 +1221,6 @@ public:
         on first call. */
     ScFormulaParserPool& GetFormulaParserPool() const;
 
-    bool            HasAreaLinks() const;
     void            UpdateExternalRefLinks(weld::Window* pWin);
     void            UpdateAreaLinks();
 
@@ -1319,6 +1336,7 @@ public:
      * This is very important.</p>
      */
     SC_DLLPUBLIC bool  SetEditText( const ScAddress& rPos, std::unique_ptr<EditTextObject> pEditText );
+    SC_DLLPUBLIC bool  SetEditText( const ScAddress& rPos, EditTextObject aEditText );
     void               SetEditText( const ScAddress& rPos, const EditTextObject& rEditText, const SfxItemPool* pEditPool );
     SC_DLLPUBLIC void  SetEditText( const ScAddress& rPos, const OUString& rStr );
     SC_DLLPUBLIC SCROW GetFirstEditTextRow( const ScRange& rRange ) const;
@@ -1360,7 +1378,7 @@ public:
                                         const OUString& rFormula,
                                         const ScTokenArray* p = nullptr,
                                         const formula::FormulaGrammar::Grammar = formula::FormulaGrammar::GRAM_DEFAULT,
-                                        bool bCheckForSpill = false);
+                                        bool bDynamicArrayMaster = false);
     /** Returns true if any cell inside input range (rRange) other than the cells
         already covered by the declared nDeclCols x nDeclRows sub-range holds any
         data. */
@@ -1439,7 +1457,7 @@ public:
      */
     sc::MultiDataCellState HasMultipleDataCells( const ScRange& rRange ) const;
 
-    // Spaklines
+    // Sparklines
     /** Returns sparkline at the address if it exists */
     SC_DLLPUBLIC std::shared_ptr<sc::Sparkline> GetSparkline(ScAddress const & rPosition);
     SC_DLLPUBLIC bool HasSparkline(ScAddress const & rPosition);
@@ -1896,7 +1914,8 @@ public:
         ScDocument* pRefUndoDoc, ScDocument* pClipDoc,
         bool bResetCut = true, bool bAsLink = false,
         bool bIncludeFiltered = true, bool bSkipEmptyCells = false,
-        const ScRangeList* pDestRanges = nullptr );
+        const ScRangeList* pDestRanges = nullptr,
+        bool bPreserveDestProtection = false );
 
     void                CopyMultiRangeFromClip(const ScAddress& rDestPos, const ScMarkData& rMark,
                                                InsertDeleteFlags nInsFlag, ScDocument* pClipDoc,
@@ -2531,7 +2550,7 @@ public:
      *
      * Specifically, it goes through all sheet views and overwrites the
      * content of the sheet view table with the content of default view table,
-     * then reapplies the sheet views's sorting and filtering for the auto-filter.
+     * then reapplies the sheet views' sorting and filtering for the auto-filter.
      */
     void SyncSheetViews(SCTAB nDefaultViewTable);
 
@@ -2756,7 +2775,7 @@ public:
     SC_DLLPUBLIC ScFieldEditEngine& GetEditEngine();
     SC_DLLPUBLIC ScNoteEditEngine&  GetNoteEngine();
 
-    std::unique_ptr<EditTextObject> CreateSharedStringTextObject( const svl::SharedString& rSS );
+    EditTextObject CreateSharedStringTextObject( const svl::SharedString& rSS );
 
     std::unique_ptr<ScRefreshTimerControl> const & GetRefreshTimerControlAddress() const
                                        { return pRefreshTimerControl; }
@@ -2928,6 +2947,8 @@ private:
                              const ScRange& r, SCCOL nDx, SCROW nDy, SCTAB nDz );
 
     void    CopyRangeNamesToClip(ScDocument* pClipDoc, const ScRange& rClipRange, const ScMarkData* pMarks);
+    void CopyDBsToClip(ScDocument* pClipDoc, const ScRangeList& rClipRanges, const ScMarkData* pMarks);
+    void    CopyDBsFromClip(const ScRange& rDestRange, const ScRange& rClipRange, const ScDocument* pClipDoc);
 
     bool    HasPartOfMerged( const ScRange& rRange );
 
@@ -2978,14 +2999,7 @@ public:
         if (mpDoc)
             mpDoc->BeginDrawUndo();
     }
-    ~DrawUndoGuard()
-    {
-        if (mpDoc)
-        {
-            if (auto* pLayer = mpDoc->GetDrawLayer())
-                (void)pLayer->GetCalcUndo();
-        }
-    }
+    ~DrawUndoGuard();
     DrawUndoGuard(const DrawUndoGuard&) = delete;
     DrawUndoGuard& operator=(const DrawUndoGuard&) = delete;
 };

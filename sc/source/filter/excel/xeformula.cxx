@@ -844,9 +844,16 @@ bool XclExpFmlaCompImpl::GetNextToken( XclExpScToken& rTokData )
     rTokData.mpScToken = GetNextRawToken();
     rTokData.mnSpaces = 0;
     /* TODO: handle ocWhitespace characters? */
-    while (rTokData.GetOpCode() == ocSpaces || rTokData.GetOpCode() == ocWhitespace)
+    // XLS predates the @ implicit-intersection operator. The BIFF token
+    // stream has no encoding for ocSingleValue, so drop it on the way out
+    // and let the operand flow through unchanged. XLS does not auto-spill
+    // anyway, so the saved formula evaluates to the same upper-left value
+    // it did before.
+    while (rTokData.GetOpCode() == ocSpaces || rTokData.GetOpCode() == ocWhitespace
+           || rTokData.GetOpCode() == ocSingleValue)
     {
-        rTokData.mnSpaces += static_cast<const FormulaByteToken*>(rTokData.mpScToken)->GetByte();
+        if (rTokData.GetOpCode() != ocSingleValue)
+            rTokData.mnSpaces += static_cast<const FormulaByteToken*>(rTokData.mpScToken)->GetByte();
         rTokData.mpScToken = GetNextRawToken();
     }
     return rTokData.Is();
@@ -2085,10 +2092,14 @@ void XclExpFmlaCompImpl::ProcessExternalCellRef( const XclExpScToken& rTokData )
         XclAddress aXclPos( ScAddress::UNINITIALIZED );
         ConvertRefData( aRefData, aXclPos, false, false, false );
 
-        // store external cell contents in CRN records
+        // Store external cell contents in CRN records. A chart series is not
+        // a cell formula, but still needs its referenced external value
+        // cached here: it is the only thing that keeps the cache from
+        // exporting empty once nothing else in the sheet uses the same
+        // external range.
         sal_uInt16 nFileId = pESRToken->GetFileId();
         OUString aTabName = pESRToken->GetTableName().getString();
-        if( mxData->mrCfg.mbFromCell && mxData->mpScBasePos )
+        if( (mxData->mrCfg.mbFromCell || mxData->mrCfg.meType == EXC_FMLATYPE_CHART) && mxData->mpScBasePos )
             mxData->mpLinkMgr->StoreCell(nFileId, aTabName, aRefData.toAbs(GetRoot().GetDoc(), *mxData->mpScBasePos));
 
         // 1-based EXTERNSHEET index and 0-based Excel sheet indexes
@@ -2122,10 +2133,11 @@ void XclExpFmlaCompImpl::ProcessExternalRangeRef( const XclExpScToken& rTokData 
         XclRange aXclRange( ScAddress::UNINITIALIZED );
         ConvertRefData( aRefData, aXclRange, false );
 
-        // store external cell contents in CRN records
+        // Store external cell contents in CRN records, for the same reason
+        // as in ProcessExternalCellRef above.
         sal_uInt16 nFileId = pEDRToken->GetFileId();
         OUString aTabName = pEDRToken->GetTableName().getString();
-        if( mxData->mrCfg.mbFromCell && mxData->mpScBasePos )
+        if( (mxData->mrCfg.mbFromCell || mxData->mrCfg.meType == EXC_FMLATYPE_CHART) && mxData->mpScBasePos )
             mxData->mpLinkMgr->StoreCellRange(nFileId, aTabName, aRefData.toAbs(GetRoot().GetDoc(), *mxData->mpScBasePos));
 
         // 1-based EXTERNSHEET index and 0-based Excel sheet indexes

@@ -44,6 +44,9 @@
 #include <svx/svdlayer.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdundo.hxx>
+#include <svx/fillbitmaplink.hxx>
+#include <svx/xbtmpit.hxx>
+#include <svx/xdef.hxx>
 #include <svx/xfillit0.hxx>
 
 #include <sdr/contact/viewcontactofsdrpage.hxx>
@@ -1066,7 +1069,7 @@ void SdrObjList::ReplaceObjectInContainer (
     {
         // A user defined position of the object that is to be replaced is
         // not transferred to the new object so erase the former and append
-        // the later object from/to the navigation order.
+        // the latter object from/to the navigation order.
         OSL_ASSERT(nObjectPosition < maList.size());
         unotools::WeakReference<SdrObject> aReference (maList[nObjectPosition].get());
         auto iObject = ::std::find(
@@ -1109,7 +1112,9 @@ void SdrObjList::RemoveObjectFromContainer (
     }
 
     maList.erase(maList.begin()+nObjectPosition);
-    mbObjOrdNumsDirty=true;
+    // Only the objects behind the removed one get a new position
+    if (nObjectPosition < maList.size())
+        mbObjOrdNumsDirty=true;
 }
 
 void SdrObjList::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -1254,11 +1259,24 @@ bool SdrPageProperties::isUsedByModel() const
 }
 
 
+static void lcl_notifyFillBitmapLink(SdrPage& rPage, const SfxItemSet& rProps)
+{
+    sdr::FillBitmapLinkTracker* pTracker
+        = rPage.getSdrModelFromSdrPage().GetFillBitmapLinkTracker();
+    if (!pTracker)
+        return;
+    OUString aURL;
+    if (const XFillBitmapItem* pItem = rProps.GetItemIfSet(XATTR_FILLBITMAP, false))
+        aURL = getDeferredOriginURL(*pItem);
+    pTracker->onFillBitmapURLChanged(rPage, aURL);
+}
+
 void SdrPageProperties::PutItemSet(const SfxItemSet& rSet)
 {
     OSL_ENSURE(!mrSdrPage.IsMasterPage(), "Item set at MasterPage Attributes (!)");
     maProperties.Put(rSet);
     ImpPageChange(mrSdrPage);
+    lcl_notifyFillBitmapLink(mrSdrPage, maProperties);
 }
 
 void SdrPageProperties::PutItem(const SfxPoolItem& rItem)
@@ -1266,12 +1284,14 @@ void SdrPageProperties::PutItem(const SfxPoolItem& rItem)
     OSL_ENSURE(!mrSdrPage.IsMasterPage(), "Item set at MasterPage Attributes (!)");
     maProperties.Put(rItem);
     ImpPageChange(mrSdrPage);
+    lcl_notifyFillBitmapLink(mrSdrPage, maProperties);
 }
 
 void SdrPageProperties::ClearItem(const sal_uInt16 nWhich)
 {
     maProperties.ClearItem(nWhich);
     ImpPageChange(mrSdrPage);
+    lcl_notifyFillBitmapLink(mrSdrPage, maProperties);
 }
 
 void SdrPageProperties::SetStyleSheet(SfxStyleSheet* pStyleSheet)
@@ -1377,7 +1397,7 @@ SdrPage::~SdrPage()
         pPageUser->PageInDestruction(*this);
     }
 
-    // Clear the vector. This means that user do not need to call RemovePageUser()
+    // Clear the vector. This means that users do not need to call RemovePageUser()
     // when they get called from PageInDestruction().
     maPageUsers.clear();
 
@@ -1732,6 +1752,10 @@ void SdrPage::MakePageObjectsNamesUnique()
             }
         }
     }
+}
+
+void SdrPage::onEmptyPresObjFilled(SdrObject& /*rObj*/)
+{
 }
 
 bool SdrPage::RestoreDefaultText(SdrObject* /*pObj*/, const OUString& /*rStr*/)

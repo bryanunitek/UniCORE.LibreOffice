@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <editeng/bulletinfo.hxx>
+#include <editeng/editeng.hxx>
 #include <editeng/flditem.hxx>
 #include <editeng/CustomPropertyField.hxx>
 #include <tools/debug.hxx>
@@ -97,11 +99,10 @@ static SdPage* GetCurrentPage( sd::ViewShell const * pViewSh, EditFieldInfo cons
         int nPgNum = 0;
         Outliner& rOutl = pSdView->GetOutliner();
         tools::Long nPos = pInfo->GetPara();
-        sal_Int32 nParaPos = 0;
 
-        for( Paragraph* pPara = rOutl.GetParagraph( 0 ); pPara && nPos >= 0; pPara = rOutl.GetParagraph( ++nParaPos ), nPos-- )
+        for( sal_Int32 nParaPos = 0; nParaPos < rOutl.GetEditEngine().GetParagraphCount() && nPos >= 0; ++nParaPos, nPos-- )
         {
-            if( Outliner::HasParaFlag( pPara, ParaFlag::ISPAGE ) )
+            if( rOutl.GetEditEngine().HasParaFlag( nParaPos, ParaFlag::ISPAGE ) )
                 nPgNum++;
         }
 
@@ -671,7 +672,8 @@ void SdModule::ApplyItemSet( sal_uInt16 nSlot, const SfxItemSet& rSet )
             {
                 pDoc->SetUIScale( double(nX) / nY );
                 if( pViewShell )
-                    pViewShell->SetRuler( pViewShell->HasRuler() );
+                    // tdf#155798 - refresh ruler after scale change
+                    pViewShell->GetViewShellBase().UpdateBorder(true);
             }
         }
     }

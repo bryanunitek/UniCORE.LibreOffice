@@ -491,6 +491,21 @@ Color* SvNumberFormatter::GetUserDefColor(sal_uInt16 nIndex) const
     }
 }
 
+void SvNumberFormatter::SetColorIndexLink(const Link<const Color&, sal_Int32>& rColorIndexCallBack)
+{
+    ::osl::MutexGuard aGuard( GetInstanceMutex() );
+    aColorIndexLink = rColorIndexCallBack;
+}
+
+sal_Int32 SvNumberFormatter::GetUserDefColorIndex(const Color& rColor) const
+{
+    ::osl::MutexGuard aGuard(GetInstanceMutex());
+    if (aColorIndexLink.IsSet())
+        return aColorIndexLink.Call(rColor);
+
+    return -1;
+}
+
 void SvNumberFormatter::ChangeNullDate(sal_uInt16 nDay,
                                        sal_uInt16 nMonth,
                                        sal_Int16 nYear)
@@ -704,7 +719,7 @@ bool SvNFFormatData::PutEntry(SvNFLanguageData& rCurrentLanguage,
         sal_uInt32 CLOffset = ImpGenerateCL(rCurrentLanguage, rNatNum, eLge);  // create new standard formats if necessary
 
         nKey = ImpIsEntry(p_Entry->GetFormatstring(),CLOffset, eLge);
-        if (nKey == NUMBERFORMAT_ENTRY_NOT_FOUND) // only in not yet present
+        if (nKey == NUMBERFORMAT_ENTRY_NOT_FOUND) // only if not yet present
         {
             SvNumberformat* pStdFormat = GetFormatEntry(CLOffset + ZF_STANDARD);
             sal_uInt32 nPos = CLOffset + pStdFormat->GetLastInsertKey( SvNumberformat::FormatterPrivateAccess() );

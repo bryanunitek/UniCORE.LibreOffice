@@ -1619,30 +1619,28 @@ bool EscherPropertyContainer::CreateGraphicProperties(const uno::Reference<beans
             // bitmaps.
             // And check whether the graphic link target is
             // actually supported by mso.
-            INetURLObject   aTmp( aGraphicUrl );
-            GraphicDescriptor aDescriptor(aTmp);
-            (void)aDescriptor.Detect();
-            const GraphicFileFormat nFormat = aDescriptor.GetFileFormat();
-
-            // can MSO handle it?
-            if ( bMirrored || nAngle || nTransparency || nRed || nGreen || nBlue || (1.0 != fGamma) ||
-                 (nFormat != GraphicFileFormat::BMP &&
-                  nFormat != GraphicFileFormat::GIF &&
-                  nFormat != GraphicFileFormat::JPG &&
-                  nFormat != GraphicFileFormat::PNG &&
-                  nFormat != GraphicFileFormat::TIF &&
-                  nFormat != GraphicFileFormat::PCT &&
-                  nFormat != GraphicFileFormat::WMF &&
-                  nFormat != GraphicFileFormat::WMZ &&
-                  nFormat != GraphicFileFormat::EMF &&
-                  nFormat != GraphicFileFormat::EMZ) )
+            // Only the data already loaded for the link is used, so a link that was not loaded
+            // stays a link.
+            const Graphic aLinkedGraphic(xGraphic);
+            if (aLinkedGraphic.IsGfxLink())
             {
-                std::unique_ptr<SvStream> pIn(::utl::UcbStreamHelper::CreateStream(
-                    aTmp.GetMainURL( INetURLObject::DecodeMechanism::NONE ), StreamMode::READ ));
-                if ( pIn )
+                const GfxLink aLink(aLinkedGraphic.GetGfxLink());
+                const GfxLinkType eType = aLink.GetType();
+
+                // can MSO handle it?
+                if ( bMirrored || nAngle || nTransparency || nRed || nGreen || nBlue || (1.0 != fGamma) ||
+                     (eType != GfxLinkType::NativeBmp &&
+                      eType != GfxLinkType::NativeGif &&
+                      eType != GfxLinkType::NativeJpg &&
+                      eType != GfxLinkType::NativePng &&
+                      eType != GfxLinkType::NativeTif &&
+                      eType != GfxLinkType::NativePct &&
+                      eType != GfxLinkType::NativeWmf) )
                 {
+                    SvMemoryStream aStream(const_cast<sal_uInt8*>(aLink.GetData()),
+                                           aLink.GetDataSize(), StreamMode::READ);
                     Graphic aGraphic;
-                    ErrCode nErrCode = GraphicConverter::Import( *pIn, aGraphic );
+                    ErrCode nErrCode = GraphicConverter::Import(aStream, aGraphic);
 
                     if ( nErrCode == ERRCODE_NONE )
                     {
@@ -1653,6 +1651,7 @@ bool EscherPropertyContainer::CreateGraphicProperties(const uno::Reference<beans
                 }
             }
 
+            INetURLObject   aTmp( aGraphicUrl );
             if (!bConverted && pGraphicProvider )
             {
                 const OUString& rBaseURI( pGraphicProvider->GetBaseURI() );
@@ -2044,12 +2043,12 @@ bool EscherPropertyContainer::CreatePolygonProperties(
 
 
 /*
-in MS,the connector including 9 types :
+in MS, the connector includes 9 types :
 "straightConnector1",
 "bentConnector2","bentConnector3","bentConnector4","bentConnector5"
 "curvedConnector2","curvedConnector3","curvedConnector4","curvedConnector5"
-in AOO,including 4 types:"standard","lines","line","curve"
-when save as MS file, the connector must be convert to corresponding type.
+in AOO, including 4 types: "standard","lines","line","curve"
+when saved as MS file, the connector must be converted to corresponding type.
 "line" and "lines" <-> "straightConnector1"
 "standard" <->  "bentConnector2-5"
 "curve" <-> "curvedConnector2-5"
@@ -2140,7 +2139,7 @@ static void lcl_Rotate(Degree100 nAngle, Point center, Point& pt)
 /*
  FlipV defines that the shape will be flipped vertically about the center of its bounding box.
 Generally, draw the connector from top to bottom, from left to right when meet the adjust value,
-but when (X1>X2 or Y1>Y2),the draw director must be reverse, FlipV or FlipH should be set to true.
+but when (X1>X2 or Y1>Y2), the draw direction must be reversed, FlipV or FlipH should be set to true.
 */
 static bool lcl_GetAngle(tools::Polygon &rPoly, ShapeFlag& rShapeFlags,sal_Int32& nAngle )
 {
@@ -2871,7 +2870,7 @@ void EscherPropertyContainer::CreateCustomShapeProperties( const MSO_SPT eShapeT
                         double fExtrusionShininess = 0;
                         if ( rrProp.Value >>= fExtrusionShininess )
                         {
-                            // ODF to MS Office conversion invers to msdffimp.cxx
+                            // ODF to MS Office conversion inverse to msdffimp.cxx
                             fExtrusionShininess = std::round(fExtrusionShininess / 10.0);
                             AddOpt( DFF_Prop_c3DShininess, static_cast<sal_Int32>(fExtrusionShininess) );
                         }

@@ -2879,7 +2879,8 @@ XMLUrlFieldImportContext::XMLUrlFieldImportContext(
     SvXMLImport& rImport,
     XMLTextImportHelper& rHlp) :
         XMLTextFieldImportContext(rImport, rHlp, sAPI_url),
-        bFrameOK(false)
+        bFrameOK(false),
+        bNameOK(false)
 {
 }
 
@@ -2897,6 +2898,10 @@ void XMLUrlFieldImportContext::ProcessAttribute(
             sFrame = OUString::fromUtf8(sAttrValue);
             bFrameOK = true;
             break;
+        case XML_ELEMENT(OFFICE, XML_NAME):
+            sName = OUString::fromUtf8(sAttrValue);
+            bNameOK = true;
+            break;
         default:
             // ignore
             XMLOFF_WARN_UNKNOWN_ATTR("xmloff", nAttrToken, sAttrValue);
@@ -2912,6 +2917,12 @@ void XMLUrlFieldImportContext::PrepareField(
     if (bFrameOK)
     {
         xPropertySet->setPropertyValue(u"TargetFrame"_ustr, Any(sFrame));
+    }
+
+    // Calc's own URL field has no name, and this runs outside the try around InsertTextContent
+    if (bNameOK && xPropertySet->getPropertySetInfo()->hasPropertyByName(u"Name"_ustr))
+    {
+        xPropertySet->setPropertyValue(u"Name"_ustr, Any(sName));
     }
 
     xPropertySet->setPropertyValue(u"Representation"_ustr, Any(GetContent()));
@@ -3173,6 +3184,8 @@ void XMLAnnotationImportContext::ProcessAttribute(
         aResolved = OUString::fromUtf8(sAttrValue);
     else if (nAttrToken == XML_ELEMENT(LO_EXT, XML_PARENT_NAME))
         aParentName = OUString::fromUtf8(sAttrValue);
+    else if (nAttrToken == XML_ELEMENT(LO_EXT, XML_DATE_UTC))
+        aDateUTC = OUString::fromUtf8(sAttrValue);
     else
         XMLOFF_WARN_UNKNOWN_ATTR("xmloff", nAttrToken, sAttrValue);
 }
@@ -3322,6 +3335,13 @@ void XMLAnnotationImportContext::PrepareField(
     bool bTmp(false);
     (void)::sax::Converter::convertBool(bTmp, aResolved);
     xPropertySet->setPropertyValue(u"Resolved"_ustr, Any(bTmp));
+
+    util::DateTime aDateTimeUTC;
+    if (!aDateUTC.isEmpty() && ::sax::Converter::parseDateTime(aDateTimeUTC, aDateUTC))
+    {
+        xPropertySet->setPropertyValue(u"DateTimeUTC"_ustr, Any(aDateTimeUTC));
+    }
+    aDateUTC.clear();
 
     util::DateTime aDateTime;
     if (::sax::Converter::parseDateTime(aDateTime, aDateBuffer))

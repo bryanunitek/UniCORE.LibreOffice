@@ -22,6 +22,7 @@
 
 #include <cppuhelper/implbase1.hxx>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
+#include <rtl/ref.hxx>
 #include <vcl/accessibility/AccessibleBrowseBoxTableBase.hxx>
 #include <vcl/accessibility/AccessibleBrowseBoxObjType.hxx>
 
@@ -38,10 +39,9 @@ public:
         @param rBrowseBox       The BrowseBox control.
         @param eObjType  One of the two allowed types AccessibleBrowseBoxObjType::RowHeaderBar or
                          AccessibleBrowseBoxObjType::ColumnHeaderBar. */
-    AccessibleBrowseBoxHeaderBar(
-        const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::vcl::IAccessibleTableProvider& rBrowseBox,
-        AccessibleBrowseBoxObjType eObjType );
+    AccessibleBrowseBoxHeaderBar(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                                 ::vcl::IAccessibleTableProvider& rBrowseBox,
+                                 AccessibleBrowseBoxObjType eObjType);
 
 private:
     virtual ~AccessibleBrowseBoxHeaderBar() override;
@@ -129,11 +129,6 @@ public:
 
     /** Removes the specified row/column from the selection. */
     virtual void SAL_CALL deselectAccessibleChild( sal_Int64 nSelectedChildIndex ) override;
-
-    // XServiceInfo
-
-    /** @return  The name of this class. */
-    virtual OUString SAL_CALL getImplementationName() override;
 
 private:
     // internal virtual methods

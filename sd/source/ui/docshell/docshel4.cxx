@@ -309,6 +309,7 @@ bool DrawDocShell::Load( SfxMedium& rMedium )
         // for legacy markup in OOoXML filter, convert the animations now
         EffectMigration::DocumentLoaded(*pDoc);
         UpdateTablePointers();
+        pDoc->SwitchPlaceholdersHoldingText();
 
         // If we're an embedded OLE object, use tight bounds
         // for our visArea. No point in showing the user lots of empty
@@ -417,20 +418,20 @@ bool DrawDocShell::ImportFrom(SfxMedium &rMedium,
         // mode for spacing before and after paragraphs.
 
         // This is copied from what is done for .ppt import in
-        // ImplSdPPTImport::Import() in sd/source/filter/ppt/pptin.cxx
-        // in. We need to tell both the edit engine of the draw outliner,
+        // ImplSdPPTImport::Import() in sd/source/filter/ppt/pptin.cxx.
+        // We need to tell both the edit engine of the draw outliner,
         // and the document, to do "summation of paragraphs".
         SdrOutliner& rOutl = mpDoc->GetDrawOutliner();
         EEControlBits nControlWord = rOutl.GetEditEngine().GetControlWord();
         nControlWord |=  EEControlBits::ULSPACESUMMATION;
-        const_cast<EditEngine&>(rOutl.GetEditEngine()).SetControlWord( nControlWord );
+        rOutl.GetEditEngine().SetControlWord( nControlWord );
 
         mpDoc->SetSummationOfParagraphs();
 
         // tdf#149756 tdf#152545
         // This is a "MS Compact" mode for connectors.
-        // The Libreoffice uses bounding rectangle of connected shapes but
-        // MSO uses snap rectangle when calculate the edge track.
+        // LibreOffice uses bounding rectangle of connected shapes but
+        // MSO uses snap rectangle when calculating the edge track.
         mpDoc->SetCompatibilityFlag(SdrCompatibilityFlag::ConnectorUseSnapRect, true);
 
         // compatibility flag for tdf#148966
@@ -463,6 +464,11 @@ bool DrawDocShell::ImportFrom(SfxMedium &rMedium,
     mpDoc->incImportExport();
     const bool bRet = SfxObjectShell::ImportFrom(rMedium, xInsertPosition);
     mpDoc->decImportExport();
+
+    if (bRet)
+    {
+        mpDoc->SwitchPlaceholdersHoldingText();
+    }
 
     if (bRet && !xInsertPosition)
         UpdateLinks();
@@ -581,7 +587,10 @@ bool DrawDocShell::ConvertFrom( SfxMedium& rMedium )
     FinishedLoading();
 
     if (bRet)
+    {
+        mpDoc->SwitchPlaceholdersHoldingText();
         UpdateLinks();
+    }
 
     // tell SFX to change viewshell when in preview mode
     if( IsPreview() )
@@ -728,7 +737,7 @@ bool DrawDocShell::ConvertTo( SfxMedium& rMedium )
 }
 
 /**
- * Reopen own streams to ensure that nobody else can prevent use from opening
+ * Reopen own streams to ensure that nobody else can prevent us from opening
  * them.
  */
 bool DrawDocShell::SaveCompleted( const css::uno::Reference< css::embed::XStorage >& xStorage )

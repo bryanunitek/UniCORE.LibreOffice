@@ -16,6 +16,7 @@
 #include <com/sun/star/awt/Gradient.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
+#include <com/sun/star/drawing/XDrawPageDuplicator.hpp>
 #include <com/sun/star/drawing/XMasterPagesSupplier.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/drawing/XDrawPages.hpp>
@@ -51,7 +52,9 @@
 #include <LayerTabBar.hxx>
 #include <vcl/event.hxx>
 #include <vcl/keycodes.hxx>
+#include <svx/annotation/ObjectAnnotationData.hxx>
 #include <svx/svdoashp.hxx>
+#include <svx/svdorect.hxx>
 #include <tools/gen.hxx>
 #include <svx/view3d.hxx>
 #include <svx/scene3d.hxx>
@@ -60,6 +63,10 @@
 #include <svx/xbtmpit.hxx>
 #include <test/commontesttools.hxx>
 #include <unomodel.hxx>
+#include <editeng/editeng.hxx>
+#include <editeng/editview.hxx>
+#include <editeng/outliner.hxx>
+#include <svx/svdotext.hxx>
 
 using namespace ::com::sun::star;
 
@@ -71,69 +78,9 @@ public:
         : SdModelTestBase(u"/sd/qa/unit/data/"_ustr)
     {
     }
-
-    void testTdf99396_UndoCellVerticalAlignment();
-    void testTableObjectUndoTest();
-    void testFillColor();
-    void testFillGradient();
-    void testTdf44774_KeepStyleLinksOnSave();
-    void testTdf38225_ChangeCustomStyleName();
-    void testTdf101242_ODF_no_settings();
-    void testTdf101242_ODF_add_settings();
-    void testTdf101242_settings_keep();
-    void testTdf101242_settings_remove();
-    void testTdf119392_VerifyLayerProperties();
-    void testTdf67248_LayerNamesIndependentFromLocalization();
-    void testTdf119956_AdaptLayerTabFocusOnAltClick();
-    void testTdf120527();
-    void testTextColumns();
-    void testTdf98839_ShearVFlipH();
-    void testTdf130988();
-    void testTdf131033();
-    void testTdf129898LayerDrawnInSlideshow();
-    void testTdf136956_UndoMergeCell();
-    void testTdf39519();
-    void testTdf164284();
-    void testEncodedTableStyles();
-    void testTdf157117();
-    void testPageBackgroundImages();
-    void testCanvasSlideExportODP();
-    void testDuplicateAndMove();
-    void testApiXMasterPagesSupplier();
-
-    CPPUNIT_TEST_SUITE(SdMiscTest);
-    CPPUNIT_TEST(testTdf99396_UndoCellVerticalAlignment);
-    CPPUNIT_TEST(testTableObjectUndoTest);
-    CPPUNIT_TEST(testFillColor);
-    CPPUNIT_TEST(testFillGradient);
-    CPPUNIT_TEST(testTdf44774_KeepStyleLinksOnSave);
-    CPPUNIT_TEST(testTdf38225_ChangeCustomStyleName);
-    CPPUNIT_TEST(testTdf101242_ODF_no_settings);
-    CPPUNIT_TEST(testTdf101242_ODF_add_settings);
-    CPPUNIT_TEST(testTdf101242_settings_keep);
-    CPPUNIT_TEST(testTdf101242_settings_remove);
-    CPPUNIT_TEST(testTdf119392_VerifyLayerProperties);
-    CPPUNIT_TEST(testTdf67248_LayerNamesIndependentFromLocalization);
-    CPPUNIT_TEST(testTdf119956_AdaptLayerTabFocusOnAltClick);
-    CPPUNIT_TEST(testTdf120527);
-    CPPUNIT_TEST(testTextColumns);
-    CPPUNIT_TEST(testTdf98839_ShearVFlipH);
-    CPPUNIT_TEST(testTdf130988);
-    CPPUNIT_TEST(testTdf131033);
-    CPPUNIT_TEST(testTdf129898LayerDrawnInSlideshow);
-    CPPUNIT_TEST(testTdf136956_UndoMergeCell);
-    CPPUNIT_TEST(testTdf39519);
-    CPPUNIT_TEST(testTdf164284);
-    CPPUNIT_TEST(testEncodedTableStyles);
-    CPPUNIT_TEST(testTdf157117);
-    CPPUNIT_TEST(testPageBackgroundImages);
-    CPPUNIT_TEST(testCanvasSlideExportODP);
-    CPPUNIT_TEST(testDuplicateAndMove);
-    CPPUNIT_TEST(testApiXMasterPagesSupplier);
-    CPPUNIT_TEST_SUITE_END();
 };
 
-void SdMiscTest::testTdf99396_UndoCellVerticalAlignment()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf99396_UndoCellVerticalAlignment)
 {
     // Load the document and select the table.
     createSdImpressDoc("tdf99396.odp");
@@ -162,7 +109,7 @@ void SdMiscTest::testTdf99396_UndoCellVerticalAlignment()
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDoc->GetUndoManager()->GetUndoActionCount());
 }
 
-void SdMiscTest::testTableObjectUndoTest()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTableObjectUndoTest)
 {
     // See tdf#99396 for the issue
 
@@ -278,7 +225,45 @@ void SdMiscTest::testTableObjectUndoTest()
     CPPUNIT_ASSERT_EQUAL(u"Format cell"_ustr, pDoc->GetUndoManager()->GetUndoActionComment(2));
 }
 
-void SdMiscTest::testFillColor()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testSubtitleWithParaAnimationSave)
+{
+    createSdImpressDoc("pptx/subtitle-animation-save.pptx");
+
+    SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pXImpressDocument);
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+    SdPage* pPage = pViewShell->GetActualPage();
+    CPPUNIT_ASSERT(pPage);
+
+    // Object 0 is the title, object 1 is the animated subtitle.
+    auto* pTextObj = dynamic_cast<SdrTextObj*>(pPage->GetObj(1));
+    CPPUNIT_ASSERT(pTextObj);
+    CPPUNIT_ASSERT_EQUAL(u"Original subtitle"_ustr,
+                         pTextObj->GetOutlinerParaObject()->GetTextObject().GetText(0));
+
+    SdrView* pView = pViewShell->GetView();
+    pView->MarkObj(pTextObj, pView->GetSdrPageView());
+    pView->SdrBeginTextEdit(pTextObj);
+    CPPUNIT_ASSERT(pView->IsTextEdit());
+    auto* pOutlinerView = pView->GetTextEditOutlinerView();
+    CPPUNIT_ASSERT(pOutlinerView);
+    EditView& rEditView = pOutlinerView->GetEditView();
+    rEditView.SetSelection(ESelection(0, 0));
+    rEditView.InsertText(u"edited "_ustr);
+    pView->SdrEndTextEdit();
+    Scheduler::ProcessEventsToIdle();
+
+    saveAndReload(TestFilter::PPTX);
+
+    // The whole edited text must survive; before the fix the frozen marker
+    // truncated it at the imported length ("edited Original s").
+    uno::Reference<text::XText> xText(
+        uno::Reference<text::XTextRange>(getShapeFromPage(1, 0), uno::UNO_QUERY_THROW)->getText());
+    CPPUNIT_ASSERT_EQUAL(u"edited Original subtitle"_ustr, xText->getString());
+}
+
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testFillColor)
 {
     // Test if setting the shape fill color from color to transparent automatically turns off the fill style to none
     createSdImpressDoc();
@@ -338,7 +323,7 @@ void SdMiscTest::testFillColor()
     CPPUNIT_ASSERT_EQUAL(int(drawing::FillStyle_NONE), static_cast<int>(eFillStyle2));
 }
 
-void SdMiscTest::testFillGradient()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testFillGradient)
 {
     createSdImpressDoc();
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
@@ -384,7 +369,7 @@ void SdMiscTest::testFillGradient()
     CPPUNIT_ASSERT_EQUAL(COL_LIGHTGREEN, Color(aColorStops.getStopColor(1)));
 }
 
-void SdMiscTest::testTdf44774_KeepStyleLinksOnSave()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf44774_KeepStyleLinksOnSave)
 {
     createSdDrawDoc();
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -417,7 +402,7 @@ void SdMiscTest::testTdf44774_KeepStyleLinksOnSave()
     CPPUNIT_ASSERT_EQUAL(u"StyleA"_ustr, pStyle->GetParent());
 }
 
-void SdMiscTest::testTdf38225_ChangeCustomStyleName()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf38225_ChangeCustomStyleName)
 {
     createSdImpressDoc();
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -456,7 +441,7 @@ void SdMiscTest::testTdf38225_ChangeCustomStyleName()
     CPPUNIT_ASSERT(pStyle);
 }
 
-void SdMiscTest::testTdf120527()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf120527)
 {
     createSdImpressDoc();
 
@@ -494,7 +479,7 @@ void SdMiscTest::testTdf120527()
 }
 
 // Testing document model part of editengine-columns
-void SdMiscTest::testTextColumns()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTextColumns)
 {
     createSdImpressDoc();
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
@@ -546,7 +531,7 @@ void SdMiscTest::testTextColumns()
 // config items are written. The 'testTdf101242_xyz' tests combine source
 // files with and without config items with option values 'true' and 'false'.
 
-void SdMiscTest::testTdf101242_ODF_add_settings()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf101242_ODF_add_settings)
 {
     // Loads a document, which has the visible/printable/locked information for layers
     // only in the ODF attributes draw:display and draw:protected. The resaved document
@@ -598,10 +583,10 @@ void SdMiscTest::testTdf101242_ODF_add_settings()
     CPPUNIT_ASSERT_EQUAL(0x04, static_cast<sal_uInt8>(aDecodedSeq[0]) & 0x1F);
 }
 
-void SdMiscTest::testTdf101242_ODF_no_settings()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf101242_ODF_no_settings)
 {
     // Loads a document, which has the visible/printable/locked information for layers
-    // only in the ODF attributes draw:display and draw:protected. The resave document
+    // only in the ODF attributes draw:display and draw:protected. The resaved document
     // should have only the ODF attributes and no config items in settings.xml.
     createSdDrawDoc("tdf101242_ODF.odg");
 
@@ -631,7 +616,7 @@ void SdMiscTest::testTdf101242_ODF_no_settings()
     assertXPath(pXmlDoc2, sPathStart2 + "/config:config-item[@config:name='LockedLayers']", 0);
 }
 
-void SdMiscTest::testTdf101242_settings_keep()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf101242_settings_keep)
 {
     // Loads a document, which has the visible/printable/locked information for layers
     // only in the config items in settings.xml. That is the case for all old documents.
@@ -683,7 +668,7 @@ void SdMiscTest::testTdf101242_settings_keep()
     CPPUNIT_ASSERT_EQUAL(0x04, static_cast<sal_uInt8>(aDecodedSeq[0]) & 0x1F);
 }
 
-void SdMiscTest::testTdf101242_settings_remove()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf101242_settings_remove)
 {
     // Loads a document, which has the visible/printable/locked information for layers
     // only in the config items in settings.xml. That is the case for all old documents.
@@ -717,7 +702,7 @@ void SdMiscTest::testTdf101242_settings_remove()
     assertXPath(pXmlDoc2, sPathStart2 + "/config:config-item[@config:name='LockedLayers']", 0);
 }
 
-void SdMiscTest::testTdf119392_VerifyLayerProperties()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf119392_VerifyLayerProperties)
 {
     // Loads a document which has two user layers "V--" and "V-L". Inserts a new layer "-P-" between them.
     // Checks, that the bitfields in the saved file have the bits in the correct order, in case
@@ -771,10 +756,10 @@ void SdMiscTest::testTdf119392_VerifyLayerProperties()
     CPPUNIT_ASSERT_EQUAL(0x80, static_cast<sal_uInt8>(aDecodedSeq[0]) & 0xff);
 }
 
-void SdMiscTest::testTdf67248_LayerNamesIndependentFromLocalization()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf67248_LayerNamesIndependentFromLocalization)
 {
     // The document tdf67248.odg has been created with a German UI. It has a user layer named "Background".
-    // On opening the user layer must still exists. The error was, that it was merged into the standard
+    // On opening the user layer must still exist. The error was, that it was merged into the standard
     // layer "background".
     createSdDrawDoc("tdf67248.odg");
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -784,7 +769,7 @@ void SdMiscTest::testTdf67248_LayerNamesIndependentFromLocalization()
     CPPUNIT_ASSERT_EQUAL(sal_uInt16(6), rLayerAdmin.GetLayerCount());
 }
 
-void SdMiscTest::testTdf119956_AdaptLayerTabFocusOnAltClick()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf119956_AdaptLayerTabFocusOnAltClick)
 {
     createSdDrawDoc("tdf119956.odg");
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -827,7 +812,7 @@ void SdMiscTest::testTdf119956_AdaptLayerTabFocusOnAltClick()
     CPPUNIT_ASSERT_EQUAL(sal_uInt16(3), pLayerTabBar->GetCurPagePos());
 }
 
-void SdMiscTest::testTdf98839_ShearVFlipH()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf98839_ShearVFlipH)
 {
     // Loads a document with a sheared shape and mirrors it
     createSdDrawDoc("tdf98839_ShearVFlipH.odg");
@@ -853,7 +838,7 @@ void SdMiscTest::testTdf98839_ShearVFlipH()
                            sTransform.startsWith("skewX (-"));
 }
 
-void SdMiscTest::testTdf130988()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf130988)
 {
     createSdDrawDoc("tdf130988_3D_create_lathe.odg");
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -870,14 +855,14 @@ void SdMiscTest::testTdf130988()
         = dynamic_cast<E3dScene*>(pView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj());
     CPPUNIT_ASSERT(pObj);
 
-    // Error was, that the created 3D object had a wrong path. Instead examining
+    // Error was, that the created 3D object had a wrong path. Instead of examining
     // the path directly, I use the scene distance, because that is easier. The
     // scene distance is calculated from the object while creating.
     const double fDistance = pObj->GetDistance();
     CPPUNIT_ASSERT_DOUBLES_EQUAL_MESSAGE("D3DSceneDistance", 7071.0, fDistance, 0.5);
 }
 
-void SdMiscTest::testTdf131033()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf131033)
 {
     createSdDrawDoc("tdf131033_3D_SceneSizeIn2d.odg");
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -903,7 +888,7 @@ void SdMiscTest::testTdf131033()
     CPPUNIT_ASSERT_DOUBLES_EQUAL_MESSAGE("2D height", 7096.0, fSnapRectHeight, 1.0);
 }
 
-void SdMiscTest::testTdf129898LayerDrawnInSlideshow()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf129898LayerDrawnInSlideshow)
 {
     // Versions LO 6.2 to 6.4 have produced files, where the layer DrawnInSlideshow has
     // got visible=false and printable=false attributes. Those files should be repaired now.
@@ -928,7 +913,7 @@ void SdMiscTest::testTdf129898LayerDrawnInSlideshow()
     CPPUNIT_ASSERT(pPageView->IsLayerPrintable(sName));
 }
 
-void SdMiscTest::testTdf136956_UndoMergeCell()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf136956_UndoMergeCell)
 {
     createSdImpressDoc("odp/cellspan.odp");
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -961,7 +946,7 @@ void SdMiscTest::testTdf136956_UndoMergeCell()
     CPPUNIT_ASSERT_EQUAL(sal_Int32(3), xTable->getRowCount());
 }
 
-void SdMiscTest::testTdf39519()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf39519)
 {
     createSdImpressDoc();
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -982,7 +967,7 @@ void SdMiscTest::testTdf39519()
     CPPUNIT_ASSERT(pCopiedPage->GetName() != pPage->GetName());
 }
 
-void SdMiscTest::testTdf164284()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf164284)
 {
     createSdImpressDoc();
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -1004,7 +989,7 @@ void SdMiscTest::testTdf164284()
     CPPUNIT_ASSERT_EQUAL(pPage->GetName(), pMovedPage->GetName());
 }
 
-void SdMiscTest::testEncodedTableStyles()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testEncodedTableStyles)
 {
     // Silence unrelated failure:
     // Error: element "table:table-template" is missing "first-row-start-column" attribute
@@ -1057,7 +1042,7 @@ void SdMiscTest::testEncodedTableStyles()
     }
 }
 
-void SdMiscTest::testTdf157117()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf157117)
 {
     createSdImpressDoc();
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -1098,7 +1083,7 @@ void SdMiscTest::testTdf157117()
     CPPUNIT_ASSERT_EQUAL(1, (nPageNum - 1) / 2);
 }
 
-void SdMiscTest::testPageBackgroundImages()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testPageBackgroundImages)
 {
     // Create empty document
     createSdDrawDoc();
@@ -1242,7 +1227,7 @@ void SdMiscTest::testPageBackgroundImages()
         CPPUNIT_ASSERT(!rName.isEmpty());
 }
 
-void SdMiscTest::testCanvasSlideExportODP()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testCanvasSlideExportODP)
 {
     createSdImpressDoc();
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -1270,7 +1255,7 @@ void SdMiscTest::testCanvasSlideExportODP()
                        u"true");
 }
 
-void SdMiscTest::testDuplicateAndMove()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testDuplicateAndMove)
 {
     createSdImpressDoc("slide_with_text.odp");
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
@@ -1293,7 +1278,24 @@ void SdMiscTest::testDuplicateAndMove()
     CPPUNIT_ASSERT_EQUAL(pFirstPage->GetObj(0)->GetSnapRect(), pLastPage->GetObj(0)->GetSnapRect());
 }
 
-void SdMiscTest::testApiXMasterPagesSupplier()
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testApiXDrawPageDuplicator)
+{
+    createSdImpressDoc();
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent,
+                                                                   uno::UNO_QUERY_THROW);
+    uno::Reference<drawing::XDrawPages> xDrawPages(xDrawPagesSupplier->getDrawPages(),
+                                                   uno::UNO_SET_THROW);
+    sal_Int32 nOldCount = xDrawPages->getCount();
+
+    uno::Reference<drawing::XDrawPage> xPage(xDrawPages->getByIndex(0), uno::UNO_QUERY_THROW);
+    uno::Reference<drawing::XDrawPageDuplicator> xDuplicator(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<drawing::XDrawPage> xNewPage = xDuplicator->duplicate(xPage);
+
+    CPPUNIT_ASSERT(xNewPage.is());
+    CPPUNIT_ASSERT_EQUAL(nOldCount + 1, xDrawPages->getCount());
+}
+
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testApiXMasterPagesSupplier)
 {
     createSdImpressDoc();
     uno::Reference<drawing::XMasterPagesSupplier> xMasterPagesSupplier(mxComponent,
@@ -1303,7 +1305,56 @@ void SdMiscTest::testApiXMasterPagesSupplier()
     CPPUNIT_ASSERT(xMasterPages->getCount() >= 1);
 }
 
-CPPUNIT_TEST_SUITE_REGISTRATION(SdMiscTest);
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testEmptyPresObjSetOnObjectWithoutText)
+{
+    // Given an empty picture placeholder, which holds no outliner text at all:
+    createSdImpressDoc("pptx/tdfpictureplaceholder.pptx");
+    uno::Reference<beans::XPropertySet> xShape(getShapeFromPage(0, 0));
+    bool bEmpty = false;
+    CPPUNIT_ASSERT(xShape->getPropertyValue(u"IsEmptyPresentationObject"_ustr) >>= bEmpty);
+    CPPUNIT_ASSERT(bEmpty);
+
+    // Then saying it is not empty and empty again must go through. Setting it back read the
+    // object's text to take a style from it without checking that there is any, so this crashed -
+    // a macro can reach it, and so can anything else that sets the property twice.
+    xShape->setPropertyValue(u"IsEmptyPresentationObject"_ustr, uno::Any(false));
+    xShape->setPropertyValue(u"IsEmptyPresentationObject"_ustr, uno::Any(true));
+
+    CPPUNIT_ASSERT(xShape->getPropertyValue(u"IsEmptyPresentationObject"_ustr) >>= bEmpty);
+    CPPUNIT_ASSERT(bEmpty);
+}
+
+CPPUNIT_TEST_FIXTURE(SdMiscTest, testTdf169252_MoveAnnotationObjectWithoutAnnotation)
+{
+    // Given an Impress document with an object that is flagged as an annotation object, but whose
+    // annotation reference is empty (this is what a copied and pasted comment ends up as):
+    createSdImpressDoc();
+    SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pXImpressDocument);
+    SdDrawDocument* pDoc = pXImpressDocument->GetDoc();
+    SdPage* pPage = pDoc->GetSdPage(0, PageKind::Standard);
+    CPPUNIT_ASSERT(pPage);
+
+    rtl::Reference<SdrRectObj> pObj
+        = new SdrRectObj(*pDoc, tools::Rectangle(1000, 1000, 3000, 2000));
+    pPage->InsertObject(pObj.get());
+    pObj->setAsAnnotationObject();
+    CPPUNIT_ASSERT(pObj->isAnnotationObject());
+    CPPUNIT_ASSERT(pObj->getAnnotationData());
+    CPPUNIT_ASSERT(!pObj->getAnnotationData()->mxAnnotation);
+    const tools::Rectangle aOldRect = pObj->GetSnapRect();
+
+    // When moving the object, as dragging it with the mouse or pressing an arrow key does:
+    // Without the fix in place, this crashed, as SdrObject::Move() dereferenced the empty
+    // annotation reference to update its position.
+    pObj->Move(Size(500, 250));
+
+    // Then the object is moved and we get here without a crash:
+    tools::Rectangle aExpectedRect(aOldRect);
+    aExpectedRect.Move(500, 250);
+    CPPUNIT_ASSERT_EQUAL(aExpectedRect, pObj->GetSnapRect());
+    CPPUNIT_ASSERT(!pObj->getAnnotationData()->mxAnnotation);
+}
 
 CPPUNIT_PLUGIN_IMPLEMENT();
 

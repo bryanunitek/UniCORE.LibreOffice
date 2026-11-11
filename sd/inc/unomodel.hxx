@@ -65,6 +65,7 @@ class SdGenericDrawPage;
 namespace sd {
 class DrawDocShell;
 class DrawViewShell;
+class SlideShow;
 class SlideshowLayerRenderer;
 }
 
@@ -146,7 +147,6 @@ public:
     static rtl::Reference< SdXImpressDocument > GetModel( SdDrawDocument const & rDoc );
 
     // internal
-    bool operator==( const SdXImpressDocument& rModel ) const { return mpDoc == rModel.mpDoc; }
     bool operator!=( const SdXImpressDocument& rModel ) const { return mpDoc != rModel.mpDoc; }
 
     ::sd::DrawDocShell* GetDocShell() const { return mpDocShell; }
@@ -197,7 +197,8 @@ public:
     virtual css::uno::Reference< css::drawing::XDrawPage > SAL_CALL getHandoutMasterPage(  ) override;
 
     // XPresentationSupplier
-    virtual css::uno::Reference< css::presentation::XPresentation > SAL_CALL getPresentation(  ) override;
+    SD_DLLPUBLIC virtual css::uno::Reference<css::presentation::XPresentation>
+        SAL_CALL getPresentation() override;
 
     // XMultiServiceFactory ( SvxFmMSFactory )
     SD_DLLPUBLIC virtual css::uno::Reference< css::uno::XInterface > SAL_CALL createInstance( const OUString& aServiceSpecifier ) override;
@@ -285,7 +286,7 @@ public:
     /// @see vcl::ITiledRenderable::getPointer().
     virtual PointerStyle getPointer() override;
     /// @see vcl::ITiledRenderable::getPostIts().
-    virtual void getPostIts(tools::JsonWriter& /*rJsonWriter*/) override;
+    SD_DLLPUBLIC virtual void getPostIts(tools::JsonWriter& /*rJsonWriter*/) override;
     /// @see vcl::ITiledRenderable::selectPart().
     virtual void selectPart(int nPart, int nSelect) override;
     /// @see vcl::ITiledRenderable::moveSelectedParts().
@@ -328,6 +329,8 @@ public:
         See also comments of issue 27847.
     */
     virtual void SAL_CALL dispose() override;
+
+    SD_DLLPUBLIC rtl::Reference<sd::SlideShow> getSlideShow();
 };
 
 /***********************************************************************

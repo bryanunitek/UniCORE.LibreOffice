@@ -37,9 +37,9 @@ using namespace ::com::sun::star::accessibility;
 // Ctor/Dtor/disposing --------------------------------------------------------
 
 AccessibleBrowseBoxTable::AccessibleBrowseBoxTable(
-        const Reference< XAccessible >& rxParent,
-        vcl::IAccessibleTableProvider& rBrowseBox ) :
-    AccessibleBrowseBoxTableBase( rxParent, rBrowseBox, AccessibleBrowseBoxObjType::Table )
+    const rtl::Reference<comphelper::OAccessible>& rpParent,
+    vcl::IAccessibleTableProvider& rBrowseBox)
+    : AccessibleBrowseBoxTableBase(rpParent, rBrowseBox, AccessibleBrowseBoxObjType::Table)
 {
 }
 
@@ -181,13 +181,6 @@ sal_Bool SAL_CALL AccessibleBrowseBoxTable::isAccessibleSelected(
 
     ensureIsValidAddress( nRow, nColumn );
     return implIsRowSelected( nRow ) || implIsColumnSelected( nColumn );
-}
-
-// XServiceInfo ---------------------------------------------------------------
-
-OUString SAL_CALL AccessibleBrowseBoxTable::getImplementationName()
-{
-    return u"com.sun.star.comp.svtools.AccessibleBrowseBoxTable"_ustr;
 }
 
 // internal virtual methods ---------------------------------------------------

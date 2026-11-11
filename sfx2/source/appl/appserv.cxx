@@ -616,17 +616,6 @@ void SfxApplication::MiscExec_Impl( SfxRequest& rReq )
             break;
         }
 
-        case SID_SEND_FEEDBACK:
-        {
-            OUString module = SfxHelp::GetCurrentModuleIdentifier();
-            OUString sURL(officecfg::Office::Common::Menus::SendFeedbackURL::get() + //officecfg/registry/data/org/openoffice/Office/Common.xcu => https://hub.libreoffice.org/send-feedback/
-                "?LOversion=" + utl::ConfigManager::getAboutBoxProductVersion() +
-                "&LOlocale=" + utl::ConfigManager::getUILocale() +
-                "&LOmodule=" + module.subView(module.lastIndexOf('.') + 1 )  );
-            sfx2::openUriExternally(sURL, false, rReq.GetFrameWeld());
-            break;
-        }
-
         case SID_Q_AND_A:
         {
             // Askbot has URL's normalized to languages, not locales
@@ -753,37 +742,19 @@ void SfxApplication::MiscExec_Impl( SfxRequest& rReq )
             }
 
             Invalidate(FN_CHANGE_THEME);
+            Invalidate(FN_INVERT_BACKGROUND); //enable in dark mode only
+            bDone = true;
             break;
         }
         case FN_INVERT_BACKGROUND:
         {
-            const SfxStringItem* pNewThemeArg = rReq.GetArg(FN_PARAM_NEW_THEME);
+            const SfxBoolItem* pOnItem = rReq.GetArg(FN_INVERT_BACKGROUND);
+            bool bOn = pOnItem ? pOnItem->GetValue() : false;
+            ThemeColors::SetUseOnlyWhiteDocBackground(bOn);
+            aEditableConfig.Commit(true); // force configuration update
 
-            svtools::EditableColorConfig aColorConfig;
-            ::Color aDefLightColor = svtools::ColorConfig::GetDefaultColor(svtools::DOCCOLOR, 0);
-            ::Color aDefDarkColor = svtools::ColorConfig::GetDefaultColor(svtools::DOCCOLOR, 1);
-
-            OUString aNewTheme;
-            if (!pNewThemeArg) {
-                ::Color aCurrentColor = aColorConfig.GetColorValue(svtools::DOCCOLOR).nColor;
-
-                if (aCurrentColor == aDefLightColor) {
-                    aNewTheme = OUString("Dark");
-                } else {
-                    aNewTheme = OUString("Light");
-                }
-            } else {
-                aNewTheme = pNewThemeArg->GetValue();
-            }
-
-            svtools::ColorConfigValue aValue;
-
-            if(aNewTheme == "Dark")
-                aValue.nColor = aDefDarkColor;
-            else
-                aValue.nColor = aDefLightColor;
-
-            aColorConfig.SetColorValue(svtools::DOCCOLOR, aValue);
+            Invalidate(FN_INVERT_BACKGROUND);
+            bDone = true;
             break;
         }
         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1372,6 +1343,18 @@ void SfxApplication::MiscState_Impl(SfxItemSet &rSet)
                     rSet.Put(SfxBoolItem(FN_CHANGE_THEME, bIsDarkMode));
                     break;
                 }
+                case FN_INVERT_BACKGROUND:
+                {
+                    const bool bIsDarkMode
+                        = MiscSettings::GetAppColorMode() == AppearanceMode::DARK
+                          || (MiscSettings::GetAppColorMode() == AppearanceMode::AUTO
+                              && MiscSettings::GetUseDarkMode());
+                    if (!bIsDarkMode)
+                        rSet.DisableItem(nWhich);
+                    else
+                        rSet.Put( SfxBoolItem(nWhich, ThemeColors::UseOnlyWhiteDocBackground()) );
+                    break;
+                }
                 case SID_HELPTIPS:
                 {
                     rSet.Put( SfxBoolItem( SID_HELPTIPS, Help::IsQuickHelpEnabled() ) );
@@ -1452,6 +1435,10 @@ void SfxApplication::MiscState_Impl(SfxItemSet &rSet)
 
                 case SID_MENUBAR:
                 {
+#ifdef MACOSX
+                    rSet.DisableItem( nWhich );
+                    rSet.Put( SfxVisibilityItem( nWhich, false ) );
+#else
                     Reference < XDesktop2 > xDesktop = Desktop::create ( ::comphelper::getProcessComponentContext() );
                     Reference< XFrame > xFrame = xDesktop->getActiveFrame();
 
@@ -1483,6 +1470,7 @@ void SfxApplication::MiscState_Impl(SfxItemSet &rSet)
                         SfxBoolItem aItem( SID_MENUBAR, bState );
                         rSet.Put( aItem );
                     }
+#endif
                     break;
                 }
                 case SID_SAFE_MODE:
@@ -1624,6 +1612,28 @@ namespace
         }
         return nullptr;
     }
+    void lcl_callXScript( const Reference < XFrame >& rxFrame,
+                          const Reference < css::uno::XInterface >& rxScriptContext,
+                          const OUString& rScriptURL )
+    {
+        Sequence< Any > args;
+        Sequence< sal_Int16 > outIndex;
+        Sequence< Any > outArgs;
+        Any ret;
+
+        if (SfxObjectShell::CallXScript( rxScriptContext, rScriptURL, args,
+                                         ret, outIndex, outArgs ) == ERRCODE_IO_ACCESSDENIED)
+        {
+            if (weld::Window* pParent = lcl_getDialogParent(rxFrame))
+            {
+                std::unique_ptr<weld::MessageDialog> xBox(
+                    Application::CreateMessageDialog(pParent, VclMessageType::Warning,
+                                                     VclButtonsType::Ok,
+                                                     SfxResId(STR_CANNOTRUNMACRO)));
+                xBox->run();
+            }
+        }
+    }
 #endif // HAVE_FEATURE_SCRIPTING
 }
 
@@ -1712,7 +1722,7 @@ void SfxApplication::OfaExec_Impl( SfxRequest& rReq )
             if ( !pView )
             {
                 SfxObjectShell* pBasicIDE = SfxObjectShell::CreateObject( u"com.sun.star.script.BasicIDE"_ustr );
-                pBasicIDE->DoInitNew();
+                pBasicIDE->DoInitNew(SfxNewDocumentMacros::Allow);
                 pBasicIDE->SetModified( false );
                 try
                 {
@@ -1733,7 +1743,7 @@ void SfxApplication::OfaExec_Impl( SfxRequest& rReq )
                     Reference< XFrame > xTargetFrame( lcl_findStartModuleFrame( xContext ) );
                     if ( !xTargetFrame.is() )
                         xTargetFrame = SfxFrame::CreateBlankFrame();
-                    ENSURE_OR_THROW( xTargetFrame.is(), "could not obtain a frameto load the Basic IDE into!" );
+                    ENSURE_OR_THROW( xTargetFrame.is(), "could not obtain a frame to load the Basic IDE into!" );
 
                     xLoader->load( aLoadArgs.getPropertyValues(), xTargetFrame );
                 }
@@ -1843,22 +1853,7 @@ void SfxApplication::OfaExec_Impl( SfxRequest& rReq )
                         return;
                     }
 
-                    Sequence< Any > args;
-                    Sequence< sal_Int16 > outIndex;
-                    Sequence< Any > outArgs;
-                    Any ret;
-
-                    Reference< XInterface > xScriptContext;
-
-                    Reference< XController > xController;
-                    if ( xFrame.is() )
-                        xController = xFrame->getController();
-                    if ( xController.is() )
-                        xScriptContext = xController->getModel();
-                    if ( !xScriptContext.is() )
-                        xScriptContext = xController;
-
-                    SfxObjectShell::CallXScript( xScriptContext, pDlg->GetScriptURL(), args, ret, outIndex, outArgs );
+                    lcl_callXScript(xFrame, pDlg->GetScriptModel(), pDlg->GetScriptURL());
                     pDlg->disposeOnce();
                 });
             }
@@ -1919,23 +1914,7 @@ void SfxApplication::OfaExec_Impl( SfxRequest& rReq )
                             return;
                         }
 
-                        Sequence<Any> args;
-                        Sequence<sal_Int16> outIndex;
-                        Sequence<Any> outArgs;
-                        Any ret;
-
-                        Reference<XInterface> xScriptContext;
-
-                        Reference<XController> xController;
-                        if (xFrame.is())
-                            xController = xFrame->getController();
-                        if (xController.is())
-                            xScriptContext = xController->getModel();
-                        if (!xScriptContext.is())
-                            xScriptContext = xController;
-
-                        SfxObjectShell::CallXScript(xScriptContext, pDlg->GetScriptURL(), args, ret,
-                                                    outIndex, outArgs);
+                        lcl_callXScript(xFrame, pDlg->GetScriptModel(), pDlg->GetScriptURL());
                         pDlg->disposeOnce();
                     });
                 pDlg->LoadLastUsedMacro();

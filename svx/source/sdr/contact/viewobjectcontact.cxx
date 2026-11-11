@@ -115,7 +115,7 @@ void AnimatedExtractingProcessor2D::processBasePrimitive2D(const drawinglayer::p
         case PRIMITIVE2D_ID_SDRGRAFPRIMITIVE2D :
         case PRIMITIVE2D_ID_GRAPHICPRIMITIVE2D :
 
-        // decompose SdrObjects with evtl. animated text
+        // decompose SdrObjects with eventual animated text
         case PRIMITIVE2D_ID_SDRCAPTIONPRIMITIVE2D :
         case PRIMITIVE2D_ID_SDRCONNECTORPRIMITIVE2D :
         case PRIMITIVE2D_ID_SDRCUSTOMSHAPEPRIMITIVE2D :
@@ -130,7 +130,7 @@ void AnimatedExtractingProcessor2D::processBasePrimitive2D(const drawinglayer::p
         case PRIMITIVE2D_ID_POLYPOLYGONGRAPHICPRIMITIVE2D:
         case PRIMITIVE2D_ID_TRANSFORMPRIMITIVE2D:
 
-        // decompose evtl. animated text contained in MaskPrimitive2D
+        // decompose eventual animated text contained in MaskPrimitive2D
         // or group primitives
         case PRIMITIVE2D_ID_MASKPRIMITIVE2D :
         case PRIMITIVE2D_ID_GROUPPRIMITIVE2D :
@@ -181,7 +181,7 @@ ViewObjectContact::~ViewObjectContact()
     // which (depending of its implementation) may destroy other OCs. This
     // can trigger the deletion of the helper OC of a page visualising object
     // which IS the OC of this object. Eventually StopGettingViewed() needs
-    // to get asynchron later
+    // to get asynchronously later
     GetObjectContact().RemoveViewObjectContact(*this);
 
     // take care of remembered ViewContact
@@ -278,7 +278,7 @@ void ViewObjectContact::triggerLazyInvalidate()
 // Take some action when new objects are inserted
 void ViewObjectContact::ActionChildInserted(ViewContact& rChild)
 {
-    // force creation of the new VOC and trigger it's refresh, so it
+    // force creation of the new VOC and trigger its refresh, so it
     // will take part in LazyInvalidate immediately
     rChild.GetViewObjectContact(GetObjectContact()).ActionChanged();
 
@@ -452,16 +452,15 @@ void ViewObjectContact::createStructureTag(drawinglayer::primitive2d::Primitive2
         }
         else
         {
-            // page backgrounds etc should be tagged as artifacts:
-            rNewPrimitiveSequence = drawinglayer::primitive2d::Primitive2DContainer {
-                    new drawinglayer::primitive2d::StructureTagPrimitive2D(
-                        // lies to force silly VclMetafileProcessor2D to emit NonStructElement
-                        vcl::pdf::StructElement::Division,
-                        true,
-                        true,
-                        true, // Decorative
-                        std::move(rNewPrimitiveSequence))
-                };
+            // page decoration, and anything the user marked decorative, is an artifact
+            rNewPrimitiveSequence = drawinglayer::primitive2d::Primitive2DContainer{
+                new drawinglayer::primitive2d::StructureTagPrimitive2D(
+                    vcl::pdf::StructElement::NonStructElement,
+                    nullptr == pSdrObj, // Background
+                    false, // Image
+                    true, // Decorative
+                    std::move(rNewPrimitiveSequence))
+            };
         }
     }
 }
@@ -624,7 +623,7 @@ const basegfx::B2DVector& ViewObjectContact::getGridOffset() const
         // the calc-view gets solved one day - all this can be removed
         // again. For now, let's just reset here and force re-calculation.
         // Add a SAL_WARN to inform about this.
-        SAL_WARN("svx", "Suspicious GridOffset value resetted (!)");
+        SAL_WARN("svx", "Suspicious GridOffset value reset (!)");
         moGridOffset.reset();
     }
 

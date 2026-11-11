@@ -65,26 +65,10 @@ using namespace cppu;
 
 // Implementation class SfxScriptLibraryContainer
 
-OUString SfxScriptLibraryContainer::getInfoFileName() const
-{
-    static constexpr OUStringLiteral script = u"script";
-    return script;
-}
-OUString SfxScriptLibraryContainer::getOldInfoFileName() const
-{
-    static constexpr OUStringLiteral script = u"script";
-    return script;
-}
-OUString SfxScriptLibraryContainer::getLibElementFileExtension() const
-{
-    static constexpr OUStringLiteral xba = u"xba";
-    return xba;
-}
-OUString SfxScriptLibraryContainer::getLibrariesDir() const
-{
-    static constexpr OUStringLiteral sBasic = u"Basic";
-    return sBasic;
-}
+OUString SfxScriptLibraryContainer::getInfoFileName() const { return u"script"_ustr; }
+OUString SfxScriptLibraryContainer::getOldInfoFileName() const { return u"script"_ustr; }
+OUString SfxScriptLibraryContainer::getLibElementFileExtension() const { return u"xba"_ustr; }
+OUString SfxScriptLibraryContainer::getLibrariesDir() const { return u"Basic"_ustr; }
 
 void SfxScriptLibraryContainer::setLibraryPassword( const OUString& rLibraryName, const OUString& rPassword )
 {
@@ -492,7 +476,7 @@ void SAL_CALL SfxScriptLibraryContainer::changeLibraryPassword( const OUString& 
 
         if( !bStorage && !pImplLib->mbDoc50Password )
         {
-            // Store application basic crypted
+            // Store application basic encrypted
             uno::Reference< embed::XStorage > xStorage;
             storeLibraries_Impl(xStorage, false, guard);
             bKillUnencryptedFiles = true;

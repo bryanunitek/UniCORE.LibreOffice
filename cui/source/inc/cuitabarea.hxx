@@ -22,7 +22,6 @@
 
 #include <svx/ColorIconView.hxx>
 #include <svx/dlgctrl.hxx>
-#include <svx/xflasit.hxx>
 #include <svx/tabarea.hxx>
 #include <svx/PaletteManager.hxx>
 #include <svx/svdview.hxx>
@@ -158,8 +157,7 @@ class SvxTransparenceTabPage : public SfxTabPage
 
     bool                bBitmap;
 
-    XFillAttrSetItem    aXFillAttr;
-    SfxItemSet&         rXFSet;
+    SfxItemSet          m_aFillAttributeSet;
 
     SvxXRectPreview     m_aCtlBitmapPreview;
     SvxXRectPreview     m_aCtlXRectPreview;
@@ -253,8 +251,7 @@ private:
 
     ChangeType*         m_pnColorListState;
 
-    XFillAttrSetItem    m_aXFillAttr;
-    SfxItemSet&         m_rXFSet;
+    SfxItemSet          m_aFillAttributeSet;
 
     bool m_bBtnClicked = false;
 
@@ -328,8 +325,7 @@ private:
     PageType            m_nPageType;
     sal_uInt16          m_nDlgType;
 
-    XFillAttrSetItem    m_aXFillAttr;
-    SfxItemSet&         m_rXFSet;
+    SfxItemSet          m_aFillAttributeSet;
     MapUnit             m_ePoolUnit;
 
     SvxRectCtl m_aCtlPosition;
@@ -380,8 +376,7 @@ private:
     ChangeType m_nGradientListState;
     ChangeType*         m_pnColorListState;
 
-    XFillAttrSetItem    m_aXFillAttr;
-    SfxItemSet&         m_rXFSet;
+    SfxItemSet          m_aFillAttributeSet;
 
     // MCGR: Preserve ColorStops until we have a UI to edit these
     basegfx::BColorStops m_aColorStops;
@@ -461,8 +456,7 @@ private:
     ChangeType m_nHatchingListState;
     ChangeType*         m_pnColorListState;
 
-    XFillAttrSetItem    m_aXFillAttr;
-    SfxItemSet&         m_rXFSet;
+    SfxItemSet          m_aFillAttributeSet;
 
     MapUnit             m_ePoolUnit;
 
@@ -532,8 +526,7 @@ class SvxBitmapTabPage : public SfxTabPage
     double                     m_fObjectHeight;
     bool                       m_bLogicalSize;
 
-    XFillAttrSetItem           m_aXFillAttr;
-    SfxItemSet&                m_rXFSet;
+    SfxItemSet                 m_aFillAttributeSet;
     const SdrView*             mpView;
     MapUnit                    mePoolUnit;
     FieldUnit                  meFieldUnit;
@@ -607,8 +600,7 @@ private:
     ChangeType m_nPatternListState;
     ChangeType*         m_pnColorListState;
 
-    XFillAttrSetItem    m_aXFillAttr;
-    SfxItemSet&         m_rXFSet;
+    SfxItemSet          m_aFillAttributeSet;
 
     SvxXRectPreview m_aCtlPreview;
     std::unique_ptr<SvxPixelCtl> m_xCtlPixel;
@@ -671,8 +663,7 @@ private:
 
     ChangeType* m_pnColorListState;
 
-    XFillAttrSetItem m_aXFillAttr;
-    SfxItemSet& m_rXFSet;
+    SfxItemSet m_aFillAttributeSet;
 
     ColorModel m_eCM;
 
@@ -714,7 +705,7 @@ private:
     std::unique_ptr<weld::CustomWeld> m_xCtlPreviewOld;
     std::unique_ptr<weld::CustomWeld> m_xCtlPreviewNew;
 
-    static void    ConvertColorValues (Color& rColor, ColorModel eModell);
+    static void    ConvertColorValues (Color& rColor, ColorModel eModel);
     static void    RgbToCmyk_Impl( Color& rColor, sal_uInt16& rK );
     static void    CmykToRgb_Impl( Color& rColor, const sal_uInt16 nKey );
     sal_uInt16  ColorToPercent_Impl( sal_uInt16 nColor );
@@ -728,8 +719,8 @@ private:
     DECL_LINK(OnMoreColorsClick, weld::Button&, void);
 
     DECL_LINK(SelectPaletteLBHdl, weld::ComboBox&, void);
-    DECL_LINK(ActivatePaletteColorHdl, const Color&, void);
-    DECL_LINK(ActivateRecentColorHdl, const Color&, void);
+    DECL_LINK(ActivatePaletteColorHdl, int, void);
+    DECL_LINK(ActivateRecentColorHdl, int, void);
     DECL_LINK( SelectColorModeHdl_Impl, weld::Toggleable&, void );
     void UpdateToSelectedColor(const NamedColor& rNamedColor);
     void ChangeColor(const NamedColor &rNewColor, bool bUpdatePreset = true);
@@ -739,8 +730,6 @@ private:
     DECL_LINK(SpinValueHdl_Impl, weld::SpinButton&, void);
     DECL_LINK(MetricSpinValueHdl_Impl, weld::MetricSpinButton&, void);
     DECL_LINK(ModifiedHdl_Impl, weld::Entry&, void);
-
-    void UpdateModified();
 
     static sal_Int32 FindInCustomColors( std::u16string_view aColorName );
     sal_Int32 FindInPalette( const Color& rColor );

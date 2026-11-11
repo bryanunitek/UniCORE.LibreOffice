@@ -34,9 +34,10 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-ScAccessibleTableBase::ScAccessibleTableBase(const uno::Reference<XAccessible>& rxParent,
-                                             ScDocument* pDoc, const ScRange& rRange)
-    : ImplInheritanceHelper(rxParent, AccessibleRole::TABLE)
+ScAccessibleTableBase::ScAccessibleTableBase(
+    const rtl::Reference<comphelper::OAccessible>& rpParent, ScDocument* pDoc,
+    const ScRange& rRange)
+    : ImplInheritanceHelper(rpParent, AccessibleRole::TABLE)
     , maRange(rRange)
     , mpDoc(pDoc)
 {
@@ -205,22 +206,19 @@ sal_Bool SAL_CALL ScAccessibleTableBase::isAccessibleColumnSelected( sal_Int32 /
 uno::Reference< XAccessible > SAL_CALL ScAccessibleTableBase::getAccessibleCellAt( sal_Int32 /* nRow */, sal_Int32 /* nColumn */ )
 {
     OSL_FAIL("not implemented yet");
-    uno::Reference< XAccessible > xAccessible;
-    return xAccessible;
+    return {};
 }
 
 uno::Reference< XAccessible > SAL_CALL ScAccessibleTableBase::getAccessibleCaption(  )
 {
     OSL_FAIL("not implemented yet");
-    uno::Reference< XAccessible > xAccessible;
-    return xAccessible;
+    return {};
 }
 
 uno::Reference< XAccessible > SAL_CALL ScAccessibleTableBase::getAccessibleSummary(  )
 {
     OSL_FAIL("not implemented yet");
-    uno::Reference< XAccessible > xAccessible;
-    return xAccessible;
+    return {};
 }
 
 sal_Bool SAL_CALL ScAccessibleTableBase::isAccessibleSelected( sal_Int32 /* nRow */, sal_Int32 /* nColumn */ )

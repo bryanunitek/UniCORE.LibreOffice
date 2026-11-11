@@ -23,6 +23,7 @@
 #include <com/sun/star/text/XTextCursor.hpp>
 #include <com/sun/star/text/XTextAppend.hpp>
 #include <com/sun/star/text/XTextFrame.hpp>
+#include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/style/TabStop.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
@@ -51,6 +52,7 @@
 #include "GraphicImport.hxx"
 #include "OLEHandler.hxx"
 #include "FFDataHandler.hxx"
+#include "SdtHelper.hxx"
 #include "SmartTagHandler.hxx"
 #include "FormControlHelper.hxx"
 #include <unoidx.hxx>
@@ -218,6 +220,8 @@ enum class SubstreamType
 struct SubstreamContext
 {
     SubstreamType eSubstreamType = SubstreamType::Body;
+    /// The text of the foot or endnote of this substream is on the text append stack.
+    bool bNoteTextAppendPushed = false;
     bool      bTextInserted = false;
     /**
      * This contains the raw table depth. nTableDepth > 0 is the same as
@@ -245,6 +249,13 @@ struct SubstreamContext
     bool bIsPreviousParagraphFramed = false;
     /// Current paragraph had at least one inline object in it.
     bool bParaWithInlineObject = false;
+    /// Formulas appended to the current paragraph. Their text mode (inline, i.e.
+    /// reduced fractions/limits, vs display, i.e. full size) is decided from the
+    /// paragraph's content once it is finished: a formula that is the paragraph's
+    /// only content is a display equation, otherwise it is inline.
+    std::vector<std::pair<rtl::Reference<SwXTextEmbeddedObject>,
+                          css::uno::Reference<css::uno::XInterface>>>
+        aParagraphFormulas;
     /// This is a continuation of already finished paragraph - e.g., first in an index section
     bool bRemoveThisParagraph = false;
     bool bIsFirstParaInShape = false;
@@ -265,12 +276,14 @@ struct SubstreamContext
     /// If the current paragraph is inside a structured document element.
     bool bSdt = false;
     css::uno::Reference<css::text::XTextRange> xSdtEntryStart;
+    SdtHelper m_aSdtHelper;
     OUString sCurrentParaStyleName; ///< highly inaccurate. Overwritten by "overlapping" paragraphs like flys.
     bool bHasFootnoteStyle = false;
     bool bCheckFootnoteStyle = false;
     bool bIsInFootnoteProperties = false;
     RubyInfo aRubyInfo;
     bool bTextFrameInserted = false;
+    // IsFirstRun: probably better termed as 'IsBeforeContent'. Becomes false before first </w:r>
     bool bIsFirstRun = false;
     bool bIsOutsideAParagraph = true;
     bool bDummyParaAddedForTableInSection = false; // tdf#161631
@@ -281,6 +294,12 @@ struct SubstreamContext
 
     css::uno::Reference< css::text::XTextCursor > xTOCMarkerCursor;
     std::deque<FieldContextPtr> m_aFieldStack;
+
+    explicit SubstreamContext(DomainMapper_Impl& rDM_Impl,
+                              css::uno::Reference<css::uno::XComponentContext> xContext)
+        : m_aSdtHelper(rDM_Impl, std::move(xContext))
+    {
+    }
 };
 
 /// Information about a paragraph to be finished after a field end.
@@ -337,8 +356,12 @@ private:
 
     FFDataHandler::Pointer_t m_pFFDataHandler;
     FormControlHelper::Pointer_t m_pFormControlHelper;
-    /// (Character) properties of the field itself.
-    PropertyMapPtr m_pProperties;
+    /// Field metadata which is independent of command and result run formatting.
+    PropertyMapPtr m_pFieldProperties;
+    /// Character properties copied from the first command w:r (run).
+    PropertyMapPtr m_pCommandFirstRunProperties;
+    /// Character properties copied from the first non-empty result w:r (run).
+    PropertyMapPtr m_pResultFirstRunProperties;
 
     std::vector<FieldParagraph> m_aParagraphsToFinish;
 
@@ -395,7 +418,19 @@ public:
 
     void setFormControlHelper(const FormControlHelper::Pointer_t& pFormControlHelper) { m_pFormControlHelper = pFormControlHelper; }
     const FormControlHelper::Pointer_t& getFormControlHelper() const { return m_pFormControlHelper; }
-    const PropertyMapPtr& getProperties() const { return m_pProperties; }
+    const PropertyMapPtr& getFieldProperties() const { return m_pFieldProperties; }
+    const PropertyMapPtr& getCommandFirstRunProperties() const
+    {
+        return m_pCommandFirstRunProperties;
+    }
+    /// Select run formatting, not field metadata; result formatting is known at PopFieldContext().
+    const PropertyMapPtr& getRunProperties() const
+    {
+        if (m_pResultFirstRunProperties)
+            return m_pResultFirstRunProperties;
+        return m_pCommandFirstRunProperties;
+    }
+    void captureResultFirstRunProperties(const PropertyMapPtr& pProperties);
 
     ::std::vector<OUString> GetCommandParts() const;
 
@@ -694,6 +729,8 @@ private:
     bool m_bAnnotationResolved = false;
     OUString m_sAnnotationParent;
     OUString m_sAnnotationImportedParaId;
+    /// The moment the comment being read was written, when the file records one.
+    std::optional<css::util::DateTime> m_oAnnotationDateUtc;
     std::unordered_map< sal_Int32, AnnotationPosition > m_aAnnotationPositions;
 
     void SetNumberFormat(const OUString& rCommand, css::uno::Reference<css::beans::XPropertySet> const& xPropertySet, bool bDetectFormat = false);
@@ -705,6 +742,14 @@ private:
 
     css::uno::Reference<css::text::XTextRange> m_xGlossaryEntryStart;
     std::stack<BookmarkInsertPosition> m_xSdtStarts;
+
+    /// Storage for all properties documents as xml::dom::XDocument for later querying xpath for data
+    std::unordered_map<OUString, css::uno::Reference<css::xml::dom::XDocument>> m_xPropertiesXMLs;
+
+    /// Check if m_xPropertiesXMLs is initialized and loaded
+    /// (need extra flag to distinguish empty sequence from not yet initialized)
+    bool m_bPropertiesXMLsLoaded = false;
+    void loadPropertiesXMLs();
 
     std::queue< rtl::Reference< SwXTextFrame > > m_xPendingTextBoxFrames;
 
@@ -811,6 +856,7 @@ public:
     void SetSymbolFont( OUString const &rName ) { m_aSymbolData.sFont = rName; }
     const SymbolData & GetSymbolData() const { return m_aSymbolData;}
 
+    SdtHelper& GetSdtHelper();
     void SetSdt(bool bSdt);
 
     void PushSdt();
@@ -818,6 +864,7 @@ public:
     /// Gives access to the currently open run/inline SDTs.
     const std::stack<BookmarkInsertPosition>& GetSdtStarts() const;
 
+    std::unordered_map<OUString, css::uno::Reference<css::xml::dom::XDocument>>& GetPropertiesXMLs();
 
     bool GetParaChanged() const { return m_StreamStateStack.top().bParaChanged; }
     bool GetParaHadField() const { return m_StreamStateStack.top().bParaHadField; }
@@ -840,6 +887,9 @@ public:
     void appendTextContent(const css::uno::Reference<css::text::XTextContent>&, const css::uno::Sequence<css::beans::PropertyValue>&);
     void appendOLE( const OUString& rStreamName, const std::shared_ptr<OLEHandler>& pOleHandler );
     void appendStarMath( const Value& v);
+    /// Decides the text mode of the formulas collected for the paragraph being
+    /// finished (see SubstreamContext::aParagraphFormulas).
+    void finalizeParagraphFormulas();
     void adjustLastPara(sal_Int8 nAlign);
     rtl::Reference<SwXTextSection> appendTextSectionAfter(css::uno::Reference<css::text::XTextRange> const & xBefore);
 
@@ -1182,8 +1232,6 @@ public:
     /// If we're importing autotext.
     bool IsReadGlossaries() const { return m_bIsReadGlossaries;}
 
-    tools::SvRef<SdtHelper> m_pSdtHelper;
-
     /// Document background color, applied to every page style.
     std::optional<sal_Int32> m_oBackgroundColor;
     bool m_bCopyStandardPageStyleFill = false;
@@ -1280,6 +1328,8 @@ public:
     void HandleLineBreak(const PropertyMapPtr& pPropertyMap);
 
     void commentProps(const OUString& sId, const CommentProperties& rProps);
+    void commentDurableId(const OUString& sParaId, const OUString& sDurableId);
+    void commentDateUtc(const OUString& sDurableId, const OUString& sDateUtc);
 
     OUString ConvertTOCStyleName(OUString const&);
 
@@ -1294,6 +1344,10 @@ private:
     bool m_bSaxError;
 
     std::unordered_map<OUString, CommentProperties> m_aCommentProps;
+    /// Durable id of a comment, by the paragraph id of its last paragraph.
+    std::unordered_map<OUString, OUString> m_aCommentDurableIds;
+    /// The moment a comment was written, as an ISO 8601 string in UTC, by durable id.
+    std::unordered_map<OUString, OUString> m_aCommentDatesUtc;
 };
 
 } //namespace writerfilter::dmapper

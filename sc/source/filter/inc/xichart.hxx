@@ -787,7 +787,7 @@ public:
 
     /** Sets a data point or series format (CHDATAFORMAT group) for this series. */
     void                SetDataFormat( const XclImpChDataFormatRef& xDataFmt );
-    /** Sets a label text (CHTEXT group) attached  to a series or data point. */
+    /** Sets a label text (CHTEXT group) attached to a series or data point. */
     void                SetDataLabel(const XclImpChTextRef& xLabel);
     /** Adds error bar settings from the passed series to the own series. */
     void                AddChildSeries( const XclImpChSeries& rSeries );
@@ -1312,7 +1312,7 @@ public:
     XclImpChTypeGroupRef GetTypeGroup( sal_uInt16 nGroupIdx ) const;
     /** Returns the specified default text. */
     const XclImpChText*  GetDefaultText( XclChTextType eTextType ) const;
-    /** Returns true, if the plot area has benn moved and/or resized manually. */
+    /** Returns true, if the plot area has been moved and/or resized manually. */
     bool                IsManualPlotArea() const;
     /** Returns the number of units on the progress bar needed for the chart. */
     static std::size_t GetProgressSize() { return 2 * EXC_CHART_PROGRESS_SIZE; }

@@ -100,7 +100,7 @@ bool RASReader::ReadRAS(Graphic & rGraphic)
     if (!m_rRAS.good() || nMagicNumber != SUNRASTER_MAGICNUMBER)
         return false;
 
-    // Kopf einlesen:
+    // Read header:
 
     mbStatus = ImplReadHeader();
     if ( !mbStatus )
@@ -109,7 +109,7 @@ bool RASReader::ReadRAS(Graphic & rGraphic)
     std::vector<Color> aPalette;
     bool bOk = true;
 
-    if ( mnDstBitsPerPix <= 8 )     // pallets pictures
+    if ( mnDstBitsPerPix <= 8 )     // palette pictures
     {
         bool bPalette(false);
 
@@ -234,15 +234,7 @@ namespace
 {
     const Color& SanitizePaletteIndex(std::vector<Color> const & rvPalette, sal_uInt8 nIndex)
     {
-        if (nIndex >= rvPalette.size())
-        {
-            auto nSanitizedIndex = nIndex % rvPalette.size();
-            SAL_WARN_IF(nIndex != nSanitizedIndex, "filter.ras", "invalid colormap index: "
-                        << static_cast<unsigned int>(nIndex) << ", colormap len is: "
-                        << rvPalette.size());
-            nIndex = nSanitizedIndex;
-        }
-        return rvPalette[nIndex];
+        return vcl::bitmap::sanitizedPaletteColor(rvPalette, nIndex);
     }
 }
 

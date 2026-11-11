@@ -37,7 +37,7 @@ Private ConsoleControl		As Object	&apos; SFDialogs.DialogControl object
 Private ReportScriptErrors	As Boolean	&apos; When True, error messages are displayed to the user
 Private StopWhenError		As Boolean	&apos; When True, process stops after error &gt; &quot;WARNING&quot;
 Private ReturnCode			As String	&apos; The short error code
-Private ReturnCodeDescription As String	&apos;	The long and localized error message
+Private ReturnCodeDescription As String	&apos; The long and localized error message
 Private TriggeredByPython	As Boolean	&apos; When True, the actual user script is a Python script
 Private DebugMode			As Boolean	&apos; When True, log enter/exit each official Sub
 
@@ -90,6 +90,12 @@ Private TransientDocument	As Object	&apos; com.sun.star.frame.TransientDocuments
 Private FileSystemNaming	As String	&apos; If &quot;SYS&quot;, file and folder naming is based on operating system notation
 Private PythonHelper		As String	&apos; File name of Python helper functions (stored in $(inst)/share/Scripts/python)
 Private PythonHelper2		As String	&apos; Alternate Python helper file name for test purposes
+Private PythonUDF			As Object	&apos; Script called from calc user-defined functions in PythonHelper
+Private PythonReportErrors	As Boolean	&apos; When True, errors raise a message box
+Private PythonVerboseErrors	As Boolean	&apos; When True, longer error messages
+Private PythonSecurity		As Integer	&apos; Level of protection against malicious code
+Private PythonPreload		As String	&apos; Set of initial assignments and imports
+Private PythonCalcMode		As Boolean	&apos; When True, methods are called from Calc User-defined functions
 Private LocalizedInterface	As Object	&apos; ScriptForge own L10N service
 Private OSName				As String	&apos; WIN, LINUX, MACOS
 Private SFDialogs			As Variant	&apos; Persistent storage for the SFDialogs library
@@ -148,6 +154,12 @@ Private Sub Class_Initialize()
 	FileSystemNaming = &quot;ANY&quot;
 	PythonHelper = &quot;ScriptForgeHelper.py&quot;
 	PythonHelper2 = &quot;&quot;
+	Set PythonUDF = Nothing
+	PythonReportErrors = False
+	PythonVerboseErrors = False
+	PythonSecurity = 1
+	PythonPreload = &quot;&quot;
+	PythonCalcMode = True
 	Set LocalizedInterface = Nothing
 	Set BrowseNodeFactory = Nothing
 	Set DatabaseContext = Nothing
@@ -257,7 +269,7 @@ End Function	&apos;	ScriptForge.SF_Root._AddToPythonStorage
 
 REM ------------------------------------------------------------------------------
 Public Function _GetLocalizedInterface() As Object
-&apos;&apos;&apos;	Returns the LN object instance related to the ScriptForge internal localization
+&apos;&apos;&apos;	Returns the L10N object instance related to the ScriptForge internal localization
 &apos;&apos;&apos;	If not yet done, load it from the shipped po files
 &apos;&apos;&apos;	Makes that the localized user interface is loaded only when needed
 
@@ -277,7 +289,7 @@ Public Sub _InitPythonStorage()
 
 Try:
 	If Not IsArray(PythonStorage) Then
-		PythonPermanent = 9
+		PythonPermanent = 10
 		PythonStorage = Array()
 		ReDim PythonStorage(0 To PythonPermanent)
 		&apos;	Initialize each entry
@@ -285,12 +297,13 @@ Try:
 		PythonStorage(1) = ScriptForge.SF_Exception
 		PythonStorage(2) = ScriptForge.SF_FileSystem
 		PythonStorage(3) = ScriptForge.SF_Platform
-		PythonStorage(4) = ScriptForge.SF_Region
-		PythonStorage(5) = ScriptForge.SF_Services
-		PythonStorage(6) = ScriptForge.SF_Session
-		PythonStorage(7) = ScriptForge.SF_SharedMemory
-		PythonStorage(8) = ScriptForge.SF_String
-		PythonStorage(9) = ScriptForge.SF_UI
+		PythonStorage(4) = ScriptForge.SF_Python
+		PythonStorage(5) = ScriptForge.SF_Region
+		PythonStorage(6) = ScriptForge.SF_Services
+		PythonStorage(7) = ScriptForge.SF_Session
+		PythonStorage(8) = ScriptForge.SF_SharedMemory
+		PythonStorage(9) = ScriptForge.SF_String
+		PythonStorage(10) = ScriptForge.SF_UI
 	End If
 
 Finally:
@@ -599,7 +612,7 @@ Try:
 					)
 	&apos;	SF_FileSystem.Copy+Move+Delete/File+Folder
 			.AddText(	Context := &quot;NOFILEMATCH&quot; _
-						, MsgId := &quot;When « %1 » contains wildcards. at least one file or folder must match the given filter. Otherwise the operation is rejected.\n\n&quot; _
+						, MsgId := &quot;When « %1 » contains wildcards, at least one file or folder must match the given filter. Otherwise the operation is rejected.\n\n&quot; _
 									&amp; &quot;« %1 » = %2&quot; _
 						, Comment :=	&quot;SF_FileSystem copy/move/delete error message\n&quot; _
 									&amp;	&quot;%1: An identifier\n&quot; _
@@ -634,7 +647,7 @@ Try:
 					)
 	&apos;	SF_Services.CreateScriptService
 			.AddText(	Context := &quot;SERVICESNOTLOADED&quot; _
-						, MsgId := &quot;The library &apos;%3&apos; and its services could not been loaded.\n&quot; _
+						, MsgId := &quot;The library &apos;%3&apos; and its services could not be loaded.\n&quot; _
 									&amp; &quot;The reason is unknown.\n&quot; _
 									&amp; &quot;However, checking the &apos;%3.SF_Services.RegisterScriptServices()&apos; function and its return value can be a good starting point.\n\n&quot; _
 									&amp; &quot;« %1 » = %2&quot; _
@@ -1127,14 +1140,14 @@ Try:
 						, MsgId := &quot;The requested library could not be located.\n&quot; _
 									&amp; &quot;The UnitTest service has not been initialized.\n\n&quot; _
 									&amp; &quot;Library name : « %1 »&quot; _
-						, Comment :=	&quot;SFUnitTest could not locate the library gven as argument\n&quot; _
+						, Comment :=	&quot;SFUnitTest could not locate the library given as argument\n&quot; _
 									&amp;	&quot;%1: The name of the library&quot; _
 					)
 	&apos;	SFUnitTests.SF_UnitTest
 			.AddText(	Context := &quot;UNITTESTMETHOD&quot; _
 						, MsgId := &quot;The method &apos;%1&apos; is unexpected in the current context.\n&quot; _
 									&amp; &quot;The UnitTest service cannot proceed further with the on-going test.&quot; _
-						, Comment :=	&quot;SFUnitTest finds a RunTest() call in a inappropriate location\n&quot; _
+						, Comment :=	&quot;SFUnitTest finds a RunTest() call in an inappropriate location\n&quot; _
 									&amp;	&quot;%1: The name of a method&quot; _
 					)
 		End With

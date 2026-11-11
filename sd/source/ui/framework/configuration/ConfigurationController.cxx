@@ -41,7 +41,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 using ::sd::framework::FrameworkHelper;
 
 namespace sd::framework {
@@ -231,7 +230,7 @@ void ConfigurationController::requestResourceActivation (
     ThrowIfDisposed();
 
     // Check whether we are being disposed.  This is handled differently
-    // then being completely disposed because the first thing disposing()
+    // than being completely disposed because the first thing disposing()
     // does is to deactivate all remaining resources.  This is done via
     // regular methods which must not throw DisposedExceptions.  Therefore
     // we just return silently during that stage.
@@ -256,7 +255,7 @@ void ConfigurationController::requestResourceActivation (
             mpImplementation->mxRequestedConfiguration->getResources(
                 rxResourceId->getAnchor(),
                 rxResourceId->getResourceTypePrefix(),
-                AnchorBindingMode_DIRECT));
+                AnchorBindingMode::DIRECT));
 
         for (const auto& rResource : aResourceList)
         {
@@ -297,7 +296,7 @@ void ConfigurationController::requestResourceDeactivation (
         mpImplementation->mxRequestedConfiguration->getResources(
             rxResourceId,
             u"",
-            AnchorBindingMode_DIRECT));
+            AnchorBindingMode::DIRECT));
     for (const auto& rLinkedResource : aLinkedResources)
     {
         // We do not add deactivation requests directly but call this
@@ -482,7 +481,7 @@ ConfigurationController::Implementation::Implementation (
       mpResourceManager(
           std::make_shared<ConfigurationControllerResourceManager>(mpResourceFactoryContainer,mpBroadcaster)),
       mpConfigurationUpdater(
-          std::make_shared<ConfigurationUpdater>(mpBroadcaster, mpResourceManager,rxController)),
+          std::make_shared<ConfigurationUpdater>(mpBroadcaster, mpResourceManager, rxController)),
       mpQueueProcessor(new ChangeRequestQueueProcessor(mpConfigurationUpdater)),
       mnLockCount(0)
 {

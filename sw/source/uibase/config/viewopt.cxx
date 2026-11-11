@@ -20,6 +20,7 @@
 #include <sfx2/htmlmode.hxx>
 #include <svtools/htmlcfg.hxx>
 
+#include <libxml/xmlwriter.h>
 #include <editeng/editids.hrc>
 #include <editeng/svxacorr.hxx>
 #include <officecfg/Office/Common.hxx>
@@ -198,10 +199,10 @@ void SwViewOption::DrawRectPrinter( OutputDevice *pOut,
     pOut->SetLineColor( aOldColor );
 }
 
-SwTwips SwViewOption::GetPostItsWidth(const OutputDevice* pOut)
+gfx::Length SwViewOption::GetPostItsWidth(const OutputDevice* pOut)
 {
     assert(pOut && "no Outdev");
-    return pOut->GetTextWidth(u"  "_ustr);
+    return gfx::Length::twip(pOut->GetTextWidth(u"  "_ustr));
 }
 
 void SwViewOption::PaintPostIts( OutputDevice *pOut, const SwRect &rRect, bool bIsScript )
@@ -600,6 +601,15 @@ bool SwViewOption::IsAllowDragDropText()
         return true;
     static comphelper::ConfigurationListenerProperty<bool> gAllowDragDrop(getWCOptionListener(), u"AllowDragDrop"_ustr);
     return gAllowDragDrop.get();
+}
+
+bool SwViewOption::IsTypingReplacesSelection()
+{
+    if (comphelper::IsFuzzing())
+        return true;
+    static comphelper::ConfigurationListenerProperty<bool> gTypingReplacesSelection(
+        getWCOptionListener(), u"TypingReplacesSelection"_ustr);
+    return gTypingReplacesSelection.get();
 }
 
 void SwViewOption::SyncLayoutRelatedViewOptions(const SwViewOption& rOpt)

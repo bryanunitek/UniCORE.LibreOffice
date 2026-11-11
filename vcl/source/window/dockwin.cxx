@@ -31,6 +31,7 @@
 #include <vcl/idle.hxx>
 #include <vcl/settings.hxx>
 #include <comphelper/lok.hxx>
+#include <officecfg/Office/Common.hxx>
 
 #include <accel.hxx>
 #include <svdata.hxx>
@@ -548,6 +549,9 @@ bool DockingWindow::EventNotify( NotifyEvent& rNEvt )
                 }
                 else if ( pMEvt->GetClicks() == 1 )
                 {
+                    if (!officecfg::Office::Common::Misc::AllowUndockWinPerMouse::get())
+                        return false;
+
                     // check if window is floating standalone (IsFloating())
                     // or only partially floating and still docked with one border
                     // ( !mpWindowImpl->mbFrame)
@@ -829,17 +833,9 @@ void DockingWindow::setPosSizePixel( tools::Long nX, tools::Long nY,
         if (!pWrapper->mpFloatWin)
             Window::setPosSizePixel( nX, nY, nWidth, nHeight, nFlags );
     }
-    else
+    else if (!mpFloatWin)
     {
-        if (!mpFloatWin)
-            Window::setPosSizePixel( nX, nY, nWidth, nHeight, nFlags );
-        else if (comphelper::LibreOfficeKit::isActive())
-        {
-            if ((nFlags & PosSizeFlags::Size) == PosSizeFlags::Size)
-                mpFloatWin->SetOutputSizePixel({ nWidth, nHeight });
-            if ((nFlags & PosSizeFlags::Pos) == PosSizeFlags::Pos)
-                mpFloatWin->SetPosPixel({ nX, nY });
-        }
+        Window::setPosSizePixel(nX, nY, nWidth, nHeight, nFlags);
     }
 
     if (::isLayoutEnabled(this))
@@ -922,9 +918,7 @@ Point DockingWindow::GetFloatingPos() const
     {
         if ( pWrapper->mpFloatWin )
         {
-            vcl::WindowData aData;
-            aData.setMask(vcl::WindowDataMask::Pos);
-            pWrapper->mpFloatWin->GetWindowState( aData );
+            const vcl::WindowData aData = pWrapper->mpFloatWin->GetWindowState(vcl::WindowDataMask::Pos);
             AbsoluteScreenPixelPoint aPos(aData.x(), aData.y());
             // LOK needs logic coordinates not absolute screen position for autofilter menu
             if (!comphelper::LibreOfficeKit::isActive())
@@ -937,9 +931,7 @@ Point DockingWindow::GetFloatingPos() const
 
     if ( mpFloatWin )
     {
-        vcl::WindowData aData;
-        aData.setMask(vcl::WindowDataMask::Pos);
-        mpFloatWin->GetWindowState( aData );
+        const vcl::WindowData aData = mpFloatWin->GetWindowState(vcl::WindowDataMask::Pos);
         AbsoluteScreenPixelPoint aPos(aData.x(), aData.y());
         return mpFloatWin->GetParent()->ImplGetFrameWindow()->AbsoluteScreenToOutputPixel( aPos );
     }

@@ -24,9 +24,8 @@ using namespace ::com::sun::star;
 
 namespace oglcanvas
 {
-    SpriteCanvas::SpriteCanvas( const uno::Sequence< uno::Any >&                aArguments,
-                                const uno::Reference< uno::XComponentContext >& /*rxContext*/ ) :
-        maArguments(aArguments)
+    SpriteCanvas::SpriteCanvas(const uno::Sequence<uno::Any>& aArguments)
+        : maArguments(aArguments)
     {
     }
 
@@ -75,39 +74,6 @@ namespace oglcanvas
         SpriteCanvasBaseT::disposeThis();
     }
 
-    sal_Bool SAL_CALL SpriteCanvas::showBuffer( sal_Bool bUpdateAll )
-    {
-        ::osl::MutexGuard aGuard( m_aMutex );
-
-        // avoid repaints on hidden window (hidden: not mapped to
-        // screen). Return failure, since the screen really has _not_
-        // been updated (caller should try again later)
-        return mbIsVisible && SpriteCanvasBaseT::showBuffer( bUpdateAll );
-    }
-
-    sal_Bool SAL_CALL SpriteCanvas::switchBuffer( sal_Bool bUpdateAll )
-    {
-        ::osl::MutexGuard aGuard( m_aMutex );
-
-        // avoid repaints on hidden window (hidden: not mapped to
-        // screen). Return failure, since the screen really has _not_
-        // been updated (caller should try again later)
-        return mbIsVisible && SpriteCanvasBaseT::switchBuffer( bUpdateAll );
-    }
-
-    uno::Reference< rendering::XAnimatedSprite > SAL_CALL SpriteCanvas::createSpriteFromAnimation(
-        const uno::Reference< rendering::XAnimation >& /*animation*/ )
-    {
-        return uno::Reference< rendering::XAnimatedSprite >();
-    }
-
-    uno::Reference< rendering::XAnimatedSprite > SAL_CALL SpriteCanvas::createSpriteFromBitmaps(
-        const uno::Sequence< uno::Reference< rendering::XBitmap > >& /*animationBitmaps*/,
-        ::sal_Int8 /*interpolationMode*/ )
-    {
-        return uno::Reference< rendering::XAnimatedSprite >();
-    }
-
     uno::Reference< rendering::XCustomSprite > SAL_CALL SpriteCanvas::createCustomSprite(
         const geometry::RealSize2D& spriteSize )
     {
@@ -151,14 +117,13 @@ namespace oglcanvas
 
 }
 
-
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_rendering_SpriteCanvas_OGL_get_implementation(
-    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
+    css::uno::XComponentContext*, css::uno::Sequence<css::uno::Any> const& args)
 {
     if( !OpenGLHelper::supportsOpenGL())
         return nullptr;
-    rtl::Reference<oglcanvas::SpriteCanvas> p = new oglcanvas::SpriteCanvas(args, context);
+    rtl::Reference<oglcanvas::SpriteCanvas> p = new oglcanvas::SpriteCanvas(args);
     p->initialize();
     return cppu::acquire(p.get());
 }

@@ -22,6 +22,33 @@
 #include <vcl/tabs.hrc>
 #include <vcl/weld/Builder.hxx>
 
+namespace
+{
+OUString lcl_GetApplyToText()
+{
+    if (std::optional<vcl::EnumContext::Application> sApp = UITabPage::GetCurrentAppEnum())
+    {
+        switch (*sApp)
+        {
+            case vcl::EnumContext::Application::Writer:
+                return CuiResId(RID_CUISTR_UI_APPLY_TO_WRITER);
+            case vcl::EnumContext::Application::Calc:
+                return CuiResId(RID_CUISTR_UI_APPLY_TO_CALC);
+            case vcl::EnumContext::Application::Impress:
+                return CuiResId(RID_CUISTR_UI_APPLY_TO_IMPRESS);
+            case vcl::EnumContext::Application::Draw:
+                return CuiResId(RID_CUISTR_UI_APPLY_TO_DRAW);
+            default:
+                break;
+        }
+    }
+
+    assert(!"UI picker dialog used for unsupported application");
+
+    return OUString();
+}
+}
+
 UIPickerDialog::UIPickerDialog(weld::Window* pParent)
     : SfxTabDialogController(pParent, u"cui/ui/uipickerdialog.ui"_ustr, u"UIPickerDialog"_ustr)
     , m_xOKBtn(m_xBuilder->weld_button(u"ok"_ustr))
@@ -29,18 +56,17 @@ UIPickerDialog::UIPickerDialog(weld::Window* pParent)
     , m_xCancelBtn(m_xBuilder->weld_button(u"cancel"_ustr)) // Close
     , m_xResetBtn(m_xBuilder->weld_button(u"reset"_ustr)) // Apply to All
 {
-    AddTabPage("uimode", TabResId(RID_TAB_UIMODE.aLabel), UITabPage::Create,
-               RID_L + RID_TAB_UIMODE.sIconName);
-    AddTabPage("toolbars", TabResId(RID_TAB_TOOLBARS.aLabel), ToolbarTabPage::Create,
-               RID_L + RID_TAB_TOOLBARS.sIconName);
+    AddTabPage("uimode", TabResId(RID_TAB_CUIUIPICK_MODE), UITabPage::Create,
+               RID_L + RID_TAB_UIMODE_IMG);
+    AddTabPage("toolbars", TabResId(RID_TAB_CUIUIPICK_TOOLBARS), ToolbarTabPage::Create,
+               RID_L + RID_TAB_TOOLBARS_IMG);
 
     m_xOKBtn->set_visible(false);
     m_xCancelBtn->set_label(CuiResId(RID_CUISTR_HYPDLG_CLOSEBUT)); // "close"
 
     // it's mandatory for gtk3 to set the icon before changing the label
     m_xApplyBtn->set_from_icon_name("sw/res/sc20558.png");
-    m_xApplyBtn->set_label(
-        CuiResId(RID_CUISTR_UI_APPLY).replaceFirst("%MODULE", UITabPage::GetCurrentApp()));
+    m_xApplyBtn->set_label(lcl_GetApplyToText());
     m_xResetBtn->set_label(CuiResId(RID_CUISTR_UI_APPLYALL));
     m_xApplyBtn->connect_clicked(LINK(this, UIPickerDialog, OnApplyClick));
     m_xResetBtn->connect_clicked(LINK(this, UIPickerDialog, OnApplyClick));

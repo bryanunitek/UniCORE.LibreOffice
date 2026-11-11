@@ -28,9 +28,13 @@ endif
 
 # TODO, attempt upstream
 pdfium_patches += ofz451333752.patch
-pdfium_patches += extractpatterns.patch
+pdfium_patches += charbboxinflation.patch.1
 # Hide bundled FreeType symbols
 pdfium_patches += freetype-hidden-visibility.patch
+pdfium_patches += ofz464123310.patch
+pdfium_patches += ofz503815636.patch
+pdfium_patches += ofz580817782.patch
+pdfium_patches += abseil-hashtablez-sampler.patch
 
 $(eval $(call gb_UnpackedTarball_UnpackedTarball,pdfium))
 
@@ -42,6 +46,7 @@ $(eval $(call gb_UnpackedTarball_add_patches,pdfium,\
     $(foreach patch,$(pdfium_patches),external/pdfium/$(patch)) \
 ))
 
+# hwy/per_target.cc includes itself via HWY_TARGET_INCLUDE, so copy that instead of moving it.
 $(eval $(call gb_UnpackedTarball_set_post_action,pdfium,\
     mv third_party/bigint/BigInteger.cc third_party/bigint/BigInteger.cpp && \
     mv third_party/bigint/BigIntegerUtils.cc third_party/bigint/BigIntegerUtils.cpp && \
@@ -49,7 +54,19 @@ $(eval $(call gb_UnpackedTarball_set_post_action,pdfium,\
     mv third_party/bigint/BigUnsignedInABase.cc third_party/bigint/BigUnsignedInABase.cpp && \
     mv core/fxcrt/debug/alias.cc core/fxcrt/debug/alias.cpp && \
     mv core/fxcrt/win/win_util.cc core/fxcrt/win/win_util.cpp && \
-    mv third_party/libopenjpeg/opj_malloc.cc third_party/libopenjpeg/opj_malloc.cpp \
+    mv third_party/libopenjpeg/opj_malloc.cc third_party/libopenjpeg/opj_malloc.cpp && \
+    mv third_party/abseil-cpp/absl/base/throw_delegate.cc third_party/abseil-cpp/absl/base/throw_delegate.cpp && \
+    mv third_party/abseil-cpp/absl/container/internal/raw_hash_set.cc third_party/abseil-cpp/absl/container/internal/raw_hash_set.cpp && \
+    mv third_party/abseil-cpp/absl/base/internal/raw_logging.cc third_party/abseil-cpp/absl/base/internal/raw_logging.cpp && \
+    mv third_party/abseil-cpp/absl/hash/internal/hash.cc third_party/abseil-cpp/absl/hash/internal/hash.cpp && \
+    mv third_party/abseil-cpp/absl/hash/internal/city.cc third_party/abseil-cpp/absl/hash/internal/city.cpp && \
+    mv third_party/highway/src/hwy/abort.cc third_party/highway/src/hwy/abort.cpp && \
+    mv third_party/highway/src/hwy/aligned_allocator.cc third_party/highway/src/hwy/aligned_allocator.cpp && \
+    cp third_party/highway/src/hwy/per_target.cc third_party/highway/src/hwy/per_target.cpp && \
+    mv third_party/highway/src/hwy/print.cc third_party/highway/src/hwy/print.cpp && \
+    mv third_party/highway/src/hwy/stats.cc third_party/highway/src/hwy/stats.cpp && \
+    mv third_party/highway/src/hwy/targets.cc third_party/highway/src/hwy/targets.cpp && \
+    mv third_party/highway/src/hwy/timer.cc third_party/highway/src/hwy/timer.cpp \
 ))
 
 # vim: set noet sw=4 ts=4:

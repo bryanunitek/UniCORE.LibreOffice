@@ -200,11 +200,6 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleText)
 
     // Test width scaled to 200%.
     font = vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(72, 36));
-#ifdef _WIN32
-    // TODO: What is the proper way to draw 200%-wide text? This is needed on Windows
-    // but it breaks Linux.
-    font.SetAverageFontWidth(2 * font.GetOrCalculateAverageFontWidth());
-#endif
     device->Erase();
     device->SetFont(font);
     device->DrawText(Point(10, 10), text);
@@ -216,9 +211,6 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleText)
 
     // Test width scaled to 50%.
     font = vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(18, 36));
-#ifdef _WIN32
-    font.SetAverageFontWidth(0.5 * font.GetOrCalculateAverageFontWidth());
-#endif
     device->Erase();
     device->SetFont(font);
     device->DrawText(Point(10, 10), text);
@@ -778,6 +770,27 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutArgsRightAlign)
     CPPUNIT_ASSERT_EQUAL(45, nMinRunPos);
     CPPUNIT_ASSERT_EQUAL(51, nEndRunPos);
     CPPUNIT_ASSERT(bRTL);
+}
+
+CPPUNIT_TEST_FIXTURE(VclTextTest, testTdf174311)
+{
+    // Formatting characters must not split the run
+    OUString aStr = u"abcd"_ustr;
+    for (sal_Unicode cChar : { 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2060,
+                               0x206A, 0x206B, 0x206C, 0x206D, 0x206E, 0x206F, 0xFEFF })
+    {
+        OUString aText = aStr.replaceAt(2, 0, OUString(cChar));
+        vcl::text::ImplLayoutArgs aArgs(aText, 0, aText.getLength(), SalLayoutFlags::BiDiStrong,
+                                        LanguageTag(LANGUAGE_NONE), nullptr);
+
+        int nMinRunPos(0);
+        int nEndRunPos(0);
+        bool bRTL(false);
+
+        aArgs.GetNextRun(&nMinRunPos, &nEndRunPos, &bRTL);
+        CPPUNIT_ASSERT_EQUAL(0, nMinRunPos);
+        CPPUNIT_ASSERT_EQUAL(5, nEndRunPos);
+    }
 }
 
 CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutArgs_PrepareFallback_precalculatedglyphs)

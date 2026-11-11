@@ -18,9 +18,9 @@
  */
 
 #include <sfx2/dispatch.hxx>
+#include <vcl/ptrstyle.hxx>
 #include <vcl/commandevent.hxx>
 #include <vcl/help.hxx>
-#include <vcl/ptrstyle.hxx>
 #include <vcl/settings.hxx>
 #include <svtools/colorcfg.hxx>
 #include <osl/diagnose.h>
@@ -102,12 +102,15 @@ ScHeaderControl::ScHeaderControl( vcl::Window* pParent, SelectionEngine* pSelect
     Size aSize = LogicToPixel( Size(
         GetTextWidth(u"8888"_ustr),
         GetTextHeight() ) );
-    aSize.AdjustWidth(4 );    // place for highlight border
+    aSize.AdjustWidth(8); // place for highlight border
     aSize.AdjustHeight(3 );
     SetSizePixel( aSize );
 
     nWidth = nSmallWidth = aSize.Width();
-    nBigWidth = LogicToPixel( Size( GetTextWidth(u"8888888"_ustr), 0 ) ).Width() + 5;
+    // tdf#148507 - pre-calculate individual column widths
+    nMedWidth   = LogicToPixel( Size( GetTextWidth(u"88888"_ustr),   0 ) ).Width() + 8;
+    nLargeWidth = LogicToPixel( Size( GetTextWidth(u"888888"_ustr),  0 ) ).Width() + 8;
+    nBigWidth   = LogicToPixel( Size( GetTextWidth(u"8888888"_ustr), 0 ) ).Width() + 8;
 
     aShowHelpTimer.SetInvokeHandler(LINK(this, ScHeaderControl, ShowDragHelpHdl));
     aShowHelpTimer.SetTimeout(GetSettings().GetMouseSettings().GetDoubleClickTime());

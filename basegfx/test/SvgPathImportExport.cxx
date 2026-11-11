@@ -136,7 +136,7 @@ public:
         // which gets exported now correctly as 'l' and also a point (#4, index 3)
         // with C2 continuity which produces a 's' statement now.
 
-        // The old SVGexport identified nun-used ControlVectors erroneously as Bezier segments
+        // The old SVGexport identified non-used ControlVectors erroneously as Bezier segments
         // because the 2nd vector at the start point was used, even when added
         // with start point was identical to end point. Exactly for that reason
         // i reworked the B2DPolygon to use prev, next control points.
@@ -227,7 +227,7 @@ public:
 
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(SvgPathImportExport);
     CPPUNIT_TEST(testImportExport);

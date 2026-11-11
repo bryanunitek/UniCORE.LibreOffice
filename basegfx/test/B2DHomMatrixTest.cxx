@@ -219,7 +219,7 @@ public:
         B2DHomMatrix mat;
         mat.shearX(3.0);
         mat.shearY(7.0);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("translate", maShear, mat);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("shear", maShear, mat);
     }
 
     void multiply()
@@ -481,7 +481,7 @@ public:
 
     // Change the following lines only, if you add, remove or rename
     // member functions of the current class,
-    // because these macros are need by auto register mechanism.
+    // because these macros are needed by auto register mechanism.
 
     CPPUNIT_TEST_SUITE(b2dhommatrix);
     CPPUNIT_TEST(equal);

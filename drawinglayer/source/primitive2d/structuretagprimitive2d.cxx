@@ -19,7 +19,7 @@
 
 #include <drawinglayer/primitive2d/structuretagprimitive2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
-
+#include <vcl/pdfwriter.hxx>
 
 using namespace com::sun::star;
 
@@ -33,13 +33,19 @@ namespace drawinglayer::primitive2d
             bool bIsDecorative,
             Primitive2DContainer&& aChildren,
             void const*const pAnchorStructureElementKey,
-            ::std::vector<sal_Int32> const*const pAnnotIds)
+            ::std::vector<sal_Int32> const*const pAnnotIds,
+            sal_Int32 const nColSpan,
+            sal_Int32 const nRowSpan,
+            bool const bRowHeader)
         :   GroupPrimitive2D(std::move(aChildren)),
             maStructureElement(rStructureElement),
             mbBackground(bBackground),
             mbIsImage(bIsImage),
             mbIsDecorative(bIsDecorative)
         ,   m_pAnchorStructureElementKey(pAnchorStructureElementKey)
+        ,   mnColSpan(nColSpan)
+        ,   mnRowSpan(nRowSpan)
+        ,   mbRowHeader(bRowHeader)
         {
             if (pAnnotIds)
             {
@@ -53,24 +59,28 @@ namespace drawinglayer::primitive2d
             {
                 const StructureTagPrimitive2D& rCompare = static_cast<const StructureTagPrimitive2D&>(rPrimitive);
 
-                return (isBackground() == rCompare.isBackground() &&
-                        isImage() == rCompare.isImage());
+                return (getStructureElement() == rCompare.getStructureElement()
+                        && isBackground() == rCompare.isBackground()
+                        && isImage() == rCompare.isImage()
+                        && isDecorative() == rCompare.isDecorative()
+                        && getColSpan() == rCompare.getColSpan()
+                        && getRowSpan() == rCompare.getRowSpan()
+                        && isRowHeader() == rCompare.isRowHeader());
             }
 
             return false;
+        }
+
+        bool StructureTagPrimitive2D::opensStructureElement() const
+        {
+            return !isDecorative() && !isBackground()
+                   && vcl::pdf::StructElement::NonStructElement != getStructureElement();
         }
 
         // provide unique ID
         sal_uInt32 StructureTagPrimitive2D::getPrimitive2DID() const
         {
             return PRIMITIVE2D_ID_STRUCTURETAGPRIMITIVE2D;
-        }
-
-        bool StructureTagPrimitive2D::isTaggedSdrObject() const
-        {
-            // note at the moment *all* StructureTagPrimitive2D are created for
-            // SdrObjects - if that ever changes, need another condition here
-            return !isBackground() || isImage();
         }
 
 } // end of namespace

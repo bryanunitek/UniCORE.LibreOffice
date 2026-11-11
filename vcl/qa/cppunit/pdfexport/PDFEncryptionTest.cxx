@@ -12,15 +12,28 @@
 
 #include <test/unoapi_test.hxx>
 #include <o3tl/numeric.hxx>
+#include <o3tl/string_view.hxx>
 
 #include <comphelper/crypto/Crypto.hxx>
 #include <comphelper/hash.hxx>
 #include <comphelper/propertysequence.hxx>
+#include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 
+#include <tools/stream.hxx>
+
+#include <vcl/filter/pdfdocument.hxx>
 #include <vcl/filter/PDFiumLibrary.hxx>
 
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/text/XText.hpp>
+#include <com/sun/star/text/XTextContent.hpp>
+#include <com/sun/star/text/XTextCursor.hpp>
+#include <com/sun/star/text/XTextDocument.hpp>
+#include <com/sun/star/util/DateTime.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -74,14 +87,242 @@ CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testEncryptionRoundtrip_PDF_1_7)
     uno::Sequence<beans::PropertyValue> aFilterData
         = comphelper::InitPropertySequence({ { "SelectPdfVersion", uno::Any(sal_Int32(17)) } });
     maMediaDescriptor["FilterData"] <<= aFilterData;
-    save(TestFilter::PDF_WRITER, maMediaDescriptor.getAsConstPropertyValueList(),
+    save(TestFilter::PDF, maMediaDescriptor.getAsConstPropertyValueList(),
          /*pPassword*/ "secret");
 
     // Load the exported result in PDFium
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport("secret"_ostr);
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
+        = parsePDFExport(vcl::pdf::PDFiumLibrary::get(), "secret"_ostr);
     CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
     int nFileVersion = pPdfDocument->getFileVersion();
     CPPUNIT_ASSERT_EQUAL(17, nFileVersion);
+}
+
+vcl::filter::PDFObjectElement* findEncryptionObject(vcl::filter::PDFDocument& rDocument)
+{
+    for (auto const& pElement : rDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(pElement.get());
+        if (!pObject)
+        {
+            continue;
+        }
+
+        auto pFilter = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Filter"_ostr));
+        if (pFilter && pFilter->GetValue() == "Standard")
+        {
+            return pObject;
+        }
+    }
+    return nullptr;
+}
+
+CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testEncryptedMetadataStream)
+{
+    // Given a document with a title, exported at a version whose handler is RC4:
+    loadFromURL(u"private:factory/swriter"_ustr);
+    mxComponent.queryThrow<document::XDocumentPropertiesSupplier>()
+        ->getDocumentProperties()
+        ->setTitle(u"Fourth quarter layoffs"_ustr);
+
+    // When saving as encrypted PDF:
+    uno::Sequence aFilterData{
+        // 2.0 takes the R6 handler instead
+        comphelper::makePropertyValue(u"SelectPdfVersion"_ustr, sal_Int32(16)),
+        comphelper::makePropertyValue(u"EncryptFile"_ustr, true),
+        comphelper::makePropertyValue(u"DocumentOpenPassword"_ustr, u"secret"_ustr)
+    };
+    mxComponent.queryThrow<frame::XStorable>()->storeToURL(
+        maTempFile.GetURL(),
+        { comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+          comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
+        = parsePDFExport(vcl::pdf::PDFiumLibrary::get(), "secret"_ostr);
+
+    // Then make sure the XMP packet went through the cipher, as the AES-256 handler already
+    // puts it:
+    // the handler follows the requested version, so pin the one this covers
+    SvFileStream aFileStream(maTempFile.GetURL(), StreamMode::READ);
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(aFileStream));
+    vcl::filter::PDFObjectElement* pEncryption = findEncryptionObject(aDocument);
+    CPPUNIT_ASSERT(pEncryption);
+    auto* pV = dynamic_cast<vcl::filter::PDFNumberElement*>(pEncryption->Lookup("V"_ostr));
+    CPPUNIT_ASSERT(pV);
+    CPPUNIT_ASSERT_EQUAL(2.0, pV->GetValue());
+    // and that nothing here claims the metadata is exempt, which at V 2 would mean nothing
+    CPPUNIT_ASSERT(!pEncryption->Lookup("EncryptMetadata"_ostr));
+
+    const std::string_view aFile(static_cast<const char*>(maMemory.GetData()), maMemory.GetSize());
+    CPPUNIT_ASSERT(aFile.find("/Encrypt") != std::string_view::npos);
+    // names are not encrypted, so the stream stays findable either way
+    CPPUNIT_ASSERT(aFile.find("/Type/Metadata") != std::string_view::npos);
+    // the header every XMP packet opens with, and the title it holds
+    CPPUNIT_ASSERT_EQUAL(std::string_view::npos, aFile.find("<?xpacket"));
+    CPPUNIT_ASSERT_EQUAL(std::string_view::npos, aFile.find("Fourth quarter layoffs"));
+
+    // and both come back once the password has been applied, which a stream encrypted
+    // against the wrong object would not give
+    SvMemoryStream aDecrypted;
+    CPPUNIT_ASSERT(pPdfDocument->saveWithVersion(aDecrypted, 16, /*bRemoveSecurity=*/true));
+    const std::string_view aPlain(static_cast<const char*>(aDecrypted.GetData()),
+                                  aDecrypted.GetSize());
+    CPPUNIT_ASSERT(aPlain.find("<?xpacket") != std::string_view::npos);
+    CPPUNIT_ASSERT(aPlain.find("Fourth quarter layoffs") != std::string_view::npos);
+}
+
+CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testEncryptedButtonUrl)
+{
+    // Given a document with a push button whose action opens a URL:
+    loadFromFile(u"button-with-url.fodt");
+
+    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"ExportFormFields"_ustr, true),
+                               comphelper::makePropertyValue(u"EncryptFile"_ustr, true),
+                               comphelper::makePropertyValue(u"DocumentOpenPassword"_ustr,
+                                                             u"secret"_ustr) };
+    // When saving as encrypted PDF:
+    mxComponent.queryThrow<frame::XStorable>()->storeToURL(
+        maTempFile.GetURL(),
+        { comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+          comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    parsePDFExport(vcl::pdf::PDFiumLibrary::get(), "secret"_ostr);
+
+    // Then make sure the button's target went through the cipher:
+    const std::string_view aFile(static_cast<const char*>(maMemory.GetData()), maMemory.GetSize());
+    CPPUNIT_ASSERT(aFile.find("/Encrypt") != std::string_view::npos);
+    // names are not encrypted, so the action stays findable either way
+    CPPUNIT_ASSERT(aFile.find("/S/URI/URI") != std::string_view::npos);
+    // the host the fixture's button carries, which stood here in the clear
+    CPPUNIT_ASSERT_EQUAL(std::string_view::npos, aFile.find("intranet.example.test"));
+}
+
+CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testEncryptedAnnotationStrings)
+{
+    // Given a document with a comment, whose annotation carries a /M date:
+    loadFromURL(u"private:factory/swriter"_ustr);
+    auto xText = mxComponent.queryThrow<text::XTextDocument>()->getText();
+    xText->setString(u"Commented text"_ustr);
+    auto xFactory = mxComponent.queryThrow<lang::XMultiServiceFactory>();
+    auto xNote = xFactory->createInstance(u"com.sun.star.text.textfield.Annotation"_ustr)
+                     .queryThrow<text::XTextContent>();
+    auto xNoteProps = xNote.queryThrow<beans::XPropertySet>();
+    xNoteProps->setPropertyValue(u"Content"_ustr, uno::Any(u"a remark"_ustr));
+    // sw aborts on a void date while formatting the comment's title, and a comment made in
+    // the UI always carries a date
+    xNoteProps->setPropertyValue(u"DateTimeValue"_ustr,
+                                 uno::Any(util::DateTime(0, 0, 30, 12, 30, 9, 2026, false)));
+    xText->insertTextContent(xText->getEnd(), xNote, false);
+
+    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"ExportNotes"_ustr, true),
+                               comphelper::makePropertyValue(u"EncryptFile"_ustr, true),
+                               comphelper::makePropertyValue(u"DocumentOpenPassword"_ustr,
+                                                             u"secret"_ustr) };
+    // When saving as encrypted PDF:
+    mxComponent.queryThrow<frame::XStorable>()->storeToURL(
+        maTempFile.GetURL(),
+        { comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+          comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
+        = parsePDFExport(vcl::pdf::PDFiumLibrary::get(), "secret"_ostr);
+
+    // Then make sure that date went through the cipher: it reads back through the password,
+    // which a string encrypted against the wrong object would not
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdfDocument->openPage(0);
+    // the comment makes a text annotation and the popup that belongs to it
+    CPPUNIT_ASSERT_EQUAL(2, pPage->getAnnotationCount());
+    int nDates = 0;
+    for (int i = 0; i < pPage->getAnnotationCount(); ++i)
+    {
+        const OUString aDate
+            = pPage->getAnnotation(i)->getString(vcl::pdf::constDictionaryKeyModificationDate);
+        if (aDate.isEmpty())
+            continue;
+        ++nDates;
+        // Writer puts no time into /M, unlike Impress and Draw, so this is the zero one
+        CPPUNIT_ASSERT_EQUAL(u"D:00000000000000Z"_ustr, aDate);
+    }
+    CPPUNIT_ASSERT_EQUAL(1, nDates);
+
+    const std::string_view aFile(static_cast<const char*>(maMemory.GetData()), maMemory.GetSize());
+    CPPUNIT_ASSERT(aFile.find("/Encrypt") != std::string_view::npos);
+    // and it is nowhere in the clear, in either spelling: the old code left a space after the
+    // key here and the encrypting writer does not
+    CPPUNIT_ASSERT_EQUAL(std::string_view::npos, aFile.find("/M (D:"));
+    CPPUNIT_ASSERT_EQUAL(std::string_view::npos, aFile.find("/M(D:"));
+}
+
+// encryption used to cost a tagged file its object streams, and so most of its size
+CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testEncryptedTaggedUsesObjectStreams)
+{
+    loadFromURL(u"private:factory/swriter"_ustr);
+    auto xText = mxComponent.queryThrow<text::XTextDocument>()->getText();
+    xText->setString(u"Some tagged text"_ustr);
+    // a footnote, because its element is the one this writer gives an /ID to
+    auto xFactory = mxComponent.queryThrow<lang::XMultiServiceFactory>();
+    auto xFootnote = xFactory->createInstance(u"com.sun.star.text.Footnote"_ustr)
+                         .queryThrow<text::XTextContent>();
+    xText->insertTextContent(xText->getEnd(), xFootnote, false);
+    xFootnote.queryThrow<text::XText>()->setString(u"The note this refers to"_ustr);
+
+    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true),
+                               comphelper::makePropertyValue(u"EncryptFile"_ustr, true),
+                               comphelper::makePropertyValue(u"DocumentOpenPassword"_ustr,
+                                                             u"secret"_ustr) };
+    save(TestFilter::PDF, { comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
+        = parsePDFExport(vcl::pdf::PDFiumLibrary::get(), "secret"_ostr);
+
+    // the structure tree went into object streams, which is what the encryption used to cost.
+    // Only strings and stream data are encrypted, so the stream's own dictionary reads plainly
+    const std::string_view aFile(static_cast<const char*>(maMemory.GetData()), maMemory.GetSize());
+    // an unencrypted export has object streams anyway, so the rest tests nothing without this
+    CPPUNIT_ASSERT(aFile.find("/Encrypt") != std::string_view::npos);
+    // the dictionary entry, not a chance match in binary data
+    const size_t nObjStm = aFile.find("/Type/ObjStm");
+    CPPUNIT_ASSERT(nObjStm != std::string_view::npos);
+
+    // /Length has to count what the cipher adds, or a reader that trusts it stops mid-block.
+    // pdfium does not: it scans for endstream, so only the byte count catches this
+    // the writer puts exactly one newline here, and the cipher's own first byte may be another
+    const size_t nData = aFile.find(">>\nstream\n", nObjStm);
+    CPPUNIT_ASSERT(nData != std::string_view::npos);
+    const size_t nLength = aFile.find("/Length ", nObjStm);
+    CPPUNIT_ASSERT(nLength != std::string_view::npos);
+    // inside this dictionary, so it is this stream's length and not a later object's
+    CPPUNIT_ASSERT_LESS(nData, nLength);
+    const sal_Int32 nDeclared = o3tl::toInt32(aFile.substr(nLength + 8, 12));
+    CPPUNIT_ASSERT(nData + 10 + nDeclared + 10 <= aFile.size());
+    CPPUNIT_ASSERT_EQUAL("\nendstream"_ostr, OString(aFile.substr(nData + 10 + nDeclared, 10)));
+
+    // reading the footnote element's /ID back through the password distinguishes a plain
+    // string from one encrypted a second time
+    CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
+    auto pPage = pPdfDocument->openPage(0);
+    CPPUNIT_ASSERT(pPage);
+    auto pTree = pPage->getStructureTree();
+    CPPUNIT_ASSERT(pTree);
+    CPPUNIT_ASSERT_GREATER(0, pTree->getNumberOfChildren());
+
+    OUString aID;
+    const auto aFindID = [&aID](auto& rSelf, vcl::pdf::PDFiumStructureElement& rElement) -> void {
+        if (aID.isEmpty())
+            aID = rElement.getID();
+        for (int i = 0; i < rElement.getNumberOfChildren() && aID.isEmpty(); ++i)
+        {
+            if (const auto pKid = rElement.getChild(i))
+                rSelf(rSelf, *pKid);
+        }
+    };
+    for (int i = 0; i < pTree->getNumberOfChildren() && aID.isEmpty(); ++i)
+    {
+        if (const auto pChild = pTree->getChild(i))
+            aFindID(aFindID, *pChild);
+    }
+    CPPUNIT_ASSERT(aID.startsWith("id"));
 }
 
 CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testEncryptionRoundtrip_PDF_2_0)
@@ -92,14 +333,55 @@ CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testEncryptionRoundtrip_PDF_2_0)
     uno::Sequence<beans::PropertyValue> aFilterData
         = comphelper::InitPropertySequence({ { "SelectPdfVersion", uno::Any(sal_Int32(20)) } });
     maMediaDescriptor["FilterData"] <<= aFilterData;
-    save(TestFilter::PDF_WRITER, maMediaDescriptor.getAsConstPropertyValueList(),
+    save(TestFilter::PDF, maMediaDescriptor.getAsConstPropertyValueList(),
          /*pPassword*/ "secret");
 
     // Load the exported result in PDFium
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport("secret"_ostr);
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
+        = parsePDFExport(vcl::pdf::PDFiumLibrary::get(), "secret"_ostr);
     CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
     int nFileVersion = pPdfDocument->getFileVersion();
     CPPUNIT_ASSERT_EQUAL(20, nFileVersion);
+}
+
+CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testEncryptionRoundtrip_PDF_2_0_PaddingBlockBoundary)
+{
+    loadFromURL(u"private:factory/swriter"_ustr);
+
+    // 16 characters are exactly one cipher block
+    const OUString aLinkURL = u"http://16.by/tes"_ustr;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(16), aLinkURL.getLength());
+
+    uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<text::XText> xText = xTextDocument->getText();
+    xText->setString(u"link"_ustr);
+    uno::Reference<text::XTextCursor> xCursor = xText->createTextCursor();
+    xCursor->gotoStart(false);
+    xCursor->gotoEnd(true);
+    uno::Reference<beans::XPropertySet> xCursorProperties(xCursor, uno::UNO_QUERY_THROW);
+    xCursorProperties->setPropertyValue(u"HyperLinkURL"_ustr, uno::Any(aLinkURL));
+
+    // Save PDF
+    uno::Sequence<beans::PropertyValue> aFilterData = comphelper::InitPropertySequence(
+        { { "SelectPdfVersion", uno::Any(sal_Int32(20)) },
+          { "EncryptFile", uno::Any(true) },
+          { "DocumentOpenPassword", uno::Any(u"secret"_ustr) } });
+    save(TestFilter::PDF, { comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    // Load the exported result in PDFium and read the link target back
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
+        = parsePDFExport(vcl::pdf::PDFiumLibrary::get(), "secret"_ostr);
+    CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(0);
+    CPPUNIT_ASSERT(pPdfPage);
+
+    int nLinkIndex = 0;
+    std::unique_ptr<vcl::pdf::PDFiumLink> pLink
+        = pPdfPage->enumerateLink(&nLinkIndex, pPdfDocument.get());
+    CPPUNIT_ASSERT(pLink);
+    // the problem was that the padding on the encrypted string was wrong
+    // so it could not be read
+    CPPUNIT_ASSERT_EQUAL(aLinkURL, pLink->getURIPath());
 }
 
 CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testComputeHashForR6)
@@ -148,6 +430,32 @@ CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testComputeHashForR6)
             std::string("e4507a474cefbba1af76ba0eb40ec322c91c1900d3fd65fec98b873ba19b27f8"),
             comphelper::hashToString(RO));
     }
+}
+
+CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testComputeHashForR6LoopEndCondition)
+{
+    sal_uInt8 const pPassword[] = { 'T', 'e', 's', 't' };
+
+    // This should be 80 rounds.
+    std::vector<sal_uInt8> aValidationSalt = parseHex("6A5260B509E42E4F");
+    CPPUNIT_ASSERT_EQUAL(
+        std::string("058d0adf871eaedf549963a8a60499af48c647abacf32605bf69518d4366dfe9"),
+        comphelper::hashToString(vcl::pdf::computeHashR6(pPassword, 4, aValidationSalt)));
+
+    // This should be 69 rounds.
+    aValidationSalt = parseHex("B8B897AF2CB52F00");
+    CPPUNIT_ASSERT_EQUAL(
+        std::string("e9f540fad0c2531781e7d9671da52527ab281497cb0d51bf0e986dffa0e9e323"),
+        comphelper::hashToString(vcl::pdf::computeHashR6(pPassword, 4, aValidationSalt)));
+
+    // Test the owner key generation, taking additional U argument.
+    // This should be 69 rounds.
+    std::vector<sal_uInt8> U = parseHex("7BD210807A0277FECC52C261C442F02E1AD62C1A23553348B8F8AF7320"
+                                        "DC9978FAB7E65E1BF4CA76F4BE5E6D2AA8C7D5");
+    aValidationSalt = parseHex("35A0F8DF2F495D23");
+    CPPUNIT_ASSERT_EQUAL(
+        std::string("a8a6e16751faebf5f8aef5d02eae8ddd8885fa3fe9d29e132ff9abe86bd4d0c8"),
+        comphelper::hashToString(vcl::pdf::computeHashR6(pPassword, 4, aValidationSalt, U)));
 }
 
 CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testGenerateUandUE)
@@ -208,12 +516,12 @@ CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testPermsEncryption)
 {
     // Encrypts file permissions for /Perms entry
 
-    // We use a existing encrypted /Perm to validate the decryption and re-encryption
+    // We use an existing encrypted /Perm to validate the decryption and re-encryption
     // algorithm works correctly.
 
     const sal_uInt8 pUserPass[] = { 'T', 'e', 's', 't' };
 
-    // U and UE taken from an PDF that was encrypted with "Test" as password
+    // U and UE taken from a PDF that was encrypted with "Test" as password
     std::vector<sal_uInt8> U = parseHex("7BD210807A0277FECC52C261C442F02E1AD62C1A23553348B8F8AF7320"
                                         "DC9978FAB7E65E1BF4CA76F4BE5E6D2AA8C7D5");
     std::vector<sal_uInt8> UE
@@ -256,7 +564,7 @@ CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testPermsEncryption)
     CPPUNIT_ASSERT_EQUAL(std::string("fcffffffffffffff54616462bb609a8a"),
                          comphelper::hashToString(aPermsDecrpyted));
 
-    // Check the creating /Perm content from access permissions works correctly
+    // Check that creating /Perm content from access permissions works correctly
     std::vector<sal_uInt8> aPermsCreated = vcl::pdf::createPerms(nExpectedAccessPermisssions, true);
 
     // Last 12 bytes are random, so we shouldn't check those
@@ -276,8 +584,26 @@ CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testPadding)
     size_t nPaddedSize = vcl::pdf::addPaddingToVector(aVector, constBlockSize);
     CPPUNIT_ASSERT_EQUAL(size_t(constBlockSize), aVector.size());
     CPPUNIT_ASSERT_EQUAL(size_t(constBlockSize), nPaddedSize);
-    for (size_t i = 6; i < constBlockSize; i++)
+    for (size_t i = 5; i < constBlockSize; i++)
         CPPUNIT_ASSERT_EQUAL(sal_uInt8(0x0B), aVector[i]);
+}
+
+CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testPaddingBlockBoundary)
+{
+    // Data that already ends on a block boundary gets a whole block of padding
+    constexpr size_t constBlockSize = 16;
+    std::vector<sal_uInt8> aVector(constBlockSize, 'T');
+    size_t nPaddedSize = vcl::pdf::addPaddingToVector(aVector, constBlockSize);
+    CPPUNIT_ASSERT_EQUAL(size_t(2 * constBlockSize), aVector.size());
+    CPPUNIT_ASSERT_EQUAL(size_t(2 * constBlockSize), nPaddedSize);
+    for (size_t i = constBlockSize; i < 2 * constBlockSize; i++)
+        CPPUNIT_ASSERT_EQUAL(sal_uInt8(constBlockSize), aVector[i]);
+
+    // The encrypted size that is written as the stream length has to account
+    // for that block as well
+    vcl::pdf::PDFEncryptorR6 aEncryptor;
+    CPPUNIT_ASSERT_EQUAL(sal_uInt64(48), aEncryptor.calculateSizeIncludingHeader(16));
+    CPPUNIT_ASSERT_EQUAL(sal_uInt64(32), aEncryptor.calculateSizeIncludingHeader(5));
 }
 
 CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testFileDecryption)
@@ -411,7 +737,7 @@ CPPUNIT_TEST_FIXTURE(PDFEncryptionTest, testFileEncryption_checkDifferentIV)
     }
 }
 
-} // end anonymous namespace
+} // namespace
 
 CPPUNIT_PLUGIN_IMPLEMENT();
 

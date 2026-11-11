@@ -267,6 +267,7 @@ static bool LoadCommonHeader(HWPDrawingObject * hdo, unsigned short * link_info)
             return false;
         if (!hmem->readBlock(hdo->property.szPatternFile, 261))
             return false;
+        hdo->property.szPatternFile[std::size(hdo->property.szPatternFile) - 1] = 0;
         if (!hmem->read1b(hdo->property.pictype))
             return false;
         common_size += 278;
@@ -373,7 +374,7 @@ static std::unique_ptr<HWPDrawingObject> LoadDrawingObject(HWPFile& hwpf)
     return head;
 
 error:
-// drawing object can be list.
+// drawing object can be a list.
 // hdo = current item, head = list;
 
     if (hdo->type < 0 || hdo->type >= HWPDO_NITEMS)

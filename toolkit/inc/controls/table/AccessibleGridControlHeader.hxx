@@ -21,7 +21,7 @@
 #pragma once
 
 #include <controls/table/AccessibleGridControlTableBase.hxx>
-#include <controls/table/tablecontrol.hxx>
+#include <controls/table/TableControl.hxx>
 
 namespace accessibility {
 
@@ -32,15 +32,13 @@ namespace accessibility {
 class AccessibleGridControlHeader final : public AccessibleGridControlTableBase
 {
 public:
-    /**  @param rxParent  accessible parent control
+    /**  @param rpParent  accessible parent control
          @param rTable    accessible table
          @param eObjType  One of the two allowed types AccessibleTableControlObjType::ROWHEADERBAR or
                           AccessibleTableControlObjType::COLUMNHEADERBAR. */
-    AccessibleGridControlHeader(
-        const css::uno::Reference<
-            css::accessibility::XAccessible >& rxParent,
-            svt::table::TableControl& rTable,
-            AccessibleTableControlObjType eObjType);
+    AccessibleGridControlHeader(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                                svt::table::TableControl& rTable,
+                                AccessibleTableControlObjType eObjType);
 
 private:
     virtual ~AccessibleGridControlHeader() override = default;
@@ -105,11 +103,6 @@ public:
 
     /** @return  TRUE, if the specified cell is selected. */
     virtual sal_Bool SAL_CALL isAccessibleSelected( sal_Int32 nRow, sal_Int32 nColumn ) override;
-
-    // XServiceInfo
-
-    /** @return  The name of this class. */
-    virtual OUString SAL_CALL getImplementationName() override;
 
 private:
     /** Returns the specified row or column. Uses one of the parameters,

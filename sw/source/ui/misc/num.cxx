@@ -36,6 +36,7 @@
 #include <svl/eitem.hxx>
 #include <svl/slstitm.hxx>
 #include <svl/intitem.hxx>
+#include <svtools/unitconv.hxx>
 #include <comphelper/lok.hxx>
 #include <osl/diagnose.h>
 
@@ -520,12 +521,12 @@ void SwNumPositionTabPage::SetWrtShell(SwWrtShell* pSh)
         m_xAlignedAtMF->set_digits(1);
         m_xIndentAtMF->set_digits(1);
     }
-    m_xDistBorderMF->set_unit( eMetric );
-    m_xDistNumMF->set_unit( eMetric );
-    m_xIndentMF->set_unit( eMetric );
-    m_xListtabMF->set_unit( eMetric );
-    m_xAlignedAtMF->set_unit( eMetric );
-    m_xIndentAtMF->set_unit( eMetric );
+    SetFieldUnit(*m_xDistBorderMF, eMetric );
+    SetFieldUnit(*m_xDistNumMF, eMetric );
+    SetFieldUnit(*m_xIndentMF, eMetric );
+    SetFieldUnit(*m_xListtabMF, eMetric );
+    SetFieldUnit(*m_xAlignedAtMF, eMetric );
+    SetFieldUnit(*m_xIndentAtMF, eMetric );
 }
 
 IMPL_LINK_NOARG(SwNumPositionTabPage, EditModifyHdl, weld::ComboBox&, void)
@@ -881,18 +882,18 @@ SwSvxNumBulletTabDialog::SwSvxNumBulletTabDialog(weld::Window* pParent,
     pButton->set_sensitive(m_rWrtSh.GetNumRuleAtCurrCursorPos() != nullptr);
     weld::Button& pCancelButton = GetCancelButton();
     pCancelButton.connect_clicked(LINK(this, SwSvxNumBulletTabDialog, CancelHdl));
-    AddTabPage(u"bullets"_ustr, TabResId(RID_TAB_UNOORDERED.aLabel), RID_SVXPAGE_PICK_BULLET,
-               RID_M + RID_TAB_UNOORDERED.sIconName);
-    AddTabPage(u"singlenum"_ustr, TabResId(RID_TAB_ORDERED.aLabel), RID_SVXPAGE_PICK_SINGLE_NUM,
-               RID_M + RID_TAB_ORDERED.sIconName);
-    AddTabPage(u"outlinenum"_ustr, TabResId(RID_TAB_OUTLINE.aLabel), RID_SVXPAGE_PICK_NUM,
-               RID_M + RID_TAB_OUTLINE.sIconName);
-    AddTabPage(u"graphics"_ustr, TabResId(RID_TAB_IMAGE.aLabel), RID_SVXPAGE_PICK_BMP,
-               RID_M + RID_TAB_IMAGE.sIconName);
-    AddTabPage(u"position"_ustr, TabResId(RID_TAB_LIST_POSITION.aLabel), RID_SVXPAGE_NUM_POSITION,
-               RID_M + RID_TAB_LIST_POSITION.sIconName);
-    AddTabPage(u"customize"_ustr, TabResId(RID_TAB_CUSTOMIZE.aLabel), RID_SVXPAGE_NUM_OPTIONS,
-               RID_M + RID_TAB_CUSTOMIZE.sIconName);
+    AddTabPage(u"bullets"_ustr, TabResId(RID_TAB_SWNUMBUL_UNORDERED), RID_SVXPAGE_PICK_BULLET,
+               RID_M + RID_TAB_UNORDERED_IMG);
+    AddTabPage(u"singlenum"_ustr, TabResId(RID_TAB_SWNUMBUL_ORDERED), RID_SVXPAGE_PICK_SINGLE_NUM,
+               RID_M + RID_TAB_ORDERED_IMG);
+    AddTabPage(u"outlinenum"_ustr, TabResId(RID_TAB_SWNUMBUL_OUTLINE), RID_SVXPAGE_PICK_NUM,
+               RID_M + RID_TAB_OUTLINE_IMG);
+    AddTabPage(u"graphics"_ustr, TabResId(RID_TAB_SWNUMBUL_IMAGE), RID_SVXPAGE_PICK_BMP,
+               RID_M + RID_TAB_IMAGE_IMG);
+    AddTabPage(u"position"_ustr, TabResId(RID_TAB_SWNUMBUL_LIST_POSITION), RID_SVXPAGE_NUM_POSITION,
+               RID_M + RID_TAB_LIST_POSITION_IMG);
+    AddTabPage(u"customize"_ustr, TabResId(RID_TAB_SWNUMBUL_CUSTOMIZE), RID_SVXPAGE_NUM_OPTIONS,
+               RID_M + RID_TAB_CUSTOMIZE_IMG);
 }
 
 SwSvxNumBulletTabDialog::~SwSvxNumBulletTabDialog()

@@ -72,8 +72,8 @@ class FastParser;
 struct XmlFilterBaseImpl;
 
 using ShapePairs
-    = std::map<std::shared_ptr<drawingml::Shape>, css::uno::Reference<css::drawing::XShape>>;
-using NamedShapePairs = std::map<OUString, ShapePairs>;
+    = std::unordered_map<std::shared_ptr<drawingml::Shape>, css::uno::Reference<css::drawing::XShape>>;
+using NamedShapePairs = std::unordered_map<OUString, ShapePairs>;
 
 class OOX_DLLPUBLIC XmlFilterBase : public FilterBase
 {
@@ -225,7 +225,7 @@ public:
 
     void SetMaxDocId(sal_Int32 maxDocId) { mnMaxDocId = maxDocId; }
 
-    /** Write the document properties into into the current OPC package.
+    /** Write the document properties into the current OPC package.
 
         @param xProperties  The document properties to export.
      */
@@ -233,6 +233,22 @@ public:
 
     /** Write the customXml entries we are preserving (xlsx and pptx only). */
     void exportCustomFragments(const sax_fastparser::FSHelperPtr& pFS);
+
+    /** Read the data file of a chart from the given package path into the OOXEmbeddings GrabBag. */
+    void importChartEmbedding(const OUString& rFragmentPath);
+
+    /** Mark that a chart links to the data file under the given package path. Returns the package
+        path the file is written under, which can differ from rPath when rPath is taken already.
+        Returns an empty string when the chart gets no link. rMediaType receives the media type
+        of the file. */
+    OUString linkChartEmbedding(const OUString& rPath, OUString& rMediaType);
+
+    /** Reserve the given package path for a part of this export. Returns false, and reserves
+        nothing if the path is reserved already. Paths that differ only in case are the same path. */
+    bool reservePartPath(const OUString& rPath);
+
+    /** Write the linked embedded data files the charts into the package. */
+    void exportChartEmbeddings();
 
     /** Read the document properties and also the customXml entries (xlsx and pptx only). */
     void importDocumentProperties();

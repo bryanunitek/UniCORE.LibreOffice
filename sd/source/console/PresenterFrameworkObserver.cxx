@@ -25,7 +25,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 
 namespace sdext::presenter {
@@ -56,7 +55,7 @@ PresenterFrameworkObserver::~PresenterFrameworkObserver()
 }
 
 void PresenterFrameworkObserver::RunOnUpdateEnd (
-    const rtl::Reference<sd::framework::ConfigurationController>&rxController,
+    const rtl::Reference<sd::framework::ConfigurationController>& rxController,
     const Action& rAction)
 {
     new PresenterFrameworkObserver(

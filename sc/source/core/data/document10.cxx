@@ -24,7 +24,12 @@
 #include <sal/log.hxx>
 #include <scitems.hxx>
 #include <datamapper.hxx>
+#include <documentlinkmgr.hxx>
+#include <drwlayer.hxx>
+#include <externalrefmgr.hxx>
 #include <docsh.hxx>
+#include <dpobject.hxx>
+#include <dpsdbtab.hxx>
 #include <bcaslot.hxx>
 #include <broadcast.hxx>
 #include <SheetViewManager.hxx>
@@ -34,6 +39,7 @@
 #include <sortparam.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/colritem.hxx>
+#include <svx/fillbitmaplink.hxx>
 
 // Add totally brand-new methods to this source file.
 
@@ -115,7 +121,7 @@ bool ScDocument::CopyOneCellFromClip(
         ScAddress aTestPos = aSrcPos;
         aTestPos.SetCol(nCol);
         if (pClipDoc->IsMerged(aTestPos))
-            // We don't handle merged source cell for this.
+            // We don't handle merged source cells for this.
             return false;
     }
 
@@ -549,6 +555,10 @@ void ScDocument::SetNeedsListeningGroups( const std::vector<ScAddress>& rPosArra
 
 namespace {
 
+#if defined __GNUC__ && !defined __clang__ && (__GNUC__ == 16 || __GNUC__ == 17)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
 class StartNeededListenersHandler
 {
     std::shared_ptr<sc::StartListeningContext> mpCxt;
@@ -566,6 +576,9 @@ public:
             p->StartListeners(*mpCxt, false);
     }
 };
+#if defined __GNUC__ && !defined __clang__ && (__GNUC__ == 16 || __GNUC__ == 17)
+#pragma GCC diagnostic pop
+#endif
 
 }
 
@@ -708,7 +721,7 @@ ScRangeData* copyRangeName( const ScRangeData* pOldRangeData, ScDocument& rNewDo
     ScAddress aRangePos( pOldRangeData->GetPos());
     if (nNewSheet >= 0)
         aRangePos.SetTab( nNewSheet);
-    ScRangeData* pRangeData = new ScRangeData(*pOldRangeData, &rNewDoc, &aRangePos);
+    std::unique_ptr<ScRangeData> pRangeData(new ScRangeData(*pOldRangeData, &rNewDoc, &aRangePos));
     pRangeData->SetIndex(0);    // needed for insert to assign a new index
     ScTokenArray* pRangeNameToken = pRangeData->GetCode();
     if (bSameDoc && nNewSheet >= 0)
@@ -728,13 +741,10 @@ ScRangeData* copyRangeName( const ScRangeData* pOldRangeData, ScDocument& rNewDo
         pRangeNameToken->AdjustAbsoluteRefs(rOldDoc, rOldPos, rNewPos, true);
     }
 
-    bool bInserted;
     if (nNewSheet < 0)
-        bInserted = rNewDoc.GetRangeName()->insert(pRangeData);
+        return rNewDoc.GetRangeName().insert(std::move(pRangeData));
     else
-        bInserted = rNewDoc.GetRangeName(nNewSheet)->insert(pRangeData);
-
-    return bInserted ? pRangeData : nullptr;
+        return rNewDoc.GetRangeName(nNewSheet)->insert(std::move(pRangeData));
 }
 
 struct SheetIndex
@@ -762,10 +772,10 @@ ScRangeData* copyRangeNames( SheetIndexMap& rSheetIndexMap, std::vector<ScRangeD
         const SCTAB nOldSheet, const SCTAB nNewSheet, bool bSameDoc)
 {
     ScRangeData* pRangeData = nullptr;
-    const ScRangeName* pOldRangeName = (nTab < 0 ? rOldDoc.GetRangeName() : rOldDoc.GetRangeName(nTab));
+    const ScRangeName* pOldRangeName = (nTab < 0 ? &rOldDoc.GetRangeName() : rOldDoc.GetRangeName(nTab));
     if (pOldRangeName)
     {
-        const ScRangeName* pNewRangeName = (nNewSheet < 0 ? rNewDoc.GetRangeName() : rNewDoc.GetRangeName(nNewSheet));
+        const ScRangeName* pNewRangeName = (nNewSheet < 0 ? &rNewDoc.GetRangeName() : rNewDoc.GetRangeName(nNewSheet));
         sc::UpdatedRangeNames::NameIndicesType aSet( rReferencingNames.getUpdatedNames(nTab));
         for (auto const & rIndex : aSet)
         {
@@ -865,7 +875,7 @@ bool ScDocument::CopyAdjustRangeName( SCTAB& rSheet, sal_uInt16& rIndex, ScRange
     }
     else
     {
-        pOldRangeData = GetRangeName()->findByIndex(nOldIndex);
+        pOldRangeData = GetRangeName().findByIndex(nOldIndex);
         if (!pOldRangeData)
             return false;     // might be an error in the formula array
         aRangeName = pOldRangeData->GetUpperName();
@@ -884,9 +894,8 @@ bool ScDocument::CopyAdjustRangeName( SCTAB& rSheet, sal_uInt16& rIndex, ScRange
     if (!rpRangeData && !bGlobalNamesToLocal)
     {
         nNewSheet = -1;
-        pNewNames = rNewDoc.GetRangeName();
-        if (pNewNames)
-            rpRangeData = pNewNames->findByUpperName(aRangeName);
+        pNewNames = &rNewDoc.GetRangeName();
+        rpRangeData = pNewNames->findByUpperName(aRangeName);
     }
     // If no range name was found copy it.
     if (!rpRangeData)
@@ -1033,6 +1042,78 @@ sc::ExternalDataMapper& ScDocument::GetExternalDataMapper()
         mpDataMapper.reset(new sc::ExternalDataMapper(*this));
 
     return *mpDataMapper;
+}
+
+bool ScDocument::HasDataProviderMappings() const
+{
+    return mpDataMapper && !mpDataMapper->getDataSources().empty();
+}
+
+namespace
+{
+bool isRefreshingImport(const ScDBData* pData)
+{
+    return pData && pData->HasImportParam() && pData->GetRefreshDelaySeconds() > 0;
+}
+}
+
+bool ScDocument::HasRefreshingDBImport() const
+{
+    if (isRefreshingImport(mpAnonymousDBData.get()))
+        return true;
+
+    if (pDBCollection)
+    {
+        for (const auto& rxData : pDBCollection->getNamedDBs())
+            if (isRefreshingImport(rxData.get()))
+                return true;
+        for (const auto& rxData : pDBCollection->getAnonDBs())
+            if (isRefreshingImport(rxData.get()))
+                return true;
+    }
+
+    SCTAB nTabCount = GetTableCount();
+    for (SCTAB nTab = 0; nTab < nTabCount; ++nTab)
+    {
+        const ScTable* pTable = FetchTable(nTab);
+        if (pTable && isRefreshingImport(pTable->GetAnonymousDBData()))
+            return true;
+    }
+
+    return false;
+}
+
+bool ScDocument::HasDataPilotDatabaseLink() const
+{
+    if (!pDPCollection)
+        return false;
+
+    for (size_t i = 0, nCount = pDPCollection->GetCount(); i < nCount; ++i)
+    {
+        const ScImportSourceDesc* pDesc = (*pDPCollection)[i].GetImportSourceDesc();
+        if (pDesc && !ScDPCollection::IsRegisteredDatabase(pDesc->aDBName))
+            return true;
+    }
+    return false;
+}
+
+bool ScDocument::HasExternalLinks() const
+{
+    if (ScExternalRefManager* pRefMgr = GetExternalRefManager(); pRefMgr && pRefMgr->hasExternalData())
+        return true;
+
+    // sheet links can exist independently from external formula references (#i100042#)
+    SCTAB nTabCount = GetTableCount();
+    for (SCTAB nTab = 0; nTab < nTabCount; ++nTab)
+        if (IsLinked(nTab))
+            return true;
+
+    if (HasLinkFormulaNeedingCheck() || HasDataProviderMappings() || HasRefreshingDBImport()
+        || HasDataPilotDatabaseLink() || GetDocLinkManager().hasUpdatableLinks())
+        return true;
+
+    const ScDrawLayer* pDrawLayer = GetDrawLayer();
+    return pDrawLayer && hasDeferredFillBitmapLinks(pDrawLayer->GetItemPool());
 }
 
 void ScDocument::StoreTabToCache(SCTAB nTab, SvStream& rStrm) const
@@ -1216,7 +1297,6 @@ SCTAB ScDocument::GetSheetViewNumber(SCTAB nTab, sc::SheetViewID nID)
         {
             return pView->getTablePointer()->GetTab();
         }
-        assert(false && "a non valid sheet view is unexpected...");
     }
     return -1;
 }

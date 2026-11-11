@@ -21,8 +21,8 @@
 #include "PresenterSlideShowView.hxx"
 #include "PresenterCanvasHelper.hxx"
 #include "PresenterGeometryHelper.hxx"
+#include "PresenterHelper.hxx"
 #include "PresenterPaneContainer.hxx"
-#include <PresenterHelper.hxx>
 #include <DrawController.hxx>
 #include <framework/ConfigurationController.hxx>
 #include <strings.hrc>
@@ -45,22 +45,23 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 namespace {
 /** Return the slide show controller of a running presentation that has
-    the same document as the given framework controller.
+    the same document as the given DrawController.
     @return
         When no presentation is running this method returns an empty reference.
 */
-Reference<presentation::XSlideShowController> lcl_GetSlideShowController (
-    const Reference<frame::XController>& rxController)
+Reference<presentation::XSlideShowController>
+lcl_GetSlideShowController(const rtl::Reference<sd::DrawController>& rpController)
 {
     Reference<presentation::XSlideShowController> xSlideShowController;
 
-    if( rxController.is() ) try
+    if (rpController.is())
+        try
         {
-            Reference<css::presentation::XPresentationSupplier> xPS ( rxController->getModel(), UNO_QUERY_THROW);
+            Reference<css::presentation::XPresentationSupplier> xPS(rpController->getModel(),
+                                                                    UNO_QUERY_THROW);
 
             Reference<css::presentation::XPresentation2> xPresentation(xPS->getPresentation(), UNO_QUERY_THROW);
 
@@ -133,7 +134,7 @@ void PresenterSlideShowView::LateInit()
             xPeer->setBackground(util::Color(0xff000000));
     }
 
-    // Create a window for the actual slide show view.  It is places
+    // Create a window for the actual slide show view.  It is placed
     // centered and with maximal size inside the pane.
     mxViewWindow = CreateViewWindow(mxWindow);
 
@@ -289,17 +290,6 @@ void SAL_CALL PresenterSlideShowView::setCurrentPage (
 css::uno::Reference<css::drawing::XDrawPage> SAL_CALL PresenterSlideShowView::getCurrentPage()
 {
     return mxCurrentSlide;
-}
-
-//----- CachablePresenterView -------------------------------------------------
-
-void PresenterSlideShowView::ReleaseView()
-{
-    if (mxSlideShow.is() && mbIsViewAdded)
-    {
-        mxSlideShow->removeView(this);
-        mbIsViewAdded = false;
-    }
 }
 
 //----- XSlideShowView --------------------------------------------------------
@@ -495,10 +485,6 @@ void SAL_CALL PresenterSlideShowView::disposing (const lang::EventObject& rEvent
 
 void SAL_CALL PresenterSlideShowView::windowPaint (const awt::PaintEvent& rEvent)
 {
-    // Deactivated views must not be painted.
-    if ( ! mbIsPresenterViewActive)
-        return;
-
     awt::Rectangle aViewWindowBox (mxViewWindow->getPosSize());
     if (aViewWindowBox.Width <= 0 || aViewWindowBox.Height <= 0)
         return;
@@ -620,8 +606,6 @@ bool PresenterSlideShowView::isAnchorOnly()
     return false;
 }
 
-//----- CachablePresenterView -------------------------------------------------
-
 void PresenterSlideShowView::ActivatePresenterView()
 {
     if (mxSlideShow.is() && ! mbIsViewAdded)
@@ -631,7 +615,7 @@ void PresenterSlideShowView::ActivatePresenterView()
     }
 }
 
-void PresenterSlideShowView::DeactivatePresenterView()
+void PresenterSlideShowView::ReleaseView()
 {
     if (mxSlideShow.is() && mbIsViewAdded)
     {
@@ -639,7 +623,6 @@ void PresenterSlideShowView::DeactivatePresenterView()
         mbIsViewAdded = false;
     }
 }
-
 
 void PresenterSlideShowView::PaintOuterWindow (const awt::Rectangle& rRepaintBox)
 {

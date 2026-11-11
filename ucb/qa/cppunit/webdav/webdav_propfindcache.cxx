@@ -32,13 +32,13 @@ namespace
 
         // Change the following lines only, if you add, remove or rename
         // member functions of the current class,
-        // because these macros are need by auto register mechanism.
+        // because these macros are needed by auto register mechanism.
 
         CPPUNIT_TEST_SUITE( webdav_propcache_test );
         CPPUNIT_TEST( PropfindCacheElemTests );
         CPPUNIT_TEST( PropfindCacheTests );
         CPPUNIT_TEST_SUITE_END();
-    };                          // class webdav_local_test
+    };                          // class webdav_propcache_test
 
     // initialise your test code values here.
     void webdav_propcache_test::setUp()

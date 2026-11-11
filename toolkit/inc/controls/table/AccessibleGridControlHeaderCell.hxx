@@ -18,8 +18,9 @@
  */
 #pragma once
 
+#include <controls/table/AccessibleGridControlHeader.hxx>
 #include <controls/table/AccessibleGridControlTableCell.hxx>
-#include <controls/table/tablecontrol.hxx>
+#include <controls/table/TableControl.hxx>
 
 namespace accessibility
 {
@@ -28,9 +29,9 @@ namespace accessibility
         sal_Int32   m_nColumnRowId;
     public:
         AccessibleGridControlHeaderCell(sal_Int32 _nColumnRowId,
-                        const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-                        svt::table::TableControl& _rTable,
-                        AccessibleTableControlObjType  _eObjType);
+                                        const rtl::Reference<AccessibleGridControlHeader>& rpParent,
+                                        svt::table::TableControl& _rTable,
+                                        AccessibleTableControlObjType _eObjType);
         /** @return  The count of visible children. */
         virtual sal_Int64 SAL_CALL getAccessibleChildCount() override;
 
@@ -43,11 +44,6 @@ namespace accessibility
 
         /** Grabs the focus to the GridControl. */
         virtual void SAL_CALL grabFocus() override;
-
-        /** @return
-                The name of this class.
-        */
-        virtual OUString SAL_CALL getImplementationName() override;
 
         /** Return a bitset of states of the current object.
         */

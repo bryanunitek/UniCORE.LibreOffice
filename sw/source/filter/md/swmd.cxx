@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <algorithm>
 #include <boost/property_tree/json_parser/error.hpp>
 
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -42,8 +43,8 @@
 #include <fmtinfmt.hxx>
 #include <frmatr.hxx>
 #include <fmtanchr.hxx>
+#include <fmtcntnt.hxx>
 #include <fmtfsize.hxx>
-#include <unotools/securityoptions.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <comphelper/random.hxx>
@@ -65,20 +66,6 @@
 #include <unotextrange.hxx>
 
 #include "swmd.hxx"
-
-namespace
-{
-bool allowAccessLink(const SwDoc& rDoc)
-{
-    OUString sReferer;
-    SfxObjectShell* sh = rDoc.GetPersist();
-    if (sh != nullptr && sh->HasName())
-    {
-        sReferer = sh->GetMedium()->GetName();
-    }
-    return !SvtSecurityOptions::isUntrustedReferer(sReferer);
-}
-}
 
 SwNumRuleItem SwMarkdownParser::GetNumRuleItem(const UIName& rName, sal_uInt8 nLevel) const
 {
@@ -320,7 +307,7 @@ void SwMarkdownParser::EndHeading()
     m_xDoc->SetTextFormatColl(*m_pPam, pColl);
 }
 
-void SwMarkdownParser::StartNumberedBulletList(MD_BLOCKTYPE aListType)
+void SwMarkdownParser::StartNumberedBulletList(MD_BLOCKTYPE aListType, unsigned nStart)
 {
     SwMdNumRuleInfo& rInfo = GetNumInfo();
 
@@ -385,6 +372,13 @@ void SwMarkdownParser::StartNumberedBulletList(MD_BLOCKTYPE aListType)
     {
         // If the layer has already been used, the start value may need to be set hard to the paragraph.
         rInfo.SetNodeStartValue(nLevel, 1);
+    }
+
+    if (aListType == MD_BLOCK_OL)
+    {
+        // Restart only the first item of this list, without changing the shared numbering format.
+        // Writer stores paragraph restart values in a signed 16-bit attribute.
+        rInfo.SetNodeStartValue(nLevel, std::min(nStart, static_cast<unsigned>(SAL_MAX_INT16)));
     }
 
     {
@@ -592,7 +586,7 @@ void SwMarkdownParser::InsertHtmlData()
 {
     OString aData = rtl::OUStringToOString(m_htmlData, RTL_TEXTENCODING_UTF8);
     SvMemoryStream aStream(const_cast<char*>(aData.getStr()), aData.getLength(), StreamMode::READ);
-    SwReader aReader(aStream, OUString(), OUString(), *m_pPam);
+    SwReader aReader(aStream, OUString(), m_sBaseURL, *m_pPam);
     aReader.Read(*ReadHTML);
 }
 
@@ -688,14 +682,7 @@ void SwMarkdownParser::InsertImage(const MDImage& rImg)
     }
 
     Size aGrfSz(0, 0);
-    if (allowAccessLink(*m_xDoc) && !aGraphicURL.IsExoticProtocol() && !sGrfNm.isEmpty())
-    {
-        GraphicDescriptor aDescriptor(aGraphicURL);
-        if (aDescriptor.Detect(true))
-            aGrfSz
-                = o3tl::convert(aDescriptor.GetSizePixel(), o3tl::Length::px, o3tl::Length::twip);
-    }
-    else if (aGraphic.GetType() == GraphicType::Bitmap)
+    if (aGraphic.GetType() == GraphicType::Bitmap)
     {
         // We have an unloaded graphic in aGraphic, read its size.
         aGrfSz = o3tl::convert(aGraphic.GetSizePixel(), o3tl::Length::px, o3tl::Length::twip);
@@ -753,6 +740,15 @@ void SwMarkdownParser::InsertImage(const MDImage& rImg)
     {
         pFlyFormat->SetObjTitle(rImg.title);
         pFlyFormat->SetObjDescription(rImg.desc);
+
+        // A linked image's own size reaches the frame when the links are updated.
+        if (!sGrfNm.isEmpty())
+        {
+            if (SwGrfNode* pGrfNd
+                = m_xDoc->GetNodes()[pFlyFormat->GetContent().GetContentIdx()->GetIndex() + 1]
+                      ->GetGrfNode())
+                pGrfNd->SetChgTwipSize(true);
+        }
     }
 
     m_bNoParSpace = true;
@@ -889,6 +885,24 @@ ErrCodeMsg MarkdownReader::Read(SwDoc& rDoc, const OUString& rBaseURL, SwPaM& rP
 
     if (m_bInsertMode)
     {
+        if (aPasteInfo.m_bStartAtEndOfPara)
+        {
+            // If the paste created an empty paragraph at the end, join that empty node with the
+            // previous one here.
+            SwNodeIndex aLast(*aPasteInfo.m_pSttNdIdx2, -1);
+            if (aLast.GetIndex() > aPasteInfo.m_pSttNdIdx->GetIndex() + 1)
+            {
+                SwTextNode* pLast = aLast.GetNode().GetTextNode();
+                if (pLast && pLast->GetText().isEmpty())
+                {
+                    // Keep the formatting of pPrev (has content) and drop aLast (no content).
+                    SwNodeIndex aPrev(aLast, -1);
+                    if (SwTextNode* pPrev = aPrev.GetNode().GetTextNode())
+                        pPrev->JoinNext();
+                }
+            }
+        }
+
         EndPaste(aPasteInfo);
     }
 

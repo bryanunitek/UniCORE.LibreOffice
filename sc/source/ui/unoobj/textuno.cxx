@@ -47,6 +47,7 @@
 #include <patattr.hxx>
 #include <docfunc.hxx>
 #include <scmod.hxx>
+#include <shapeuno.hxx>
 
 using namespace com::sun::star;
 
@@ -144,7 +145,7 @@ void ScHeaderFooterContentObj::Init( const EditTextObject* pLeft,
 
 ScHeaderFooterTextData::ScHeaderFooterTextData(
     unotools::WeakReference<ScHeaderFooterContentObj> xContent, ScHeaderFooterPart nP, const EditTextObject* pTextObj) :
-    mpTextObj(pTextObj ? pTextObj->Clone() : nullptr),
+    mpTextObj(pTextObj ? std::make_unique<EditTextObject>(*pTextObj) : nullptr),
     xContentObj(std::move( xContent )),
     nPart( nP ),
     bDataValid(false)
@@ -184,7 +185,7 @@ SvxTextForwarder* ScHeaderFooterTextData::GetTextForwarder()
             // no access to ScDocument, use temporary default CellAttributeHelper
             // was: "use global pool from module" which is usually ScMessagePool
             // and gets set in ScTabViewObj::SelectionChanged() by
-            // ScFormatShell::ScFormatShell which  calls
+            // ScFormatShell::ScFormatShell which calls
             //    SetPool( &pTabViewShell->GetPool() );
             pTmp.reset(new CellAttributeHelper(ScModule::get()->GetPool()));
             pCellAttributeDefault = &pTmp->getDefaultCellAttribute();
@@ -221,13 +222,13 @@ void ScHeaderFooterTextData::UpdateData()
 {
     if (pEditEngine)
     {
-        mpTextObj = pEditEngine->CreateTextObject();
+        mpTextObj = std::make_unique<EditTextObject>(pEditEngine->CreateTextObject());
     }
 }
 
 void ScHeaderFooterTextData::UpdateData(EditEngine& rEditEngine)
 {
-    mpTextObj = rEditEngine.CreateTextObject();
+    mpTextObj = std::make_unique<EditTextObject>(rEditEngine.CreateTextObject());
     bDataValid = false;
 }
 
@@ -485,7 +486,7 @@ uno::Reference<container::XEnumerationAccess> SAL_CALL ScHeaderFooterTextObj::ge
 
 uno::Reference<container::XNameAccess> SAL_CALL ScHeaderFooterTextObj::getTextFieldMasters()
 {
-    //  this does not exists in Calc (?)
+    //  this does not exist in Calc (?)
     return nullptr;
 }
 
@@ -629,10 +630,10 @@ uno::Reference<text::XTextRange> SAL_CALL ScHeaderFooterTextCursor::getEnd()
 
 UNO3_GETIMPLEMENTATION2_IMPL(ScHeaderFooterTextCursor, SvxUnoTextCursor);
 
-ScDrawTextCursor::ScDrawTextCursor( uno::Reference<text::XText> xParent,
+ScDrawTextCursor::ScDrawTextCursor( const rtl::Reference< ScShapeObj >& xParent,
                                     const SvxUnoTextBase& rText ) :
     SvxUnoTextCursor( rText ),
-    xParentText(std::move( xParent ))
+    mxParentText( xParent )
 
 {
 }
@@ -646,7 +647,7 @@ ScDrawTextCursor::~ScDrawTextCursor() noexcept
 uno::Reference<text::XText> SAL_CALL ScDrawTextCursor::getText()
 {
     SolarMutexGuard aGuard;
-    return xParentText;
+    return mxParentText;
 }
 
 uno::Reference<text::XTextRange> SAL_CALL ScDrawTextCursor::getStart()
@@ -720,7 +721,7 @@ void ScEditEngineTextObj::SetText( const EditTextObject& rTextObject )
     SetSelection( aSel );
 }
 
-std::unique_ptr<EditTextObject> ScEditEngineTextObj::CreateTextObject()
+EditTextObject ScEditEngineTextObj::CreateTextObject()
 {
     return GetEditEngine()->CreateTextObject();
 }

@@ -56,7 +56,7 @@ TableColumn::TableColumn( const WorkbookHelper& rHelper ) :
 void TableColumn::importTableColumn( const AttributeList& rAttribs )
 {
     mnId = rAttribs.getInteger( XML_id, -1 );
-    maName = rAttribs.getString( XML_name, OUString() );
+    maName = rAttribs.getXString( XML_name, OUString() );
     maModel.maUniqueName = rAttribs.getXString( XML_uniqueName, OUString() );
     mnDataDxfId = rAttribs.getInteger( XML_dataDxfId, -1 );
     if ( rAttribs.hasAttribute(XML_totalsRowLabel ) )
@@ -169,8 +169,8 @@ bool TableColumns::finalizeImport( ScDBData* pDBData, bool bQueryTable )
         pDBData->SetTableColumnNames( std::move(aNames) );
 
         // If table type is "queryTable" and `removeDataOnSave` attribute is set to true,
-        // Excel removes table data from sheet including headers
-        // We don't support Power Query connections, fill table headers in the sheet with table data.
+        // Excel removes table data from sheet, including headers.
+        // We don't support Power Query connections, so fill table headers in the sheet with table data.
         if (bQueryTable && pDBData->HasHeader())
         {
             ScRange aRange;

@@ -241,6 +241,9 @@ IMPL_LINK_NOARG(CommandListBox, RowActivated, const weld::TreeIter&, bool)
 
 IMPL_LINK(CommandListBox, TreeViewKeyPress, const KeyEvent&, rKeyEvent, bool)
 {
+    if (mpCommandTreeView->n_children() == 0)
+        return false;
+
     if (rKeyEvent.GetKeyCode().GetCode() == KEY_DOWN || rKeyEvent.GetKeyCode().GetCode() == KEY_UP)
     {
         int nDirection = rKeyEvent.GetKeyCode().GetCode() == KEY_DOWN ? 1 : -1;
@@ -259,7 +262,7 @@ IMPL_LINK(CommandListBox, TreeViewKeyPress, const KeyEvent&, rKeyEvent, bool)
     return false;
 }
 
-IMPL_LINK_NOARG(CommandListBox, ModifyHdl, weld::Entry&, void)
+IMPL_LINK_NOARG(CommandListBox, ModifyHdl, weld::TextWidget&, void)
 {
     mpCommandTreeView->clear();
     maCommandList.clear();

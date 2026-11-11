@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_UIBASE_INC_WORDCOUNTDIALOG_HXX
-#define INCLUDED_SW_SOURCE_UIBASE_INC_WORDCOUNTDIALOG_HXX
+
+#pragma once
 
 #include <docstat.hxx>
 #include <swabstdlg.hxx>
@@ -54,10 +54,8 @@ class SwWordCountFloatDlg final : public SfxModelessDialogController
     bool m_bCursorValuesInitialized = false;
 
 public:
-    SwWordCountFloatDlg(SfxBindings* pBindings,
-                        SfxChildWindow* pChild,
-                        weld::Window *pParent,
-                        SfxChildWinInfo const * pInfo);
+    SwWordCountFloatDlg(SfxBindings* pBindings, SfxChildWindow* pChild, weld::Window* pParent,
+                        const SfxChildWinInfo& rInfo);
     virtual ~SwWordCountFloatDlg() override;
     void    UpdateCounts();
 
@@ -69,17 +67,13 @@ class SwWordCountWrapper final : public SfxChildWindow
     VclPtr<AbstractSwWordCountFloatDlg> m_xAbstDlg;
 
 public:
-    SwWordCountWrapper(    vcl::Window *pParentWindow,
-                            sal_uInt16 nId,
-                            SfxBindings* pBindings,
-                            SfxChildWinInfo* pInfo );
+    SwWordCountWrapper(vcl::Window* pParentWindow, sal_uInt16 nId, SfxBindings& rBindings,
+                       SfxChildWinInfo& rInfo);
     SFX_DECL_CHILDWINDOW_WITHID(SwWordCountWrapper);
 
     virtual ~SwWordCountWrapper() override;
     void    UpdateCounts();
     void    SetCounts(const SwDocStat &rCurrCnt, const SwDocStat &rDocStat);
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

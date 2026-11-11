@@ -27,6 +27,8 @@
 #include <editeng/boxitem.hxx>
 #include <string_view>
 #include <svl/stritem.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 #include <editeng/shaditem.hxx>
 #include <fmtfsize.hxx>
 #include <formatflysplit.hxx>
@@ -39,6 +41,7 @@
 #include <frmatr.hxx>
 #include <cellfrm.hxx>
 #include <pagefrm.hxx>
+#include <shellres.hxx>
 #include <tabcol.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -749,7 +752,8 @@ const SwTable* SwDoc::TextToTable( const SwInsertTableOptions& rInsTableOpts,
 
     SwTableNode* pTableNd = GetNodes().TextToTable(
             aRg, cCh, pTableFormat, pLineFormat, pBoxFormat,
-            getIDocumentStylePoolAccess().GetTextCollFromPool( SwPoolFormatId::COLL_STANDARD ), pUndo );
+            getIDocumentStylePoolAccess().GetTextCollFromPool( SwPoolFormatId::COLL_STANDARD ), pUndo,
+            rInsTableOpts.mnColumns );
 
     SwTable& rNdTable = pTableNd->GetTable();
 
@@ -895,6 +899,10 @@ const SwTable* SwDoc::TextToTable( const SwInsertTableOptions& rInsTableOpts,
         rTmp.GetPoint()->Assign( *pTableNd );
         SwNodes::GoNext(rTmp.GetPoint());
     }
+
+    const OUString sAutoName = pTAFormat ? pTAFormat->SvxAutoFormatData::GetName() : "";
+    if (!sAutoName.isEmpty() && sAutoName != SvxResId(RID_SVXSTR_TBLAFMT_NONE))
+        rNdTable.SetTableStyleName(TableStyleName(sAutoName));
 
     if( pUndo )
     {
@@ -1049,7 +1057,8 @@ SwTableNode* SwNodes::TextToTable( const SwNodeRange& rRange, sal_Unicode cCh,
                                     SwTableLineFormat* pLineFormat,
                                     SwTableBoxFormat* pBoxFormat,
                                     SwTextFormatColl* pTextColl,
-                                    SwUndoTextToTable* pUndo )
+                                    SwUndoTextToTable* pUndo,
+                                    sal_uInt16 nCols )
 {
     if( rRange.aStart >= rRange.aEnd )
         return nullptr;
@@ -1173,6 +1182,13 @@ SwTableNode* SwNodes::TextToTable( const SwNodeRange& rRange, sal_Unicode cCh,
         if( nMaxBoxes < nBoxes )
             nMaxBoxes = nBoxes;
     }
+
+    // tdf#167632: append the additional empty columns requested in the dialog.
+    // Raising nMaxBoxes lets lcl_BalanceTable() create the empty boxes via
+    // InsBoxen() - without inserting any separator text into the document - and
+    // register them with the undo object, so they vanish again when the
+    // conversion is reverted.
+    nMaxBoxes += nCols;
 
     lcl_BalanceTable(rTable, nMaxBoxes, *pTableNd, *pBoxFormat, *pTextColl,
             pUndo, &aPosArr);
@@ -4056,7 +4072,12 @@ bool SwDoc::SetTableAutoFormat(const SwSelBoxes& rBoxes,
     TableStyleName aPrevFormat = pTableNd->GetTable().GetTableStyleName();
     if (pStyleNameToSet)
     {   // tdf#98226 do this here where undo can record it
-        pTableNd->GetTable().SetTableStyleName(*pStyleNameToSet);
+
+        // The 'None' style is special in table styles. Clear the template-name in that case.
+        if (*pStyleNameToSet == SvxResId(RID_SVXSTR_TBLAFMT_NONE))
+            pTableNd->GetTable().SetTableStyleName(TableStyleName());
+        else
+            pTableNd->GetTable().SetTableStyleName(*pStyleNameToSet);
     }
 
     const SwTableAutoFormat rStyle = *GetTableStyles().GetResolvedStyle(&rNew);
@@ -4196,7 +4217,8 @@ void SwDoc::ResetTableStyles(const OUString& sTableStyle, std::u16string_view sO
         SwTableAutoFormat* pAutoFormat = pAutoFormats.GetData(i);
         assert(pAutoFormat);
         OUString sCurrentStyle = pAutoFormat->GetName().toString();
-        while (pAutoFormat)
+        std::unordered_set<SwTableAutoFormat*> aVisited;
+        while (pAutoFormat && aVisited.insert(pAutoFormat).second)
         {
             OUString sStyle = pAutoFormat->GetName().toString();
             if (sStyle == sTableStyle)

@@ -40,7 +40,6 @@ public:
 //   SdrCaptionObj
 class SVXCORE_DLLPUBLIC SdrCaptionObj final : public SdrRectObj
 {
-private:
     // to allow sdr::properties::CaptionProperties access to ImpRecalcTail()
     friend class sdr::properties::CaptionProperties;
     friend class                SdrTextObj; // for ImpRecalcTail() during AutoGrow
@@ -71,6 +70,8 @@ private:
     // protected destructor
     SAL_DLLPRIVATE virtual ~SdrCaptionObj() override;
 
+    SAL_DLLPRIVATE virtual rtl::Reference<SdrObject> implCloneSdrObject(SdrModel& rTargetModel) const override;
+
 public:
     SAL_DLLPRIVATE SdrCaptionObj(SdrModel& rSdrModel);
 
@@ -84,14 +85,13 @@ public:
 
     SAL_DLLPRIVATE virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
     SAL_DLLPRIVATE virtual SdrObjKind GetObjIdentifier() const override;
-    SAL_DLLPRIVATE virtual rtl::Reference<SdrObject> CloneSdrObject(SdrModel& rTargetModel) const override;
-
     // for calc: special shadow only for text box
     void SetSpecialTextBoxShadow() { mbSpecialTextBoxShadow = true; }
     bool GetSpecialTextBoxShadow() const { return mbSpecialTextBoxShadow; }
 
     // for calc: fixed note tail position.
     void SetFixedTail() { mbFixedTail = true; }
+    bool IsFixedTail() const { return mbFixedTail; }
 
     SAL_DLLPRIVATE virtual OUString TakeObjNameSingul() const override;
     SAL_DLLPRIVATE virtual OUString TakeObjNamePlural() const override;

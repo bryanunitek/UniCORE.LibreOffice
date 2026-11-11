@@ -22,8 +22,8 @@
 #include <scui_def.hxx>
 #include <tpsort.hxx>
 #include <sortdlg.hxx>
-#include <unotools/viewoptions.hxx>
 
+#include <svtools/viewoptions.hxx>
 #include <vcl/tabs.hrc>
 #include <vcl/weld/Dialog.hxx>
 #include <vcl/windowstate.hxx>
@@ -31,10 +31,10 @@
 ScSortDlg::ScSortDlg(weld::Window* pParent, const SfxItemSet* pArgSet)
     : SfxTabDialogController(pParent, u"modules/scalc/ui/sortdialog.ui"_ustr, u"SortDialog"_ustr, pArgSet)
 {
-    AddTabPage(u"criteria"_ustr, TabResId(RID_TAB_SORT.aLabel), ScTabPageSortFields::Create,
-               RID_L + RID_TAB_SORT.sIconName);
-    AddTabPage(u"options"_ustr, TabResId(RID_TAB_SORTOPTIONS.aLabel), ScTabPageSortOptions::Create,
-               RID_L + RID_TAB_SORTOPTIONS.sIconName);
+    AddTabPage(u"criteria"_ustr, TabResId(RID_TAB_SCSORT_SORT), ScTabPageSortFields::Create,
+               RID_L + RID_TAB_SORT_IMG);
+    AddTabPage(u"options"_ustr, TabResId(RID_TAB_SCSORT_OPTIONS), ScTabPageSortOptions::Create,
+               RID_L + RID_TAB_SORTOPTIONS_IMG);
 
     // restore dialog size
     SvtViewOptions aDlgOpt(EViewType::Dialog, u"SortDialog"_ustr);
@@ -44,10 +44,9 @@ ScSortDlg::ScSortDlg(weld::Window* pParent, const SfxItemSet* pArgSet)
 
 ScSortDlg::~ScSortDlg()
 {
-    // tdf#153852 - Make of sort dialog resizable (and remember size)
+    // tdf#153852 - Make the sort dialog resizable (and remember size)
     SvtViewOptions aDlgOpt(EViewType::Dialog, u"SortDialog"_ustr);
-    OUString sWindowState = m_xDialog->get_window_state(vcl::WindowDataMask::PosSize);
-    aDlgOpt.SetWindowState(sWindowState);
+    aDlgOpt.SetWindowState(m_xDialog->get_window_state(vcl::WindowDataMask::PosSize));
 }
 
 ScSortWarningDlg::ScSortWarningDlg(weld::Window* pParent,
@@ -76,7 +75,7 @@ IMPL_LINK(ScSortWarningDlg, BtnHdl, weld::Button&, rBtn, void)
     {
         m_xDialog->response(BTN_EXTEND_RANGE);
     }
-    else if(&rBtn == m_xBtnCurSort.get())
+    else if (&rBtn == m_xBtnCurSort.get())
     {
         m_xDialog->response(BTN_CURRENT_SELECTION);
     }

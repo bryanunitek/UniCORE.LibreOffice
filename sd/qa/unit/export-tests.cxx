@@ -722,6 +722,53 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testUnknownAttributes)
     assertXPathNSDef(pXmlDoc, "/office:document-content", "foo", "http://example.com/");
 }
 
+CPPUNIT_TEST_FIXTURE(SdExportTest, testTdf173489)
+{
+    // Two tables without a table template. The first one has the opposite of the svx defaults: no
+    // first row and no banded rows, the other four set. The second one has the other half.
+    createSdImpressDoc("odp/tdf173489.fodp");
+    struct Flag
+    {
+        OUString aProperty;
+        const char* pAttribute;
+        bool bFirstTable;
+    };
+    const Flag aFlags[] = {
+        { u"UseFirstRowStyle"_ustr, "use-first-row-styles", false },
+        { u"UseLastRowStyle"_ustr, "use-last-row-styles", true },
+        { u"UseFirstColumnStyle"_ustr, "use-first-column-styles", true },
+        { u"UseLastColumnStyle"_ustr, "use-last-column-styles", true },
+        { u"UseBandingRowStyle"_ustr, "use-banding-rows-styles", false },
+        { u"UseBandingColumnStyle"_ustr, "use-banding-columns-styles", true },
+    };
+    auto checkFlags = [this, &aFlags]() {
+        for (int nTable = 0; nTable < 2; ++nTable)
+        {
+            uno::Reference<beans::XPropertySet> xTable(getShapeFromPage(nTable, 0));
+            for (const Flag& rFlag : aFlags)
+                CPPUNIT_ASSERT_EQUAL_MESSAGE(rFlag.pAttribute, rFlag.bFirstTable == (nTable == 0),
+                                             xTable->getPropertyValue(rFlag.aProperty).get<bool>());
+        }
+    };
+    checkFlags();
+
+    saveAndReload(TestFilter::ODP);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"content.xml"_ustr);
+    // Without the fix in place, the flags were only written with table:template-name
+    for (int nTable = 0; nTable < 2; ++nTable)
+    {
+        OString aTable = "(//draw:frame/table:table)[" + OString::number(nTable + 1) + "]";
+        for (const Flag& rFlag : aFlags)
+        {
+            if (rFlag.bFirstTable == (nTable == 0))
+                assertXPath(pXmlDoc, aTable, rFlag.pAttribute, u"true");
+            else
+                assertXPathNoAttribute(pXmlDoc, aTable, rFlag.pAttribute);
+        }
+    }
+    checkFlags();
+}
+
 CPPUNIT_TEST_FIXTURE(SdExportTest, testTdf80020)
 {
     createSdImpressDoc("odp/tdf80020.odp");
@@ -1148,8 +1195,6 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfFont)
         int nFontHeight = getXPath(pXml, "//font[2]", "height").toInt32();
         CPPUNIT_ASSERT_EQUAL(494, nFontHeight);
     }
-#if !defined _WIN32
-    //TODO, debug this
     {
         OUString sWeight = getXPath(pXml, "//font[3]", "weight");
         // was "normal" before
@@ -1158,9 +1203,8 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfFont)
         OUString sFontName = getXPath(pXml, "//font[3]", "name");
         CPPUNIT_ASSERT_EQUAL(u"Liberation Sans"_ustr, sFontName);
         sal_Int32 nFontHeight = getXPath(pXml, "//font[3]", "height").toInt32();
-        CPPUNIT_ASSERT_EQUAL(564, nFontHeight);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(564), nFontHeight);
     }
-#endif
 }
 
 CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfHindi)
@@ -1185,12 +1229,12 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfHindi)
 
     // ensure the expected content
     assertXPathContent(pXmlDoc,
-                       "/office:document/office:body/office:drawing/draw:page/draw:g/draw:frame[4]/"
-                       "draw:text-box/text:p[@text:style-name='P8'][1]",
+                       "/office:document/office:body/office:drawing/draw:page/draw:g/draw:frame[3]/"
+                       "draw:text-box/text:p[@text:style-name='P4'][1]",
                        u"FIRST-YEAR HINDI COURSE");
 
     // ensure the expected font name
-    assertXPath(pXmlDoc, "/office:document/office:automatic-styles/style:style[@style:name='P8']/"
+    assertXPath(pXmlDoc, "/office:document/office:automatic-styles/style:style[@style:name='P4']/"
                          "style:text-properties[@style:font-name='AcademyEngravedLetPlain']");
 }
 
@@ -1351,7 +1395,7 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfPatternStroke)
 
     xmlDocUniquePtr pXmlDoc = parseExportedFile();
 
-    // ensure the stroke color is this redish color, and not gray which is what it
+    // ensure the stroke color is this reddish color, and not gray which is what it
     // defaults to if the stroke pattern isn't taken into account.
     assertXPath(pXmlDoc, "/office:document/office:automatic-styles/style:style[@style:name='gr1']/"
                          "style:graphic-properties[@svg:stroke-color='#ed1b2d']");
@@ -1375,7 +1419,7 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfPatternFill)
 
     xmlDocUniquePtr pXmlDoc = parseExportedFile();
 
-    // ensure the stroke color is this redish color, and not gray which is what it
+    // ensure the stroke color is this reddish color, and not gray which is what it
     // defaults to if the stroke pattern isn't taken into account.
     assertXPath(pXmlDoc, "/office:document/office:automatic-styles/style:style[@style:name='gr1']/"
                          "style:graphic-properties[@style:repeat='repeat' and "
@@ -2570,6 +2614,33 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testTableBordersTransparancy)
     xCellPropSet->getPropertyValue(u"LeftBorder"_ustr) >>= aBorderLine;
     CPPUNIT_ASSERT_EQUAL(Color(ColorTransparency, 0xff2670c9),
                          Color(ColorTransparency, aBorderLine.Color));
+}
+
+CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfLigatureTextFit)
+{
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPdfium)
+        return;
+    UsePdfium aGuard;
+
+    // An "ſt" ligature is one narrow pdf glyph that expands to two
+    // characters. Its run must stay on a single line, not wrap with the
+    // trailing glyph dropped below the box.
+    loadFromFile(u"pdf/ligature-textbox-fit.pdf");
+
+    setImportFilterName(TestFilter::FODG);
+    saveAndReload(TestFilter::FODG,
+                  {
+                      comphelper::makePropertyValue(
+                          u"FilterOptions"_ustr,
+                          u"{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}"_ustr),
+                  });
+
+    xmlDocUniquePtr pXml = parseLayout();
+
+    // Three "ſt" runs, each on one line. A wrapped run adds a duplicate at
+    // the same x and a lower y, taking the count to six.
+    assertXPath(pXml, "//textarray[text='ſt']", 3);
 }
 
 // CharOpticalSizing should be enabled by default for new documents

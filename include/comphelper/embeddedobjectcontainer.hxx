@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_COMPHELPER_EMBEDDEDOBJECTCONTAINER_HXX
-#define INCLUDED_COMPHELPER_EMBEDDEDOBJECTCONTAINER_HXX
+
+#pragma once
 
 #include <comphelper/comphelperdllapi.h>
 
@@ -201,7 +201,8 @@ public:
                         const css::uno::Reference< css::embed::XStorage >& _xStorage,
                         bool _bClearModifiedFlag = true);
 
-    // if DisableActiveContent configuration option is set, this always returns false
+    // if DisableActiveContent configuration option is set, this always returns false. In an embedded
+    // document whose containing document has an AllowLinkUpdate property, it returns that property.
     bool getUserAllowsLinkUpdate() const;
 
     // if DisableActiveContent configuration option is set, this has no effect
@@ -209,7 +210,5 @@ public:
 };
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

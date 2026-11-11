@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <DocumentFieldsManager.hxx>
+#include <climits>
 #include <config_features.h>
 #include <config_fuzzers.h>
 #include <doc.hxx>
@@ -45,7 +46,6 @@
 #include <ndtxt.hxx>
 #include <txtfld.hxx>
 #include <docfld.hxx>
-#include <hints.hxx>
 #include <docary.hxx>
 #include <fldbas.hxx>
 #include <expfld.hxx>
@@ -54,7 +54,6 @@
 #include <usrfld.hxx>
 #include <ndindex.hxx>
 #include <pam.hxx>
-#include <o3tl/deleter.hxx>
 #include <osl/diagnose.h>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/transliterationwrapper.hxx>
@@ -218,7 +217,7 @@ SwFieldType* DocumentFieldsManager::InsertFieldType(const SwFieldType &rFieldTyp
     {
     case SwFieldIds::SetExp:
             //JP 29.01.96: SequenceFields start at INIT_FLDTYPES - 3!!
-            //             Or we get doubble number circles!!
+            //             Or we get double number circles!!
             //MIB 14.03.95: From now on also the SW3-Reader relies on this, when
             //constructing string pools and when reading SetExp fields
             if( SwGetSetExpType::Sequence & static_cast<const SwSetExpFieldType&>(rFieldTyp).GetType() )
@@ -305,7 +304,7 @@ SwFieldType* DocumentFieldsManager::GetFieldType(
     {
     case SwFieldIds::SetExp:
             //JP 29.01.96: SequenceFields start at INIT_FLDTYPES - 3!!
-            //             Or we get doubble number circles!!
+            //             Or we get double number circles!!
             //MIB 14.03.95: From now on also the SW3-Reader relies on this, when
             //constructing string pools and when reading SetExp fields
         i = INIT_FLDTYPES - INIT_SEQ_FLDTYPES;
@@ -1224,7 +1223,8 @@ void DocumentFieldsManager::UpdatePageFields(const SwTwips nDocPos)
         case SwFieldIds::Chapter:
         case SwFieldIds::GetExp:
         case SwFieldIds::RefPageGet:
-            pFieldType->UpdateDocPos(nDocPos);
+            pFieldType->UpdateDocPos(nDocPos == LONG_MAX ? gfx::Length::maximum()
+                                                        : gfx::Length::twip(nDocPos));
             break;
         case SwFieldIds::DocStat:
         {

@@ -67,18 +67,14 @@ public:
     /** ctor()
         @param rxParent  XAccessible interface of the parent object.
         @param rBox  The HeaderTabListBox control. */
-    AccessibleTabListBoxTable(
-        const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        SvHeaderTabListBox& rBox );
+    AccessibleTabListBoxTable(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                              SvHeaderTabListBox& rBox);
 
 private:
     /** dtor() */
     virtual ~AccessibleTabListBoxTable() override;
 
 public:
-    // XServiceInfo
-    virtual OUString SAL_CALL getImplementationName() override;
-
     // XAccessibleSelection
     void SAL_CALL selectAccessibleChild( sal_Int64 nChildIndex ) override;
     sal_Bool SAL_CALL isAccessibleChildSelected( sal_Int64 nChildIndex ) override;

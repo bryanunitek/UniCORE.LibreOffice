@@ -7,6 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <comphelper/embeddedobjectcontainer.hxx>
 #include <comphelper/processfactory.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <sfx2/bindings.hxx>
@@ -16,11 +17,11 @@
 #include <com/sun/star/io/XInputStream.hpp>
 
 #include <tools/hostfilter.hxx>
-#include <tools/urlobj.hxx>
 
 #include <utility>
 #include <webservicelink.hxx>
 #include <brdcst.hxx>
+#include <docsh.hxx>
 #include <document.hxx>
 #include <sc.hrc>
 
@@ -36,15 +37,16 @@ ScWebServiceLink::~ScWebServiceLink() {}
 
 sfx2::SvBaseLink::UpdateResult ScWebServiceLink::DataChanged(const OUString&, const css::uno::Any&)
 {
+    if (pDoc && pDoc->GetDocumentShell()
+        && !pDoc->GetDocumentShell()->GetEmbeddedObjectContainer().getUserAllowsLinkUpdate())
+        return SUCCESS;
+
     aResult.clear();
     bHasResult = false;
 
-    INetURLObject aURLObject(aURL);
-    const OUString sHost = aURLObject.GetHost();
-    if (HostFilter::isForbidden(sHost))
+    if (HostFilter::isUrlForbidden(aURL))
     {
-        SAL_WARN("sc.ui", "ScWebServiceLink::DataChanged: blocked access to external file: \""
-                              << aURL << "\"");
+        SAL_WARN("sc.ui", "ScWebServiceLink::DataChanged: blocked url: \"" << aURL << "\"");
         return ERROR_GENERAL;
     }
 

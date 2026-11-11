@@ -80,7 +80,8 @@ void XclExpTablesImpl8::SaveXml( XclExpXmlStream& rStrm )
         const ScDBData& rData = *it.mpData;
         ScRange aRange(ScAddress::UNINITIALIZED);
         rData.GetArea(aRange);
-        // minimal height of a valid table, don't export if less than that, Excel won't accept it
+        // a valid table has to have at least 1 data row
+        // don't export if less than that, Excel won't accept it
         const SCROW nMinHeight = (rData.HasHeader() ? 1 : 0) + (rData.HasTotals() ? 1 : 0) + 1;
         if (aRange.aEnd.Row() - aRange.aStart.Row() + 1 < nMinHeight)
             continue;
@@ -202,14 +203,21 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
     const std::vector<TableColumnAttributes> aTotalValues
         = rData.GetTotalRowAttributes(formula::FormulaGrammar::GRAM_OOXML);
 
-    // if the Total row have ever been showed it will be true
-    bool hasAnySetValue = rData.HasTotals() || std::any_of(aTotalValues.begin(), aTotalValues.end(),
-                                      [](const TableColumnAttributes& attr)
-                                      {
-                                          return attr.maTotalsRowLabel.has_value()
-                                                 || attr.maTotalsFunction.has_value()
-                                                 || attr.maCustomFunction.has_value();
-                                      });
+    // Excel does not accept a totals row on a table that has no header row. It also
+    // does not accept one where a column's totals row cell holds content that this
+    // class could not describe as a label or an aggregate function, since the
+    // exported cell value would then disagree with the table's declared totals row.
+    // A column whose totals row cell is simply empty does not have that problem, so
+    // a totals row with nothing but blank cells stays a valid, shown totals row.
+    bool bAnyColumnHasUndescribedContent = std::any_of(
+        aTotalValues.begin(), aTotalValues.end(), [](const TableColumnAttributes& attr) {
+            return attr.mbHasContent && !attr.maTotalsRowLabel.has_value()
+                   && !attr.maTotalsFunction.has_value();
+        });
+    bool bExportTotals = rData.HasHeader() && rData.HasTotals() && !bAnyColumnHasUndescribedContent;
+
+    // if the Total row has ever been shown it will be true
+    bool hasAnySetValue = bExportTotals;
 
     pTableStrm->startElement( XML_table,
         XML_xmlns, rStrm.getNamespaceURL(OOX_NS(xls)).toUtf8(),
@@ -219,7 +227,7 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
         XML_ref, XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), aRange),
         XML_tableType, tableType,
         XML_headerRowCount, ToPsz10(rData.HasHeader()),
-        XML_totalsRowCount, ToPsz10(rData.HasTotals()),
+        XML_totalsRowCount, ToPsz10(bExportTotals),
         XML_totalsRowShown, (hasAnySetValue ? nullptr : ToPsz10(false)) // we don't support that but
         // if there are totals or any total row attribute is set they are shown
         // OOXTODO: XML_comment, ...,
@@ -256,7 +264,7 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
     const std::vector< TableColumnModel >& rTableColumnModel = rData.GetTableColumnModel();
     if (!rColNames.empty())
     {
-        // rColNames and aTotalValues size should always be equal
+        // rColNames and aTotalValues sizes should always be equal
         assert((rColNames.size() == aTotalValues.size()) &&
                "XclExpTables::SaveTableXml - mismatch between column names and total values");
 
@@ -285,8 +293,8 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
                     XML_id, OString::number(i+1),
                     XML_uniqueName, uniqueName,
                     XML_name, rColNames[i].toUtf8(),
-                    XML_totalsRowLabel, (i < aTotalValues.size() ? aTotalValues[i].maTotalsRowLabel : std::nullopt),
-                    XML_totalsRowFunction, (i < aTotalValues.size() ? aTotalValues[i].maTotalsFunction : std::nullopt)
+                    XML_totalsRowLabel, (bExportTotals && i < aTotalValues.size() ? aTotalValues[i].maTotalsRowLabel : std::nullopt),
+                    XML_totalsRowFunction, (bExportTotals && i < aTotalValues.size() ? aTotalValues[i].maTotalsFunction : std::nullopt)
                     // OOXTODO: XML_dataCellStyle, ...,
                     // OOXTODO: XML_dataDxfId, ...,
                     // OOXTODO: XML_headerRowCellStyle, ...,
@@ -313,7 +321,7 @@ void XclExpTables::SaveTableXml( XclExpXmlStream& rStrm, const Entry& rEntry )
                 pTableStrm->singleElement(XML_xmlColumnPr, pXmlColumnPrAttrList);
             }
 
-            if (i < aTotalValues.size() && aTotalValues[i].maTotalsFunction.has_value()
+            if (bExportTotals && i < aTotalValues.size() && aTotalValues[i].maTotalsFunction.has_value()
                 && aTotalValues[i].maTotalsFunction.value() == u"custom"_ustr)
             {
                 // write custom functions

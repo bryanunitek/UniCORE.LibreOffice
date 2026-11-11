@@ -322,7 +322,8 @@ SvxAdjustItem::SvxAdjustItem(const SvxAdjust eAdjst, const sal_uInt16 nId )
     nPropLetterSpacingMaximum(0),
     nPropScaleWidthMinimum(100),
     nPropScaleWidthMaximum(100),
-    bParagraphComposer(false)
+    bParagraphComposer(false),
+    bCompoundBased(false)
 {
     SetAdjust( eAdjst );
 }
@@ -342,6 +343,7 @@ bool SvxAdjustItem::operator==( const SfxPoolItem& rAttr ) const
            bParagraphComposer == rItem.bParagraphComposer &&
            nPropLetterSpacingMinimum == rItem.nPropLetterSpacingMinimum &&
            nPropLetterSpacingMaximum == rItem.nPropLetterSpacingMaximum &&
+           bCompoundBased == rItem.bCompoundBased &&
            nPropScaleWidthMinimum == rItem.nPropScaleWidthMinimum &&
            nPropScaleWidthMaximum == rItem.nPropScaleWidthMaximum;
 }
@@ -359,6 +361,7 @@ size_t SvxAdjustItem::hashCode() const
     o3tl::hash_combine(seed, bParagraphComposer);
     o3tl::hash_combine(seed, nPropLetterSpacingMinimum);
     o3tl::hash_combine(seed, nPropLetterSpacingMaximum);
+    o3tl::hash_combine(seed, bCompoundBased);
     o3tl::hash_combine(seed, nPropScaleWidthMinimum);
     o3tl::hash_combine(seed, nPropScaleWidthMaximum);
     return seed;
@@ -386,6 +389,11 @@ bool SvxAdjustItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         case MID_PARAGRAPH_COMPOSER :
         {
             rVal <<= bParagraphComposer;
+            break;
+        }
+        case MID_COMPOUND_BASED :
+        {
+            rVal <<= bCompoundBased;
             break;
         }
         default: ;//prevent warning
@@ -469,6 +477,12 @@ bool SvxAdjustItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         {
             ASSERT_CHANGE_REFCOUNTED_ITEM;
             bParagraphComposer = Any2Bool(rVal);
+        }
+        break;
+        case MID_COMPOUND_BASED :
+        {
+            ASSERT_CHANGE_REFCOUNTED_ITEM;
+            bCompoundBased = Any2Bool(rVal);
         }
         break;
         case MID_EXPAND_SINGLE :
@@ -630,8 +644,10 @@ SvxHyphenZoneItem::SvxHyphenZoneItem( const bool bHyph, const sal_uInt16 nId ) :
     nTextHyphenZoneSpread(0),
     nKeepType(css::text::ParagraphHyphenationKeepType::COLUMN),
     bKeepLine(false),
+    bSplitCompoundWord(false),
     nCompoundMinLead(2),
-    nCompoundMinTrail(2)
+    nCompoundMinTrail(2),
+    nLevel(50)
 {
 }
 
@@ -686,11 +702,17 @@ bool    SvxHyphenZoneItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) con
         case MID_HYPHEN_KEEP_LINE:
             rVal <<= bKeepLine;
         break;
+        case MID_HYPHEN_SPLIT_COMPOUND_WORD:
+            rVal <<= bSplitCompoundWord;
+        break;
         case MID_HYPHEN_COMPOUND_MIN_LEAD:
             rVal <<= static_cast<sal_Int16>(nCompoundMinLead);
         break;
         case MID_HYPHEN_COMPOUND_MIN_TRAIL:
             rVal <<= static_cast<sal_Int16>(nCompoundMinTrail);
+        break;
+        case MID_HYPHEN_LEVEL:
+            rVal <<= static_cast<sal_Int16>(nLevel);
         break;
     }
     return true;
@@ -703,7 +725,7 @@ bool SvxHyphenZoneItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 
     if( nMemberId != MID_IS_HYPHEN && nMemberId != MID_HYPHEN_NO_CAPS &&
                 nMemberId != MID_HYPHEN_NO_LAST_WORD && nMemberId != MID_HYPHEN_KEEP &&
-                nMemberId != MID_HYPHEN_KEEP_LINE )
+                nMemberId != MID_HYPHEN_KEEP_LINE && nMemberId != MID_HYPHEN_SPLIT_COMPOUND_WORD )
     {
         if(!(rVal >>= nNewVal))
             return false;
@@ -756,11 +778,17 @@ bool SvxHyphenZoneItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         case  MID_HYPHEN_KEEP_LINE:
             bKeepLine = Any2Bool(rVal);
         break;
+        case  MID_HYPHEN_SPLIT_COMPOUND_WORD:
+            bSplitCompoundWord = Any2Bool(rVal);
+        break;
         case MID_HYPHEN_COMPOUND_MIN_LEAD:
             nCompoundMinLead = static_cast<sal_uInt8>(nNewVal);
         break;
         case MID_HYPHEN_COMPOUND_MIN_TRAIL:
             nCompoundMinTrail = static_cast<sal_uInt8>(nNewVal);
+        break;
+        case MID_HYPHEN_LEVEL:
+            nLevel = static_cast<sal_uInt8>(nNewVal);
         break;
     }
     return true;
@@ -788,7 +816,9 @@ bool SvxHyphenZoneItem::operator==( const SfxPoolItem& rAttr ) const
             && rItem.nTextHyphenZonePage == nTextHyphenZonePage
             && rItem.nTextHyphenZoneSpread == nTextHyphenZoneSpread
             && rItem.bKeepLine == bKeepLine
-            && rItem.nKeepType == nKeepType );
+            && rItem.bSplitCompoundWord == bSplitCompoundWord
+            && rItem.nKeepType == nKeepType
+            && rItem.nLevel == nLevel );
 }
 
 SvxHyphenZoneItem* SvxHyphenZoneItem::Clone( SfxItemPool * ) const
@@ -819,6 +849,7 @@ bool SvxHyphenZoneItem::GetPresentation
                     OUString::number( nCompoundMinTrail ) + cpDelimTmp +
                     OUString::number( nMaxHyphens ) + cpDelimTmp +
                     OUString::number( nMinWordLength ) + cpDelimTmp +
+                    OUString::number( 100 - nLevel ) + cpDelimTmp +
                     GetMetricText( nTextHyphenZone, eCoreUnit, ePresUnit, &rIntl ) +
                         " " + EditResId(GetMetricId(ePresUnit)) +
                     GetMetricText( nTextHyphenZoneAlways, eCoreUnit, ePresUnit, &rIntl ) +
@@ -838,8 +869,8 @@ bool SvxHyphenZoneItem::GetPresentation
 
             if ( bKeep )
             {
-                rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_TRUE) +
-                                 cpDelimTmp + OUString::number( nKeepType );
+                rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_KEEP_TRUE) +
+                                 cpDelimTmp + OUString::number( nKeepType ) + " ";
                 if ( bKeepLine )
                     rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_LINE_TRUE);
                 else
@@ -848,6 +879,8 @@ bool SvxHyphenZoneItem::GetPresentation
             else
                 rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_FALSE);
 
+            if ( bSplitCompoundWord )
+                rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_SPLIT_COMPOUND_WORD_TRUE);
 
             return true;
         }
@@ -862,14 +895,24 @@ bool SvxHyphenZoneItem::GetPresentation
                     EditResId(RID_SVXITEMS_HYPHEN_MINLEAD).replaceAll("%1", OUString::number(nMinLead)) +
                     cpDelimTmp +
                     EditResId(RID_SVXITEMS_HYPHEN_MINTRAIL).replaceAll("%1", OUString::number(nMinTrail)) +
-                    cpDelimTmp +
-                    EditResId(RID_SVXITEMS_HYPHEN_COMPOUND_MINLEAD).replaceAll("%1", OUString::number(nCompoundMinLead)) +
-                    cpDelimTmp +
-                    EditResId(RID_SVXITEMS_HYPHEN_COMPOUND_MINTRAIL).replaceAll("%1", OUString::number(nCompoundMinTrail)) +
+                    ( nCompoundMinLead == 2
+                        ? EMPTY_OUSTRING
+                        : cpDelimTmp +
+                            EditResId(RID_SVXITEMS_HYPHEN_COMPOUND_MINLEAD).replaceAll("%1", OUString::number(nCompoundMinLead)) ) +
+                    ( nCompoundMinTrail == 2
+                        ? EMPTY_OUSTRING
+                        : cpDelimTmp +
+                            EditResId(RID_SVXITEMS_HYPHEN_COMPOUND_MINTRAIL).replaceAll("%1", OUString::number(nCompoundMinTrail)) ) +
                     cpDelimTmp +
                     EditResId(RID_SVXITEMS_HYPHEN_MAX).replaceAll("%1", OUString::number(nMaxHyphens)) +
-                    cpDelimTmp +
-                    EditResId(RID_SVXITEMS_HYPHEN_MINWORDLEN).replaceAll("%1", OUString::number(nMinWordLength));
+                    ( ( nMinWordLength == 0 || nMinWordLength == 4 )
+                        ? EMPTY_OUSTRING
+                        : cpDelimTmp +
+                             EditResId(RID_SVXITEMS_HYPHEN_MINWORDLEN).replaceAll("%1", OUString::number(nMinWordLength)) ) +
+                    ( nLevel == 50
+                        ? EMPTY_OUSTRING
+                        : cpDelimTmp +
+                            EditResId(RID_SVXITEMS_HYPHEN_LEVEL).replaceAll("$(ARG1)", OUString::number(100 - nLevel)) );
 
             if ( nTextHyphenZone > 0 || nTextHyphenZoneAlways > 0 ||
                  nTextHyphenZoneColumn > 0 || nTextHyphenZonePage > 0 ||
@@ -900,7 +943,7 @@ bool SvxHyphenZoneItem::GetPresentation
 
             if ( bKeep )
             {
-                rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_TRUE) + cpDelimTmp;
+                rText += cpDelimTmp;
 
                 switch ( nKeepType )
                 {
@@ -922,12 +965,15 @@ bool SvxHyphenZoneItem::GetPresentation
                 }
 
                 if ( bKeepLine )
-                    rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_LINE_TRUE);
+                    rText += " " + EditResId(RID_SVXITEMS_HYPHEN_KEEP_LINE_TRUE);
                 else
-                    rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_LINE_FALSE);
+                    rText += " " + EditResId(RID_SVXITEMS_HYPHEN_KEEP_LINE_FALSE);
             }
             else
-                rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_FALSE);
+                rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_KEEP_FALSE);
+
+            if ( bSplitCompoundWord )
+                rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_SPLIT_COMPOUND_WORD_TRUE);
 
             return true;
         }

@@ -1148,9 +1148,6 @@ static void doc_removeTextContext(LibreOfficeKitDocument* pThis,
                                   unsigned nLOKWindowId,
                                   int nCharBefore,
                                   int nCharAfter);
-static void doc_sendDialogEvent(LibreOfficeKitDocument* pThis,
-                               unsigned long long int nLOKWindowId,
-                               const char* pArguments);
 static void doc_postWindowKeyEvent(LibreOfficeKitDocument* pThis,
                                    unsigned nLOKWindowId,
                                    int nType,
@@ -1298,10 +1295,6 @@ static void doc_sendContentControlEvent(LibreOfficeKitDocument* pThis, const cha
 static void doc_setViewTimezone(LibreOfficeKitDocument* pThis, int nId, const char* timezone);
 
 static void doc_setViewReadOnly(LibreOfficeKitDocument* pThis, int nId, const bool readonly);
-
-static void doc_setAllowChangeComments(LibreOfficeKitDocument* pThis, int nId, const bool allow);
-
-static void doc_setAllowManageRedlines(LibreOfficeKitDocument* pThis, int nId, bool allow);
 
 static void doc_setAccessibilityState(LibreOfficeKitDocument* pThis, int nId, bool bEnabled);
 
@@ -1473,7 +1466,6 @@ LibLODocument_Impl::LibLODocument_Impl(uno::Reference <css::lang::XComponent> xC
         m_pDocumentClass->postWindowKeyEvent = doc_postWindowKeyEvent;
         m_pDocumentClass->postMouseEvent = doc_postMouseEvent;
         m_pDocumentClass->postWindowMouseEvent = doc_postWindowMouseEvent;
-        m_pDocumentClass->sendDialogEvent = doc_sendDialogEvent;
         m_pDocumentClass->postUnoCommand = doc_postUnoCommand;
         m_pDocumentClass->setTextSelection = doc_setTextSelection;
         m_pDocumentClass->setWindowTextSelection = doc_setWindowTextSelection;
@@ -1536,9 +1528,6 @@ LibLODocument_Impl::LibLODocument_Impl(uno::Reference <css::lang::XComponent> xC
         m_pDocumentClass->getA11yCaretPosition = doc_getA11yCaretPosition;
 
         m_pDocumentClass->setViewReadOnly = doc_setViewReadOnly;
-
-        m_pDocumentClass->setAllowChangeComments = doc_setAllowChangeComments;
-        m_pDocumentClass->setAllowManageRedlines = doc_setAllowManageRedlines;
 
         m_pDocumentClass->getPresentationInfo = doc_getPresentationInfo;
         m_pDocumentClass->createSlideRenderer = doc_createSlideRenderer;
@@ -2728,10 +2717,6 @@ static void lo_registerAnyInputCallback(LibreOfficeKit* pThis,
 static void lo_registerFileSaveDialogCallback(LibreOfficeKit* pThis,
                        LibreOfficeKitFileSaveDialogCallback pFileSaveDialogCallback);
 
-static void lo_sendDialogEvent(LibreOfficeKit* pThis,
-                               unsigned long long int nLOKWindowId,
-                               const char* pArguments);
-
 static void lo_setOption(LibreOfficeKit* pThis, const char* pOption, const char* pValue);
 
 static void lo_dumpState(LibreOfficeKit* pThis, const char* pOptions, char** pState);
@@ -2765,7 +2750,6 @@ LibLibreOffice_Impl::LibLibreOffice_Impl()
         m_pOfficeClass->runMacro = lo_runMacro;
         m_pOfficeClass->signDocument = lo_signDocument;
         m_pOfficeClass->runLoop = lo_runLoop;
-        m_pOfficeClass->sendDialogEvent = lo_sendDialogEvent;
         m_pOfficeClass->setOption = lo_setOption;
         m_pOfficeClass->dumpState = lo_dumpState;
         m_pOfficeClass->extractRequest = lo_extractRequest;
@@ -2952,8 +2936,24 @@ static LibreOfficeKitDocument* lo_documentLoadWithOptions(LibreOfficeKit* pThis,
         sal_Int16 nMacroExecMode = document::MacroExecMode::USE_CONFIG;
 #else
         const OUString aEnableMacrosExecution = extractParameter(aOptions, u"EnableMacrosExecution");
-        sal_Int16 nMacroExecMode = aEnableMacrosExecution == "true" ? document::MacroExecMode::USE_CONFIG :
-            document::MacroExecMode::NEVER_EXECUTE;
+        sal_Int16 nMacroExecMode;
+        if (aEnableMacrosExecution == "true")
+        {
+            nMacroExecMode = document::MacroExecMode::USE_CONFIG;
+        }
+        else
+        {
+            nMacroExecMode = document::MacroExecMode::NEVER_EXECUTE;
+            // also set the global flag so IsMacroDisabled() returns true,
+            // blocking share-location scripts that bypass the per-document
+            // MacroExecutionMode check. Affects this per-document process instance,
+            // may require re-visiting when/if CODA gets macro support.
+            std::shared_ptr<comphelper::ConfigurationChanges> xChanges =
+                comphelper::ConfigurationChanges::create();
+            officecfg::Office::Common::Security::Scripting::DisableMacrosExecution::set(
+                true, xChanges);
+            xChanges->commit();
+        }
 #endif
 
         // set AsTemplate explicitly false to be able to load template files
@@ -3755,7 +3755,7 @@ static int doc_saveAs(LibreOfficeKitDocument* pThis, const char* sUrl, const cha
         // Check if watermark for pdf is passed by filteroptions...
         // It is not a real filter option so it must be filtered out.
         OUString watermarkText;
-        std::u16string_view sFullSheetPreview;
+        bool bFullSheetPreview = false;
         int aIndex = -1;
         if ((aIndex = aFilterOptions.indexOf(",Watermark=")) >= 0)
         {
@@ -3767,11 +3767,9 @@ static int doc_saveAs(LibreOfficeKitDocument* pThis, const char* sUrl, const cha
         if ((aIndex = aFilterOptions.indexOf(",FullSheetPreview=")) >= 0)
         {
             int bIndex = aFilterOptions.indexOf("FULLSHEETPREVEND");
-            sFullSheetPreview = aFilterOptions.subView(aIndex+18, bIndex-(aIndex+18));
+            bFullSheetPreview = aFilterOptions.subView(aIndex+18, bIndex-(aIndex+18)) == u"true";
             aFilterOptions = OUString::Concat(aFilterOptions.subView(0, aIndex)) + aFilterOptions.subView(bIndex+16);
         }
-
-        bool bFullSheetPreview = sFullSheetPreview == u"true";
 
         OUString filePassword;
         if ((aIndex = aFilterOptions.indexOf(",Password=")) >= 0)
@@ -3785,7 +3783,7 @@ static int doc_saveAs(LibreOfficeKitDocument* pThis, const char* sUrl, const cha
         if ((aIndex = aFilterOptions.indexOf(",PasswordToModify=")) >= 0)
         {
             int bIndex = aFilterOptions.indexOf("PASSWORDTOMODIFYEND");
-            filePassword = aFilterOptions.subView(aIndex + 18, bIndex - (aIndex + 18));
+            filePasswordToModify = aFilterOptions.subView(aIndex + 18, bIndex - (aIndex + 18));
             aFilterOptions = OUString::Concat(aFilterOptions.subView(0, aIndex))
                              + aFilterOptions.subView(bIndex + 19);
         }
@@ -3797,7 +3795,6 @@ static int doc_saveAs(LibreOfficeKitDocument* pThis, const char* sUrl, const cha
         {
             int bIndex = aFilterOptions.indexOf("PDFVEREND");
             std::u16string_view sPdfVer = aFilterOptions.subView(aIndex+8, bIndex-(aIndex+8));
-            aFilterOptions = OUString::Concat(aFilterOptions.subView(0, aIndex)) + aFilterOptions.subView(bIndex+9);
 
             if (o3tl::equalsIgnoreAsciiCase(sPdfVer, u"PDF/A-1b"))
                 pdfVer = 1;
@@ -3820,6 +3817,8 @@ static int doc_saveAs(LibreOfficeKitDocument* pThis, const char* sUrl, const cha
                 SetLastExceptionMsg(u"wrong PDF version"_ustr);
                 return false;
             }
+
+            aFilterOptions = OUString::Concat(aFilterOptions.subView(0, aIndex)) + aFilterOptions.subView(bIndex+9);
         }
 
         // 'TakeOwnership' == this is a 'real' SaveAs (that is, the document
@@ -5127,16 +5126,6 @@ public:
 
 } // anonymous namespace
 
-static void doc_sendDialogEvent(LibreOfficeKitDocument* /*pThis*/, unsigned long long int /*nWindowId*/, const char* /*pArguments*/)
-{
-    return;
-}
-
-static void lo_sendDialogEvent(LibreOfficeKit* /*pThis*/, unsigned long long int /*nWindowId*/, const char* /*pArguments*/)
-{
-    return;
-}
-
 static void reInitDictionaryList()
 {
     uno::Reference<css::linguistic2::XSearchableDictionaryList> xDicList
@@ -5242,22 +5231,10 @@ static void lo_setOption(LibreOfficeKit* /*pThis*/, const char *pOption, const c
 #ifdef LINUX
     else if (strcmp(pOption, "addfont") == 0)
     {
-        if (memcmp(pValue, "file://", 7) == 0)
-            pValue += 7;
-
-        int fd = open(pValue, O_RDONLY);
-        if (fd == -1)
-        {
-            std::cerr << "Could not open font file '" << pValue << "': " << strerror(errno) << std::endl;
-            return;
-        }
-
-        OUString sMagicFileName = "file:///:FD:/" + OUString::number(fd);
-
         SolarMutexGuard aGuard;
         OutputDevice *pDevice = Application::GetDefaultDevice();
         OutputDevice::ImplClearAllFontData(true);
-        pDevice->AddTempDevFont(sMagicFileName, u""_ustr);
+        pDevice->AddTempDevFont(OUString::fromUtf8(pValue), u""_ustr);
         OutputDevice::ImplRefreshAllFontData(true);
     }
 #endif
@@ -5310,11 +5287,6 @@ static bool isCommandAllowed(std::u16string_view command)
     SfxViewShell* pViewShell = SfxViewShell::Current();
     if (!pViewShell || !pViewShell->IsLokReadOnlyView())
         return true;
-
-    if (command == u".uno:Save")
-    {
-        return pViewShell->IsAllowChangeComments() || pViewShell->IsAllowManageRedlines();
-    }
 
     if (command == u".uno:TransformDialog")
     {
@@ -5685,7 +5657,7 @@ static void doc_setWindowTextSelection(LibreOfficeKitDocument* /*pThis*/, unsign
     }
 
 
-    Size aOffset(pWindow->GetOutOffXPixel(), pWindow->GetOutOffYPixel());
+    Size aOffset(pWindow->GetDeviceOriginX(), pWindow->GetDeviceOriginY());
     Point aCursorPos(nX, nY);
     aCursorPos.Move(aOffset);
     sal_uInt16 nModifier = swap ? KEY_MOD1 + KEY_MOD2 : KEY_SHIFT;
@@ -7557,26 +7529,6 @@ static void doc_setViewReadOnly(SAL_UNUSED_PARAMETER LibreOfficeKitDocument* /*p
     SfxLokHelper::setViewReadOnly(nId, readOnly);
 }
 
-static void doc_setAllowChangeComments(SAL_UNUSED_PARAMETER LibreOfficeKitDocument* /*pThis*/, int nId, const bool allow)
-{
-    comphelper::ProfileZone aZone("doc_setAllowChangeComments");
-
-    SolarMutexGuard aGuard;
-    SetLastExceptionMsg();
-
-    SfxLokHelper::setAllowChangeComments(nId, allow);
-}
-
-static void doc_setAllowManageRedlines(SAL_UNUSED_PARAMETER LibreOfficeKitDocument* /*pThis*/, int nId, bool allow)
-{
-    comphelper::ProfileZone aZone("doc_setAllowManageRedlines");
-
-    SolarMutexGuard aGuard;
-    SetLastExceptionMsg();
-
-    SfxLokHelper::setAllowManageRedlines(nId, allow);
-}
-
 static void doc_setAccessibilityState(SAL_UNUSED_PARAMETER LibreOfficeKitDocument* pThis, int nId, bool nEnabled)
 {
     SolarMutexGuard aGuard;
@@ -8159,6 +8111,9 @@ static int lo_initialize(LibreOfficeKit* pThis, const char* pAppPath, const char
 
     if (const char* pHostExemptVerifyHost = ::getenv("LOK_HOST_ALLOWLIST_EXEMPT_VERIFY_HOST"))
         HostFilter::setAllowedHostsExemptVerifyHost(strncmp(pHostExemptVerifyHost,"1", 1) == 0);
+
+    if (const char* pExtRefPaths = ::getenv("LOK_ALLOWED_EXTREF_PATHS"))
+        HostFilter::setAllowedExtRefPaths(pExtRefPaths);
 
     // What stage are we at ?
     if (pThis == nullptr)

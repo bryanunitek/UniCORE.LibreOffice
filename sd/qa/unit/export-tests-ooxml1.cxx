@@ -541,6 +541,7 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testN828390_5)
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testLostPlaceholders)
 {
     createSdImpressDoc("pptx/LostPlaceholder.odp");
+    saveAndReload(TestFilter::PPTX);
 
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
     CPPUNIT_ASSERT(pXImpressDocument);
@@ -769,7 +770,7 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testFdo90607)
     SdrTextObj* pTxtObj = DynCastSdrTextObj(pPage->GetObj(1));
     CPPUNIT_ASSERT_MESSAGE("no text object", pTxtObj != nullptr);
     OutlinerParaObject* pOutlinerParagraphObject = pTxtObj->GetOutlinerParaObject();
-    const sal_Int16 nDepth = pOutlinerParagraphObject->GetDepth(0);
+    const sal_Int16 nDepth = pOutlinerParagraphObject->GetNumberingDepth(0);
     CPPUNIT_ASSERT_MESSAGE("not equal", nDepth != -1);
 }
 
@@ -889,7 +890,7 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testTdf134862)
                                  nWritingMode);
 }
 
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testRightToLeftParaghraph)
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testRightToLeftParagraph)
 {
     createSdImpressDoc("pptx/rightToLeftParagraph.pptx");
 
@@ -1022,7 +1023,7 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testBulletMarginAndIndentation)
                                  pNumFmt->GetNumRule().GetLevel(0).GetFirstLineOffset());
 }
 
-CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testParaMarginAndindentation)
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testParaMarginAndIndentation)
 {
     createSdImpressDoc("pptx/paraMarginAndIndentation.pptx");
 
@@ -1116,7 +1117,7 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testTableCellBorder)
 
     xCellPropSet->getPropertyValue(u"LeftBorder"_ustr) >>= aBorderLine;
     // While importing the table cell border line width, it converts EMU->Hmm then divided result by 2.
-    // To get original value of LineWidth need to multiple by 2.
+    // To get original value of LineWidth need to multiply by 2.
     sal_Int32 nLeftBorder = aBorderLine.LineWidth * 2;
     nLeftBorder = oox::drawingml::convertHmmToEmu(nLeftBorder);
     CPPUNIT_ASSERT(nLeftBorder);
@@ -1245,7 +1246,7 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testTdf94238)
 {
     // Load document and export it to a temporary file.
     createSdImpressDoc("pptx/tdf94238.pptx");
-    save(TestFilter::PPTX);
+    saveAndReload(TestFilter::PPTX);
     uno::Reference<drawing::XDrawPagesSupplier> xDoc(mxComponent, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xDoc.is());
 
@@ -1288,7 +1289,7 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testPictureTransparency)
 {
     // Load document and export it to a temporary file.
     createSdImpressDoc("odp/image_transparency.odp");
-    save(TestFilter::PPTX);
+    saveAndReload(TestFilter::PPTX);
     uno::Reference<drawing::XDrawPagesSupplier> xDoc(mxComponent, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xDoc.is());
 
@@ -1335,7 +1336,7 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest1, testRoundtripOwnLineStyles)
     }
 
     // Save to pptx, reload and compare the LineDash values
-    save(TestFilter::PPTX);
+    saveAndReload(TestFilter::PPTX);
     uno::Reference<drawing::XDrawPagesSupplier> xDocpptx(mxComponent, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xDocpptx.is());
     uno::Reference<drawing::XDrawPage> xPagepptx(xDocpptx->getDrawPages()->getByIndex(0),

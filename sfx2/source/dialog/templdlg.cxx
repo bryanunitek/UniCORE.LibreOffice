@@ -244,22 +244,145 @@ SfxCommonTemplateDialog_Impl::StyleFiltersToolbarPopup::StyleFiltersToolbarPopup
                        u"StyleFiltersPopover"_ustr)
     , m_xFiltersTreeView(m_xBuilder->weld_tree_view(u"stylefilterstreeview"_ustr))
     , m_xOKButton(m_xBuilder->weld_button(u"ok"_ustr))
-
+    , m_bIsParaFamily(rStyleList.GetFamilyItem()->GetFamily() == SfxStyleFamily::Para)
 {
-    m_xFiltersTreeView->enable_toggle_buttons(weld::ColumnToggleType::Check);
-    for (const SfxFilterTuple& i : rStyleList.GetFamilyItem()->GetFilterList())
+    m_xFiltersTreeView->enable_toggle_buttons();
+    m_xFiltersTreeView->connect_toggled(
+        LINK(this, SfxCommonTemplateDialog_Impl::StyleFiltersToolbarPopup, StyleFilterCheckHdl));
+
+    const SfxStyleFamilyItem* pStyleFamilyItem = rStyleList.GetFamilyItem();
+
+    auto& rFamilySelectedFiltersSet
+        = rStyleList.m_aFamilySelectedFiltersSet[pStyleFamilyItem->GetFamily()];
+
+    const size_t nFamilySelectedFiltersSetSize = rFamilySelectedFiltersSet.size();
+
+    // Initially for other than the first style family the selected filters set only contains
+    // SfxStyleSearchBits::AllVisible. Selected filters only persist for the first style family.
+    bool bFamilySelectedFiltersSetOnlyContainsAllVisible
+        = rFamilySelectedFiltersSet.size() == 1
+          && rFamilySelectedFiltersSet.contains(SfxStyleSearchBits::AllVisible);
+
+    for (const SfxFilterTuple& i : pStyleFamilyItem->GetFilterList())
     {
         m_xFiltersTreeView->append();
         const int nRow = m_xFiltersTreeView->n_children() - 1;
-        if (rStyleList.m_aFamilySelectedFiltersSet[rStyleList.GetFamilyItem()->GetFamily()]
-                .contains(i.nFlags))
-            m_xFiltersTreeView->set_toggle(nRow, TriState::TRISTATE_TRUE);
+        if (bFamilySelectedFiltersSetOnlyContainsAllVisible)
+            m_xFiltersTreeView->set_toggle(nRow,TRISTATE_TRUE);
+        else if (rFamilySelectedFiltersSet.contains(i.nFlags))
+        {
+            if (i.nFlags == SfxStyleSearchBits::AllVisible)
+            {
+                // Set the All Styles entry TRISTATE_INDET when the selected filters set contains
+                // filters other than Hidden Styles.
+                if (nFamilySelectedFiltersSetSize == pStyleFamilyItem->GetFilterList().size())
+                    m_xFiltersTreeView->set_toggle(nRow, TRISTATE_TRUE);
+                else if (pStyleFamilyItem->GetFilterList().size() - nFamilySelectedFiltersSetSize == 1
+                         && !rFamilySelectedFiltersSet.contains(SfxStyleSearchBits::Hidden))
+                    m_xFiltersTreeView->set_toggle(nRow, TRISTATE_TRUE);
+                else
+                    m_xFiltersTreeView->set_toggle(nRow, TRISTATE_INDET);
+            }
+            else
+                m_xFiltersTreeView->set_toggle(nRow, TRISTATE_TRUE);
+        }
         else
-            m_xFiltersTreeView->set_toggle(nRow, TriState::TRISTATE_FALSE);
+        {
+            if (i.nFlags == SfxStyleSearchBits::AllVisible)
+            {
+                // Set the All Styles entry TRISTATE_INDET when the selected filters set contains
+                // filters other than Hidden Styles.
+                const size_t nSize = rFamilySelectedFiltersSet.size();
+                if (nSize == 1 && rFamilySelectedFiltersSet.contains(SfxStyleSearchBits::Hidden))
+                    m_xFiltersTreeView->set_toggle(nRow, TRISTATE_FALSE);
+                else if (nSize > 0)
+                    m_xFiltersTreeView->set_toggle(nRow, TRISTATE_INDET);
+                else
+                    m_xFiltersTreeView->set_toggle(nRow, TRISTATE_FALSE);
+            }
+            else
+                m_xFiltersTreeView->set_toggle(nRow, TRISTATE_FALSE);
+        }
         m_xFiltersTreeView->set_text(nRow, i.aName, 0);
         m_xFiltersTreeView->set_id(
             nRow, OUString::number(
                       static_cast<std::underlying_type<SfxStyleSearchBits>::type>(i.nFlags)));
+    }
+}
+
+IMPL_LINK(SfxCommonTemplateDialog_Impl::StyleFiltersToolbarPopup, StyleFilterCheckHdl,
+          const weld::TreeView::iter_col&, rRowCol, void)
+{
+    int index = m_xFiltersTreeView->get_iter_index_in_parent(rRowCol.first);
+
+    if (m_xFiltersTreeView->get_toggle(0) == TRISTATE_INDET)
+    {
+        // Set the All Styles entry unchecked when all filter entries are unchecked.
+        bool bAllStyleFiltersUnchecked = true;
+        m_xFiltersTreeView->all_foreach(
+            [this, &bAllStyleFiltersUnchecked](weld::TreeIter& rEntry)
+            {
+                if (m_xFiltersTreeView->get_iter_index_in_parent(rEntry) > 0) // skip All Styles
+                {
+                    if (m_xFiltersTreeView->get_toggle(rEntry) == TRISTATE_FALSE)
+                        return false;
+                    bAllStyleFiltersUnchecked = false;
+                    return true;
+                }
+                return false;
+            });
+        if (bAllStyleFiltersUnchecked)
+        {
+            m_xFiltersTreeView->set_toggle(0, TRISTATE_FALSE);
+            return;
+        }
+
+        if (m_bIsParaFamily)
+        {
+            // Only for paragraph style family.
+            // Set the All Styles entry checked when all filter entries are checked.
+            bool bAllStyleFiltersChecked = true;
+            m_xFiltersTreeView->all_foreach(
+                [this, &bAllStyleFiltersChecked](weld::TreeIter& rEntry)
+                {
+                    if (m_xFiltersTreeView->get_iter_index_in_parent(rEntry)
+                        > 0) // skip All Styles
+                    {
+                        if (m_xFiltersTreeView->get_toggle(rEntry) == TRISTATE_TRUE)
+                            return false;
+                        bAllStyleFiltersChecked = false;
+                        return true;
+                    }
+                    return false;
+                });
+            if (bAllStyleFiltersChecked)
+            {
+                m_xFiltersTreeView->set_toggle(0, TRISTATE_TRUE);
+                return;
+            }
+        }
+    }
+
+    if (index == 0) // All Styles
+    {
+        TriState eState = m_xFiltersTreeView->get_toggle(0);
+        m_xFiltersTreeView->all_foreach(
+            [this, &eState](weld::TreeIter& rEntry)
+            {
+                if (m_xFiltersTreeView->get_iter_index_in_parent(rEntry) > 0) // skip All Styles
+                {
+                    m_xFiltersTreeView->set_toggle(
+                        rEntry, eState == TRISTATE_FALSE ? TRISTATE_FALSE : TRISTATE_TRUE);
+                }
+                return false;
+            });
+    }
+    else if (index > 1)
+    {
+        // toggle the All Styles entry indeterminate
+        // gtk3 seems to require toggle false before toggle indeterminate to work
+        m_xFiltersTreeView->set_toggle(0, TRISTATE_FALSE);
+        m_xFiltersTreeView->set_toggle(0, TRISTATE_INDET);
     }
 }
 
@@ -336,7 +459,7 @@ IMPL_LINK_NOARG(SfxCommonTemplateDialog_Impl, FilterToolbarMenuHdl, const OUStri
         // fill the style filters set from the selected filters
         pFiltersTreeView->all_foreach([&pFiltersTreeView,
                                        &rFamilySelectedFiltersSet](weld::TreeIter& rEntry) {
-            if (pFiltersTreeView->get_toggle(rEntry) == TriState::TRISTATE_TRUE)
+            if (pFiltersTreeView->get_toggle(rEntry) == TRISTATE_TRUE)
             {
                 rFamilySelectedFiltersSet.insert(
                     static_cast<SfxStyleSearchBits>(pFiltersTreeView->get_id(rEntry).toUInt32()));
@@ -616,19 +739,22 @@ void SfxCommonTemplateDialog_Impl::FamilySelect(sal_uInt16 nEntry, bool bFillTre
 
     m_aStyleList.FamilySelect(nEntry, bFillTreeView);
 
-    // update Spotlight checkbox
-    SfxStyleFamily eFam = m_aStyleList.GetFamilyItem()->GetFamily();
-    bool bShowSpotlightCheckbox = m_aStyleList.HasStylesSpotlightFeature()
-                                  && (eFam == SfxStyleFamily::Para || eFam == SfxStyleFamily::Char);
-    mxSpotlightCheckbox->set_visible(bShowSpotlightCheckbox);
-    if (bShowSpotlightCheckbox)
+    if (const SfxStyleFamilyItem* pFamilyItem = m_aStyleList.GetFamilyItem())
     {
-        bool bActive = false;
-        if (eFam == SfxStyleFamily::Para)
-            bActive = m_aStyleList.IsSpotlightParaStyles();
-        else if (eFam == SfxStyleFamily::Char)
-            bActive = m_aStyleList.IsSpotlightCharStyles();
-        mxSpotlightCheckbox->set_active(bActive);
+        // update Spotlight checkbox
+        SfxStyleFamily eFam = pFamilyItem->GetFamily();
+        bool bShowSpotlightCheckbox = m_aStyleList.HasStylesSpotlightFeature()
+                                      && (eFam == SfxStyleFamily::Para || eFam == SfxStyleFamily::Char);
+        mxSpotlightCheckbox->set_visible(bShowSpotlightCheckbox);
+        if (bShowSpotlightCheckbox)
+        {
+            bool bActive = false;
+            if (eFam == SfxStyleFamily::Para)
+                bActive = m_aStyleList.IsSpotlightParaStyles();
+            else if (eFam == SfxStyleFamily::Char)
+                bActive = m_aStyleList.IsSpotlightCharStyles();
+            mxSpotlightCheckbox->set_active(bActive);
+        }
     }
 }
 
@@ -710,9 +836,11 @@ void SfxCommonTemplateDialog_Impl::LoadFactoryStyleFilter(SfxObjectShell* pObjec
     OUString sIndexes
         = aFactoryProps.getUnpackedValueOrDefault(u"ooSetupFactoryStyleFilter"_ustr, OUString());
 
-    auto vStyleIndexes = comphelper::string::split(sIndexes, ',');
+    auto vFamilySplit = comphelper::string::split(sIndexes, ';');
+    auto vStyleIndexes = comphelper::string::split(vFamilySplit[0], ',');
 
     // vStyleIndexes[0].toInt32() != 0xffff condition is for legacy purpose
+    // Hierarchical indicator is stored in the first entry
     if (!vStyleIndexes.empty() && vStyleIndexes[0].toInt32() != 0xffff)
     {
         m_aStyleList.m_bHierarchical = (vStyleIndexes[0].toUInt32() & 0x1000) != 0;
@@ -724,20 +852,27 @@ void SfxCommonTemplateDialog_Impl::LoadFactoryStyleFilter(SfxObjectShell* pObjec
         vStyleIndexes[0] = "0"; // All Visible Styles
     }
 
-    // fill active family selected filters set
-    if (SfxStyleFamilyItem* pFamilyItem = m_aStyleList.GetFamilyItem())
+    size_t i = 0;
+    for (SfxStyleFamilyItem& rFamilyItem : m_aStyleList.m_aStyleFamilies)
     {
+        if (i >= vFamilySplit.size())
+            break;
+
+        if (i > 0)
+            vStyleIndexes = comphelper::string::split(vFamilySplit[i], ',');
+
         auto& rFamilySelectedFiltersSet
-            = m_aStyleList.m_aFamilySelectedFiltersSet[pFamilyItem->GetFamily()];
+            = m_aStyleList.m_aFamilySelectedFiltersSet[rFamilyItem.GetFamily()];
         rFamilySelectedFiltersSet.clear();
-        size_t nFilterListSize = pFamilyItem->GetFilterList().size();
+        size_t nFilterListSize = rFamilyItem.GetFilterList().size();
         for (const auto& rsIndex : vStyleIndexes)
         {
             if (rsIndex.toUInt32() >= nFilterListSize)
                 continue;
-            const SfxFilterTuple& rFilterTuple = pFamilyItem->GetFilterList()[rsIndex.toUInt32()];
+            const SfxFilterTuple& rFilterTuple = rFamilyItem.GetFilterList()[rsIndex.toUInt32()];
             rFamilySelectedFiltersSet.insert(rFilterTuple.nFlags);
         }
+        i++;
     }
 
     m_aStyleList.m_aFamilyExpandedStyleEntriesSet.clear();
@@ -760,17 +895,23 @@ void SfxCommonTemplateDialog_Impl::SaveFactoryStyleFilter()
             if (m_aStyleList.m_aFamilySelectedFiltersSet[rFamilyItem.GetFamily()].contains(
                     rFilterTuple.nFlags))
             {
-                if (!sIndexes.isEmpty())
-                    sIndexes += "," + OUString::number(nIndex);
-                else
+                if (sIndexes.isEmpty())
                 {
-                    // store hierarchical flag in first index
+                    // store the hierarchical flag in the first index entry
                     sIndexes
                         += OUString::number(nIndex | (m_aStyleList.m_bHierarchical ? 0x1000 : 0));
                 }
+                else if (!sIndexes.endsWith(";"))
+                {
+                    sIndexes += "," + OUString::number(nIndex);
+                }
+                else
+                    sIndexes += OUString::number(nIndex);
             }
             nIndex++;
         }
+        sIndexes += ";";
+        nIndex = 0;
     }
 
     Sequence<PropertyValue> lProps{ comphelper::makePropertyValue(u"ooSetupFactoryStyleFilter"_ustr,

@@ -156,6 +156,8 @@ public:
 
     const ScStyleSheet* GetStyle( SCROW nRow ) const;
     void        ApplyStyleArea( SCROW nStartRow, SCROW nEndRow, const ScStyleSheet& rStyle );
+    void        AddCondFormat( SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex );
+    void        RemoveCondFormat( SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex );
 
     bool        HasAttrib( SCROW nRow1, SCROW nRow2, HasAttrFlags nMask ) const;
     bool        HasAttrib( SCROW nRow, HasAttrFlags nMask, SCROW* nStartRow = nullptr, SCROW* nEndRow = nullptr ) const;
@@ -390,9 +392,11 @@ public:
         SCROW nRow, SCTAB nTab, const OUString& rString, formula::FormulaGrammar::AddressConvention eConv,
         const ScSetStringParam* pParam = nullptr );
 
-    void SetEditText( SCROW nRow, std::unique_ptr<EditTextObject> pEditText );
+    void SetEditText( SCROW nRow, std::unique_ptr<EditTextObject> aEditText );
+    void SetEditText( SCROW nRow, EditTextObject aEditText );
     void SetEditText( sc::ColumnBlockPosition& rBlockPos, SCROW nRow, std::unique_ptr<EditTextObject> pEditText );
     void SetEditText( sc::ColumnBlockPosition& rBlockPos, SCROW nRow, const EditTextObject& rEditText );
+    void SetEditText( sc::ColumnBlockPosition& rBlockPos, SCROW nRow, EditTextObject&& rEditText );
     void SetEditText( SCROW nRow, const EditTextObject& rEditText, const SfxItemPool* pEditPool );
     void SetFormula( SCROW nRow, const ScTokenArray& rArray, formula::FormulaGrammar::Grammar eGram );
     void SetFormula( SCROW nRow, const OUString& rFormula, formula::FormulaGrammar::Grammar eGram );
@@ -549,8 +553,6 @@ public:
     void        ApplyStyle( SCROW nRow, const ScStyleSheet* rStyle );
     void        ApplySelectionLineStyle( const ScMarkData& rMark,
                                     const ::editeng::SvxBorderLine* pLine, bool bColorOnly );
-    void        AddCondFormat(SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex );
-    void        RemoveCondFormat(SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex );
 
     const ScStyleSheet* GetSelectionStyle( const ScMarkData& rMark, bool& rFound ) const;
     const ScStyleSheet* GetAreaStyle( bool& rFound, SCROW nRow1, SCROW nRow2 ) const;
@@ -598,7 +600,6 @@ public:
     bool GetDataEntries( SCROW nRow, std::set<ScTypedStrData>& rStrings) const;
 
     void UpdateInsertTabAbs(SCTAB nNewPos);
-    void AdjustRelativeTabRefs(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode);
     bool    TestTabRefAbs(SCTAB nTable) const;
     bool    GetNextSpellingCell(SCROW& nRow, bool bInSel, const ScMarkData& rData) const;
 
@@ -669,7 +670,7 @@ public:
     void BroadcastCells( const std::vector<SCROW>& rRows, SfxHintId nHint );
     void BroadcastRows( SCROW nStartRow, SCROW nEndRow, SfxHintId nHint );
 
-    // Spaklines
+    // Sparklines
     sc::SparklineCell* GetSparklineCell(SCROW nRow);
     void CreateSparklineCell(SCROW nRow, std::shared_ptr<sc::Sparkline> const& pSparkline);
     void DeleteSparklineCells(sc::ColumnBlockPosition& rBlockPos, SCROW nRow1, SCROW nRow2);
@@ -986,12 +987,12 @@ inline sal_uInt32 ScColumnData::GetNumberFormat( const ScInterpreterContext& rCo
     return pAttrArray->GetPattern( nRow )->GetNumberFormat( rContext );
 }
 
-inline void ScColumn::AddCondFormat( SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex )
+inline void ScColumnData::AddCondFormat( SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex )
 {
     pAttrArray->AddCondFormat( nStartRow, nEndRow, nIndex );
 }
 
-inline void ScColumn::RemoveCondFormat( SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex )
+inline void ScColumnData::RemoveCondFormat( SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex )
 {
     pAttrArray->RemoveCondFormat( nStartRow, nEndRow, nIndex );
 }
@@ -1033,7 +1034,7 @@ inline void ScColumn::ClearItems( SCROW nStartRow, SCROW nEndRow, const sal_uInt
 
 inline void ScColumn::SetPattern( SCROW nRow, const CellAttributeHolder& rHolder )
 {
-    return pAttrArray->SetPattern( nRow, rHolder );
+    pAttrArray->SetPattern( nRow, rHolder );
 }
 
 inline void ScColumn::SetPattern( SCROW nRow, const ScPatternAttr& rPattern )

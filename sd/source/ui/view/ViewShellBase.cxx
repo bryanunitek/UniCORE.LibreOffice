@@ -94,7 +94,6 @@ using ::sd::framework::FrameworkHelper;
 using namespace com::sun::star;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::container;
-using namespace com::sun::star::drawing::framework;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::uno;
 
@@ -457,14 +456,14 @@ OUString ViewShellBase::GetSelectionText(bool bCompleteWords, bool /*bOnlyASampl
         :   SfxViewShell::GetSelectionText(bCompleteWords);
 }
 
-bool ViewShellBase::HasSelection(bool bText) const
+bool ViewShellBase::HasSelection(bool bMustHaveText) const
 {
     std::shared_ptr<ViewShell> const pMainShell(GetMainViewShell());
     DrawViewShell *const pDrawViewShell(
             dynamic_cast<DrawViewShell*>(pMainShell.get()));
     return pDrawViewShell
-        ?   pDrawViewShell->HasSelection(bText)
-        :   SfxViewShell::HasSelection(bText);
+        ?   pDrawViewShell->HasSelection(bMustHaveText)
+        :   SfxViewShell::HasSelection(bMustHaveText);
 }
 
 void ViewShellBase::InnerResizePixel (const Point& rOrigin, const Size &rSize, bool)
@@ -735,9 +734,9 @@ void ViewShellBase::ReadUserDataSequence (
     // right view shell.
     switch (pShell->GetShellType())
     {
-        case ViewShell::ST_IMPRESS:
-        case ViewShell::ST_NOTES:
-        case ViewShell::ST_HANDOUT:
+        case ViewShell::ShellType::Impress:
+        case ViewShell::ShellType::Notes:
+        case ViewShell::ShellType::Handout:
         {
             OUString sViewURL;
             switch (dynamic_cast<DrawViewShell&>(*pShell).GetPageKind())

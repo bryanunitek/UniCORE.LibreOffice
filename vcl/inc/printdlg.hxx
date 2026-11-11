@@ -190,6 +190,7 @@ namespace vcl
         OUString                                maPageStr;
         OUString                                maNoPageStr;
         OUString                                maNoPreviewStr;
+        sal_Int32                               mnInitialPage;
         sal_Int32                               mnCurPage;
         sal_Int32                               mnCachedPages;
 
@@ -223,6 +224,9 @@ namespace vcl
         Idle maUpdatePreviewIdle;
         DECL_LINK(updatePreviewIdle, Timer*, void);
 
+        Timer maPageRangeUpdateTimer;
+        DECL_LINK(PageRangeUpdateTimerHdl, Timer*, void);
+
         DECL_LINK(ClickOKCancelHdl, weld::Button&, void);
         DECL_LINK(ClickForwardHdl, weld::Button&, void);
         DECL_LINK(ClickBackwardHdl, weld::Button&, void);
@@ -250,7 +254,7 @@ namespace vcl
         DECL_LINK( UIOption_RadioHdl, weld::Toggleable&, void );
         DECL_LINK( UIOption_SelectHdl, weld::ComboBox&, void );
         DECL_LINK( UIOption_SpinModifyHdl, weld::SpinButton&, void );
-        DECL_LINK( UIOption_EntryModifyHdl, weld::Entry&, void );
+        DECL_LINK(UIOption_EntryModifyHdl, weld::TextWidget&, void);
 
         css::beans::PropertyValue* getValueForWindow(weld::Widget*) const;
 
@@ -262,6 +266,7 @@ namespace vcl
         void readFromSettings();
         void setPaperOrientation( Orientation eOrientation, bool fromUser );
         void updateOrientationBox( bool bAutomatic = true );
+        void updatePaperSizeBox();
         void updatePageSize( int nOrientation );
         void updatePageRange( const sal_Int32 nPages );
         bool hasOrientationChanged() const;

@@ -39,6 +39,7 @@
 #include <swtable.hxx>
 #include <doc.hxx>
 #include <frmfmt.hxx>
+#include <frameformats.hxx>
 #include <wrtswtbl.hxx>
 #include <fmtfsize.hxx>
 #include <fmtornt.hxx>
@@ -301,7 +302,6 @@ public:
     {
         OUString const name(OUString::Concat(rNamePrefix) + "." + OUString::number(nLine+1));
         m_rFormatMap.try_emplace(&rFrameFormat, name);
-        if ( i != m_aFormatList.end() ) ++i;
         m_aFormatList.insert( i, &rFrameFormat );
         return ::std::optional<OUString>(name);
     }
@@ -493,7 +493,6 @@ static OUString lcl_xmltble_appendBoxPrefix(std::u16string_view rNamePrefix,
     {
         OUString const name(lcl_xmltble_appendBoxPrefix(rNamePrefix, nCol, nRow, bTop));
         m_rFormatMap.try_emplace(&rFrameFormat, name);
-        if ( i != m_aFormatList.end() ) ++i;
         m_aFormatList.insert( i, &rFrameFormat );
         return ::std::optional<OUString>(name);
     }

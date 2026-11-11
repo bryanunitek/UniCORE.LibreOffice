@@ -75,6 +75,7 @@
 #include <cellsuno.hxx>
 #include <NamedSheetViewImporter.hxx>
 #include <fmtuno.hxx>
+#include <docfunc.hxx>
 
 #include <svl/stritem.hxx>
 #include <editeng/eeitem.hxx>
@@ -233,11 +234,6 @@ public:
     /** Returns the XSheetCellRanges interface for the passed cell range addresses. */
     rtl::Reference<ScCellRangesObj> getCellRangeList( const ScRangeList& rRanges ) const;
 
-    /** Returns the XCellRange interface for a column. */
-    Reference< XCellRange > getColumn( sal_Int32 nCol ) const;
-    /** Returns the XCellRange interface for a row. */
-    Reference< XCellRange > getRow( sal_Int32 nRow ) const;
-
     /** Returns the XDrawPage interface of the draw page of the current sheet. */
     Reference< XDrawPage > getDrawPage() const;
     /** Returns the size of the entire drawing page in 1/100 mm. */
@@ -306,9 +302,11 @@ public:
         width set with the setBaseColumnWidth() function. */
     void                setDefaultColumnWidth( double fWidth );
     /** Sets column settings for a specific column range.
-        @descr  Column default formatting is converted directly, other settings
-        are cached and converted in the finalizeImport() call. */
+        @descr  Column default formatting is converted in the finalizeColumnFormats() call,
+        other settings are cached and converted in the finalizeImport() call. */
     void                setColumnModel( const ColumnModel& rModel );
+    /** Converts the column default formatting of all column models set so far. */
+    void                finalizeColumnFormats();
     /** Converts column default cell formatting. */
     void convertColumnFormat( sal_Int32 nFirstCol, sal_Int32 nLastCol, sal_Int32 nXfId );
 
@@ -388,6 +386,8 @@ private:
     ScRange             maUsedArea;         /// Used area of the sheet, and sheet index of the sheet.
     ColumnModel         maDefColModel;      /// Default column formatting.
     ColumnModelRangeMap maColModels;        /// Ranges of columns sorted by first column index.
+    ValueRange          maFormatCols{ -1 }; /// Columns with column default formatting not yet converted, or -1.
+    sal_Int32           mnFormatXfId = -1;  /// Cell format of maFormatCols.
     RowModel            maDefRowModel;      /// Default row formatting.
     RowModelRangeMap    maRowModels;        /// Ranges of rows sorted by first row index.
     std::vector< HyperlinkModel > maHyperlinks;       /// Cell ranges containing hyperlinks.
@@ -488,32 +488,6 @@ rtl::Reference<ScCellRangesObj> WorksheetGlobals::getCellRangeList( const ScRang
         xRanges->addRangeAddresses( rRanges, false );
     }
     return xRanges;
-}
-
-Reference< XCellRange > WorksheetGlobals::getColumn( sal_Int32 nCol ) const
-{
-    try
-    {
-        if (mxSheet)
-            return mxSheet->getScColumns()->getScTableColumnByIndex( nCol );
-    }
-    catch( Exception& )
-    {
-    }
-    return {};
-}
-
-Reference< XCellRange > WorksheetGlobals::getRow( sal_Int32 nRow ) const
-{
-    Reference< XCellRange > xRow;
-    try
-    {
-        xRow = mxSheet->getScRows()->GetTableRowByIndex( nRow );
-    }
-    catch( Exception& )
-    {
-    }
-    return xRow;
 }
 
 Reference< XDrawPage > WorksheetGlobals::getDrawPage() const
@@ -672,11 +646,19 @@ ScRange WorksheetGlobals::getCellRangeFromRectangle( const awt::Rectangle& rRect
 
 void WorksheetGlobals::setPageBreak( const PageBreakModel& rModel, bool bRowBreak )
 {
-    if( rModel.mbManual && (rModel.mnColRow > 0) )
-    {
-        PropertySet aPropSet( bRowBreak ? getRow( rModel.mnColRow ) : getColumn( rModel.mnColRow ) );
-        aPropSet.setProperty( PROP_IsStartOfNewPage, true );
-    }
+    if (!rModel.mbManual || rModel.mnColRow <= 0)
+        return;
+
+    ScDocShell* pDocSh = getScDocument().GetDocumentShell();
+    if (!pDocSh)
+        return;
+
+    SCTAB nTab = getSheetIndex();
+    ScAddress aPos
+        = bRowBreak ? ScAddress(0, rModel.mnColRow, nTab) : ScAddress(rModel.mnColRow, 0, nTab);
+
+    ScDocFunc& rFunc = pDocSh->GetDocFunc();
+    rFunc.InsertPageBreak(!bRowBreak, aPos, true, true);
 }
 
 void WorksheetGlobals::setHyperlink( const HyperlinkModel& rModel )
@@ -827,9 +809,25 @@ void WorksheetGlobals::setColumnModel( const ColumnModel& rModel )
         // insert the column model, if it has not been merged with another
         if( bInsertModel )
             maColModels[ nFirstCol ] = ColumnModelRange( rModel, nLastCol );
-        // set column formatting directly
-        convertColumnFormat( nFirstCol, nLastCol, rModel.mnXfId );
+        // Neighbouring columns with the same cell format are converted as one range, so a run
+        // that reaches the last column applies to the columns not created yet as a whole.
+        if( (maFormatCols.mnFirst >= 0) && (maFormatCols.mnLast + 1 == nFirstCol) && (mnFormatXfId == rModel.mnXfId) )
+            maFormatCols.mnLast = nLastCol;
+        else
+        {
+            finalizeColumnFormats();
+            maFormatCols = ValueRange( nFirstCol, nLastCol );
+            mnFormatXfId = rModel.mnXfId;
+        }
     }
+}
+
+void WorksheetGlobals::finalizeColumnFormats()
+{
+    if( maFormatCols.mnFirst < 0 )
+        return;
+    convertColumnFormat( maFormatCols.mnFirst, maFormatCols.mnLast, mnFormatXfId );
+    maFormatCols = ValueRange( -1 );
 }
 
 void WorksheetGlobals::convertColumnFormat( sal_Int32 nFirstCol, sal_Int32 nLastCol, sal_Int32 nXfId )
@@ -973,21 +971,13 @@ void WorksheetGlobals::finalizeWorksheetImport()
         SCCOLROW nEndRow = static_cast<SCCOLROW>(aRange.aEnd.Row());
         aSpans.push_back(sc::ColRowSpan(nStartRow, nEndRow));
     }
-    ScDBCollection* pDocColl = rDoc.GetDBCollection();
-    if (!pDocColl->empty())
+    // The database range of a table gets its auto filter only after all sheets are imported, see
+    // TableBuffer::applyAutoFilters, so ask the table model instead.
+    for (const ScRange& rRange : getTables().getAutoFilterRanges(nTab))
     {
-        ScDBCollection::NamedDBs& rDBs = pDocColl->getNamedDBs();
-        for (const auto& rxDB : rDBs)
-        {
-            if (rxDB->GetTab() == nTab && rxDB->HasAutoFilter())
-            {
-                ScRange aRange;
-                rxDB->GetArea(aRange);
-                SCCOLROW nStartRow = static_cast<SCCOLROW>(aRange.aStart.Row());
-                SCCOLROW nEndRow = static_cast<SCCOLROW>(aRange.aEnd.Row());
-                aSpans.push_back(sc::ColRowSpan(nStartRow, nEndRow));
-            }
-        }
+        SCCOLROW nStartRow = static_cast<SCCOLROW>(rRange.aStart.Row());
+        SCCOLROW nEndRow = static_cast<SCCOLROW>(rRange.aEnd.Row());
+        aSpans.push_back(sc::ColRowSpan(nStartRow, nEndRow));
     }
     convertRows(aSpans);
     lclUpdateProgressBar( mxFinalProgress, 1.0 );
@@ -1074,7 +1064,7 @@ void WorksheetGlobals::insertHyperlink( const ScAddress& rAddress, const OUStrin
         SvxFieldItem aURLItem(aURLField, EE_FEATURE_FIELD);
         rEE.QuickInsertField(aURLItem, ESelection());
 
-        rDoc.setEditCell(rAddress, rEE.CreateTextObject());
+        rDoc.setEditCell(rAddress, std::make_unique<EditTextObject>(rEE.CreateTextObject()));
     }
     else
     {
@@ -1588,6 +1578,11 @@ void WorksheetHelper::setColumnModel( const ColumnModel& rModel )
     mrSheetGlob.setColumnModel( rModel );
 }
 
+void WorksheetHelper::finalizeColumnFormats()
+{
+    mrSheetGlob.finalizeColumnFormats();
+}
+
 void WorksheetHelper::setDefaultRowSettings( double fHeight, bool bCustomHeight, bool bHidden, bool bThickTop, bool bThickBottom )
 {
     mrSheetGlob.setDefaultRowSettings( fHeight, bCustomHeight, bHidden, bThickTop, bThickBottom );
@@ -1611,7 +1606,7 @@ void WorksheetHelper::putRichString( const ScAddress& rAddress, RichString& rStr
     rEE.SetSingleLine(bSingleLine);
 
     // The cell will own the text object instance returned from convert().
-    getDocImport().setEditCell(rAddress, rString.convert(rEE, pFirstPortionFont));
+    getDocImport().setEditCell(rAddress, std::make_unique<EditTextObject>(rString.convert(rEE, pFirstPortionFont)));
 
     rEE.SetSingleLine(false);
 }
@@ -1644,21 +1639,26 @@ void WorksheetHelper::finalizeNamedSheetViews()
     mrSheetGlob.finalizeNamedSheetViews();
 }
 
-void WorksheetHelper::setCellFormula( const ScAddress& rTokenAddress, const OUString& rTokenStr )
+void WorksheetHelper::setCellFormula(const ScAddress& rTokenAddress, const OUString& rTokenStr,
+                                     bool bDynamicArrayMaster)
 {
-    getFormulaBuffer().setCellFormula( rTokenAddress,  rTokenStr );
+    getFormulaBuffer().setCellFormula(rTokenAddress, rTokenStr, bDynamicArrayMaster);
 }
 
 void WorksheetHelper::setCellFormula(
     const ScAddress& rAddr, sal_Int32 nSharedId,
-    const OUString& rCellValue, sal_Int32 nValueType )
+    const OUString& rCellValue, sal_Int32 nValueType,
+    bool bDynamicArrayMaster)
 {
-    getFormulaBuffer().setCellFormula(rAddr, nSharedId, rCellValue, nValueType);
+    getFormulaBuffer().setCellFormula(rAddr, nSharedId, rCellValue, nValueType, bDynamicArrayMaster);
 }
 
-void WorksheetHelper::setCellArrayFormula(const ScRange& rRangeAddress, const ScAddress& rTokenAddress, const OUString& rTokenStr, bool bCachedSpill)
+void WorksheetHelper::setCellArrayFormula(const ScRange& rRangeAddress, const ScAddress& rTokenAddress,
+                                          const OUString& rTokenStr, bool bCachedSpill,
+                                          bool bDynamicArrayMaster)
 {
-    getFormulaBuffer().setCellArrayFormula(rRangeAddress,  rTokenAddress, rTokenStr, bCachedSpill);
+    getFormulaBuffer().setCellArrayFormula(rRangeAddress, rTokenAddress, rTokenStr, bCachedSpill,
+                                           bDynamicArrayMaster);
 }
 
 void WorksheetHelper::createSharedFormulaMapEntry(

@@ -44,6 +44,10 @@
 #include <sfx2/sfxbasemodel.hxx>
 #include <svx/signaturelinehelper.hxx>
 #include <sfx2/objsh.hxx>
+#include <sfx2/sfxuno.hxx>
+#include <svl/itemset.hxx>
+#include <svx/sdangitm.hxx>
+#include <svx/svxids.hrc>
 
 #include <sdr/contact/objectcontactofobjlistpainter.hxx>
 #include <tools/XPath.hxx>
@@ -649,18 +653,18 @@ CPPUNIT_TEST_FIXTURE(SvdrawTest, testVideoSnapshot)
 
 CPPUNIT_TEST_FIXTURE(SvdrawTest, testPageViewDrawLayerClip)
 {
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+        return;
+
     // Given a document with 2 pages, first page footer has an off-page line shape:
     loadFromFile(u"page-view-draw-layer-clip.docx");
 
     // When saving that document to PDF:
-    save(TestFilter::PDF_WRITER);
+    save(TestFilter::PDF);
 
     // Then make sure that line shape gets clipped:
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pDoc = parsePDFExport();
-    if (!pDoc)
-    {
-        return;
-    }
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pDoc = parsePDFExport(pPDFium);
     std::unique_ptr<vcl::pdf::PDFiumPage> pPage1 = pDoc->openPage(0);
     CPPUNIT_ASSERT_EQUAL(3, pPage1->getObjectCount());
     std::unique_ptr<vcl::pdf::PDFiumPage> pPage2 = pDoc->openPage(1);
@@ -689,6 +693,56 @@ CPPUNIT_TEST_FIXTURE(SvdrawTest, testRectangleObjectMove)
                          pRectangleObject->GetLogicRect());
 
     pPage->RemoveObject(0);
+}
+
+CPPUNIT_TEST_FIXTURE(SvdrawTest, testTransformRotationArguments)
+{
+    loadFromURL(u"private:factory/sdraw"_ustr);
+    SfxViewShell* pViewShell = SfxViewShell::Current();
+    CPPUNIT_ASSERT(pViewShell);
+    SfxItemPool& rPool = pViewShell->GetPool();
+
+    auto checkAngle = [&](const SfxItemSet& rSet, sal_uInt16 nSlot, sal_Int32 nExpected) {
+        const SfxPoolItem* pItem = nullptr;
+        CPPUNIT_ASSERT_EQUAL(SfxItemState::SET,
+                             rSet.GetItemState(rPool.GetWhichIDFromSlotID(nSlot), false, &pItem));
+        // The inherited integer factory used to create SfxInt32Item here, causing
+        // an assertion when the transform code requested an SdrAngleItem.
+        const auto* pAngle = dynamic_cast<const SdrAngleItem*>(pItem);
+        CPPUNIT_ASSERT(pAngle);
+        CPPUNIT_ASSERT_EQUAL(nExpected, pAngle->GetValue().get());
+    };
+
+    for (sal_Int32 nAngle : { 0, 4500, -4500 })
+    {
+        // Method arguments cover absolute and relative rotations, with an ordinary
+        // integer position argument as a control for the shared conversion path.
+        SfxAllItemSet aSet(rPool);
+        TransformParameters(
+            SID_ATTR_TRANSFORM,
+            { comphelper::makePropertyValue(u"TransformRotationAngle"_ustr, nAngle),
+              comphelper::makePropertyValue(u"TransformRotationDeltaAngle"_ustr, nAngle),
+              comphelper::makePropertyValue(u"TransformPosX"_ustr, sal_Int32(1234)) },
+            aSet);
+        checkAngle(aSet, SID_ATTR_TRANSFORM_ANGLE, nAngle);
+        checkAngle(aSet, SID_ATTR_TRANSFORM_DELTA_ANGLE, nAngle);
+        const auto aArguments = TransformItems(SID_ATTR_TRANSFORM, aSet);
+        CPPUNIT_ASSERT_EQUAL(nAngle,
+                             aArguments.getValue(u"TransformRotationAngle"_ustr).get<sal_Int32>());
+        CPPUNIT_ASSERT_EQUAL(
+            nAngle, aArguments.getValue(u"TransformRotationDeltaAngle"_ustr).get<sal_Int32>());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1234),
+                             aArguments.getValue(u"TransformPosX"_ustr).get<sal_Int32>());
+
+        // The rotation property uses the same factory without the method's
+        // formal-argument table.
+        SfxAllItemSet aPropertySet(rPool);
+        TransformParameters(
+            SID_ATTR_TRANSFORM_ANGLE,
+            { comphelper::makePropertyValue(u"TransformRotationAngle"_ustr, nAngle) },
+            aPropertySet);
+        checkAngle(aPropertySet, SID_ATTR_TRANSFORM_ANGLE, nAngle);
+    }
 }
 
 CPPUNIT_TEST_FIXTURE(SvdrawTest, testRectangleObjectRotate)
@@ -944,6 +998,147 @@ CPPUNIT_TEST_FIXTURE(SvdrawTest, testVisualSignResize)
     CPPUNIT_ASSERT_LESS(static_cast<sal_Int32>(10000), xShape->getSize().Height);
 #endif
 }
+
+CPPUNIT_TEST_FIXTURE(SvdrawTest, testGraphicClipPolyPolygonRoundTrip)
+{
+    // Create a draw document with a graphic-object shape:
+    loadFromURL(u"private:factory/sdraw"_ustr);
+    auto xFactory = mxComponent.queryThrow<lang::XMultiServiceFactory>();
+    auto xShape = xFactory->createInstance(u"com.sun.star.drawing.GraphicObjectShape"_ustr)
+                      .queryThrow<drawing::XShape>();
+    xShape->setPosition(awt::Point(1000, 1000));
+    xShape->setSize(awt::Size(5000, 4000));
+    auto xDrawPage = mxComponent.queryThrow<drawing::XDrawPagesSupplier>()
+                         ->getDrawPages()
+                         ->getByIndex(0)
+                         .queryThrow<drawing::XDrawPage>();
+    xDrawPage->add(xShape);
+    auto xShapeProps = xShape.queryThrow<beans::XPropertySet>();
+
+    // The default value of GraphicClipPolyPolygon is empty.
+    drawing::PolyPolygonBezierCoords aDefault;
+    xShapeProps->getPropertyValue(u"GraphicClipPolyPolygon"_ustr) >>= aDefault;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aDefault.Coordinates.getLength());
+
+    // When setting a clip polygon of two contours - an outer rectangle and a
+    // reverse-wound inner one, that is a frame with a hole:
+    drawing::PolyPolygonBezierCoords aClip;
+    aClip.Coordinates
+        = { { awt::Point(0, 0), awt::Point(5000, 0), awt::Point(5000, 4000), awt::Point(0, 4000) },
+            { awt::Point(1000, 1000), awt::Point(1000, 3000), awt::Point(4000, 3000),
+              awt::Point(4000, 1000) } };
+    aClip.Flags = { { drawing::PolygonFlags_NORMAL, drawing::PolygonFlags_NORMAL,
+                      drawing::PolygonFlags_NORMAL, drawing::PolygonFlags_NORMAL },
+                    { drawing::PolygonFlags_NORMAL, drawing::PolygonFlags_NORMAL,
+                      drawing::PolygonFlags_NORMAL, drawing::PolygonFlags_NORMAL } };
+    xShapeProps->setPropertyValue(u"GraphicClipPolyPolygon"_ustr, uno::Any(aClip));
+
+    // Then the property round-trips: the read-back polygon has the same
+    // contour count, point counts, and key coordinates in both contours.
+    drawing::PolyPolygonBezierCoords aRead;
+    xShapeProps->getPropertyValue(u"GraphicClipPolyPolygon"_ustr) >>= aRead;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aRead.Coordinates.getLength());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), aRead.Coordinates[0].getLength());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), aRead.Coordinates[1].getLength());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(5000), aRead.Coordinates[0][1].X);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aRead.Coordinates[0][1].Y);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1000), aRead.Coordinates[1][0].X);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1000), aRead.Coordinates[1][0].Y);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4000), aRead.Coordinates[1][2].X);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(3000), aRead.Coordinates[1][2].Y);
+
+    // Clearing the property restores the default empty value.
+    xShapeProps->setPropertyValue(u"GraphicClipPolyPolygon"_ustr,
+                                  uno::Any(drawing::PolyPolygonBezierCoords()));
+    drawing::PolyPolygonBezierCoords aCleared;
+    xShapeProps->getPropertyValue(u"GraphicClipPolyPolygon"_ustr) >>= aCleared;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aCleared.Coordinates.getLength());
 }
+
+CPPUNIT_TEST_FIXTURE(SvdrawTest, testGraphicClipPolyPolygonODFRoundTrip)
+{
+    // Create a draw document with a graphic-object shape carrying a clip polygon:
+    loadFromURL(u"private:factory/sdraw"_ustr);
+    auto xFactory = mxComponent.queryThrow<lang::XMultiServiceFactory>();
+    auto xShape = xFactory->createInstance(u"com.sun.star.drawing.GraphicObjectShape"_ustr)
+                      .queryThrow<drawing::XShape>();
+    xShape->setPosition(awt::Point(1000, 1000));
+    xShape->setSize(awt::Size(5000, 4000));
+    mxComponent.queryThrow<drawing::XDrawPagesSupplier>()
+        ->getDrawPages()
+        ->getByIndex(0)
+        .queryThrow<drawing::XDrawPage>()
+        ->add(xShape);
+    // Two contours - an outer rectangle and a reverse-wound inner one - so that the
+    // svg:d encoding of a second subpath after a close is exercised.
+    drawing::PolyPolygonBezierCoords aClip;
+    aClip.Coordinates
+        = { { awt::Point(0, 0), awt::Point(5000, 0), awt::Point(5000, 4000), awt::Point(0, 4000) },
+            { awt::Point(1000, 1000), awt::Point(1000, 3000), awt::Point(4000, 3000),
+              awt::Point(4000, 1000) } };
+    aClip.Flags = { { drawing::PolygonFlags_NORMAL, drawing::PolygonFlags_NORMAL,
+                      drawing::PolygonFlags_NORMAL, drawing::PolygonFlags_NORMAL },
+                    { drawing::PolygonFlags_NORMAL, drawing::PolygonFlags_NORMAL,
+                      drawing::PolygonFlags_NORMAL, drawing::PolygonFlags_NORMAL } };
+    xShape.queryThrow<beans::XPropertySet>()->setPropertyValue(u"GraphicClipPolyPolygon"_ustr,
+                                                               uno::Any(aClip));
+
+    // Save and reload as ODG; both contours survive the round-trip.
+    saveAndReload(TestFilter::ODG);
+    auto xReloadedShape = mxComponent.queryThrow<drawing::XDrawPagesSupplier>()
+                              ->getDrawPages()
+                              ->getByIndex(0)
+                              .queryThrow<drawing::XDrawPage>()
+                              ->getByIndex(0)
+                              .queryThrow<drawing::XShape>();
+    drawing::PolyPolygonBezierCoords aReloaded;
+    xReloadedShape.queryThrow<beans::XPropertySet>()->getPropertyValue(
+        u"GraphicClipPolyPolygon"_ustr)
+        >>= aReloaded;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aReloaded.Coordinates.getLength());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), aReloaded.Coordinates[0].getLength());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), aReloaded.Coordinates[1].getLength());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(5000), aReloaded.Coordinates[0][1].X);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aReloaded.Coordinates[0][1].Y);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1000), aReloaded.Coordinates[1][0].X);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1000), aReloaded.Coordinates[1][0].Y);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4000), aReloaded.Coordinates[1][2].X);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(3000), aReloaded.Coordinates[1][2].Y);
+}
+
+CPPUNIT_TEST_FIXTURE(SvdrawTest, testValidOrganizationChartExport)
+{
+    // The document contains a smartart diagram based on template "Horizontal Organization Chart".
+    // When the document was saved with our own version of data.xml, the exported file was invalid
+    // in regard to OOXML.
+
+    // load document
+    loadFromFile(u"cool16158_Horizontal_Organization_Chart.pptx");
+
+    // We need to make a change to the diagram to force creating an own data.xml file instead of
+    // using the GrabBag. When the implementation is changed to always write our own data.xml,
+    // this part can be removed from the test.
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                                 uno::UNO_QUERY);
+    uno::Reference<drawing::XShapes> xSmartArt(xDrawPage->getByIndex(0), uno::UNO_QUERY);
+    // Get the 1st text shape. There is a BGShape in indices before.
+    uno::Reference<drawing::XShape> xShape(xSmartArt->getByIndex(1), uno::UNO_QUERY);
+    // TextEdit: Insert a char at the start
+    SfxViewShell* pViewShell = SfxViewShell::Current();
+    CPPUNIT_ASSERT(pViewShell);
+    SdrView* pSdrView = pViewShell->GetDrawView();
+    SdrObject* pObject = SdrObject::getSdrObjectFromXShape(xShape);
+    pSdrView->SdrBeginTextEdit(pObject);
+    EditView& rEditView = pSdrView->GetTextEditOutlinerView()->GetEditView();
+    rEditView.InsertText(u"A"_ustr);
+    pSdrView->SdrEndTextEdit();
+
+    // Save the file. That will run validate(). Without fix validation failed.
+    save(TestFilter::PPTX);
+}
+}
+
+CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

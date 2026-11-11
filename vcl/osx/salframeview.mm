@@ -43,6 +43,8 @@
 #include <osx/salframe.h>
 #include <osx/salframeview.h>
 #include <osx/salinst.h>
+#include <osx/saltimer.h>
+#include <osx/clipboard.hxx>
 #include <quartz/salgdi.h>
 #include <quartz/utils.h>
 
@@ -477,7 +479,7 @@ static NSString* getCurrentSelection()
 
 -(void)displayIfNeeded
 {
-    if( GetSalData() && GetSalData()->mpInstance )
+    if (ImplGetSVData() && GetAquaSalInstance())
     {
         SolarMutexGuard aGuard;
         [super displayIfNeeded];
@@ -1107,6 +1109,44 @@ static NSString* getCurrentSelection()
 @end
 
 @implementation SalFrameView
+
+-(id)validRequestorForSendType: (NSPasteboardType)sendType
+                      returnType: (NSPasteboardType)returnType
+{
+    // For Continuity we only accept clipboard content; never return it
+    if (sendType == nil && returnType != nil)
+        return self;
+    return [super validRequestorForSendType:sendType returnType:returnType];
+}
+
+-(BOOL)readSelectionFromPasteboard: (NSPasteboard *)pboard
+{
+    // Continuity Sketch, Scan Documents, and Take Photo operations
+    // end up here with a picture on the clipboard
+    if (![NSImage canInitWithPasteboard:pboard])
+        return NO;
+
+    // The pasteboard's data is not retained after this method
+    // returns. We must copy the image and create a new pasteboard
+    // that we control, because the LO paste operation happens
+    // asynchronously.
+    NSImage *image = [[NSImage alloc] initWithPasteboard:pboard];
+    NSPasteboard *pCopy = [NSPasteboard pasteboardWithUniqueName];
+    [pCopy writeObjects:[NSArray arrayWithObject:image]];
+    GetAquaSalInstance()->mpAquaClipboard->setContinuityPasteboard(pCopy);
+    [pCopy release];
+    [image release];
+
+    KeyEvent aEvent(0, KEY_PASTE, 0);
+    mpFrame->CallCallback( SalEvent::ExternalKeyInput, &aEvent );
+    return YES;
+}
+
+-(BOOL)writeSelectionToPasteboard: (NSPasteboard *)pboard types: (NSArray<NSString *> *)types
+{
+    return FALSE;
+}
+
 +(void)unsetMouseFrame: (AquaSalFrame*)pFrame
 {
     if( pFrame == s_pMouseFrame )
@@ -1354,8 +1394,22 @@ static NSString* getCurrentSelection()
     // leaving no spare time for the Impress selection box painting
     // timer to fire. So coalesce mouse dragged events so that only
     // a maximum of 50 mouse dragged events are dispatched per second.
+    // tdf#173112 only dispatch latest pending mouse dragged event
+    // With some external mice, doing a mouse drag appears to flood
+    // the native event queue so avoid excessive window relayout by
+    // using the last queued mouse dragged event and skipping any of
+    // the preceding mouse dragged events.
     [self clearPendingMouseDraggedEvent];
+    for (;;)
+    {
+        NSEvent* pNextEvent = [NSApp nextEventMatchingMask: NSEventMaskLeftMouseDragged untilDate: nil inMode: NSDefaultRunLoopMode dequeue: YES ];
+        if( !pNextEvent )
+            break;
+        pEvent = pNextEvent;
+    }
     mpPendingMouseDraggedEvent = [pEvent retain];
+
+    SAL_INFO("vcl.osx.event", "-[SalFramView mouseDragged:] this=" << self << " mpMouseDraggedTimer=" << mpMouseDraggedTimer);
     if ( !mpMouseDraggedTimer )
     {
         mpMouseDraggedTimer = [NSTimer scheduledTimerWithTimeInterval:0.025f target:self selector:@selector(mouseDraggedWithTimer:) userInfo:nil repeats:YES];
@@ -2345,7 +2399,13 @@ static NSString* getCurrentSelection()
         if( ! [self sendSingleCharacter:pEvent] )
         {
             /* prevent recursion */
-            if( mpLastEvent != mpLastSuperEvent && [NSApp respondsToSelector: @selector(sendSuperEvent:)] )
+            // tdf#172927 don't rely on pointer comparison for equality
+            // It appears that mpLastEvent gets set to a copy of the same
+            // NSEvent somewhere in -[NSApp sendSuperEvent:] causing the
+            // pointers to not be equal when they really are the same.
+            // So prevent infinite recursion by performing a deeper
+            // comparison check with -[NSEvent isEqual:].
+            if( ! [mpLastEvent isEqual: mpLastSuperEvent] && [NSApp respondsToSelector: @selector(sendSuperEvent:)] )
             {
                 id pLastSuperEvent = mpLastSuperEvent;
                 mpLastSuperEvent = mpLastEvent;
@@ -3238,7 +3298,7 @@ static NSString* getCurrentSelection()
     {
         SolarMutexGuard aGuard;
 
-        GetSalData()->mpInstance->delayedSettingsChanged(true);
+        GetAquaSalInstance()->delayedSettingsChanged(true);
     }
 
     mbInViewDidChangeEffectiveAppearance = NO;
@@ -3248,6 +3308,7 @@ static NSString* getCurrentSelection()
 {
     (void)pTimer;
 
+    SAL_INFO("vcl.osx.event", "-[SalFramView mouseDraggedWithTimer:] this=" << self << " mpPendingMouseDraggedEvent=" << mpPendingMouseDraggedEvent);
     if ( mpPendingMouseDraggedEvent )
     {
         if ( mpMouseEventListener != nil &&

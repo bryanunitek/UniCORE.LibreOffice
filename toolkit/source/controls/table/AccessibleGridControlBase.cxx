@@ -46,10 +46,10 @@ namespace accessibility {
 using namespace com::sun::star::accessibility::AccessibleStateType;
 
 AccessibleGridControlBase::AccessibleGridControlBase(
-    css::uno::Reference<css::accessibility::XAccessible> xParent, svt::table::TableControl& rTable,
+    const rtl::Reference<comphelper::OAccessible>& rpParent, svt::table::TableControl& rTable,
     AccessibleTableControlObjType eObjType)
-    : m_xParent(std::move(xParent))
-    , m_aTable(rTable)
+    : m_pParent(rpParent)
+    , m_rTable(rTable)
     , m_eObjType(eObjType)
 {
 }
@@ -60,7 +60,7 @@ void SAL_CALL AccessibleGridControlBase::disposing()
 
     OAccessible::disposing();
 
-    m_xParent = nullptr;
+    m_pParent = nullptr;
     //m_aTable = NULL;
 }
 
@@ -71,7 +71,7 @@ css::uno::Reference< css::accessibility::XAccessible > SAL_CALL AccessibleGridCo
     SolarMutexGuard g;
 
     ensureAlive();
-    return m_xParent;
+    return m_pParent;
 }
 
 OUString SAL_CALL AccessibleGridControlBase::getAccessibleDescription()
@@ -79,7 +79,7 @@ OUString SAL_CALL AccessibleGridControlBase::getAccessibleDescription()
     SolarMutexGuard g;
 
     ensureAlive();
-    return m_aTable.GetAccessibleObjectDescription(m_eObjType);
+    return m_rTable.GetAccessibleObjectDescription(m_eObjType);
 }
 
 OUString SAL_CALL AccessibleGridControlBase::getAccessibleName()
@@ -87,7 +87,7 @@ OUString SAL_CALL AccessibleGridControlBase::getAccessibleName()
     SolarMutexGuard g;
 
     ensureAlive();
-    return m_aTable.GetAccessibleObjectName(m_eObjType, 0, 0);
+    return m_rTable.GetAccessibleObjectName(m_eObjType, 0, 0);
 }
 
 css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL
@@ -114,40 +114,21 @@ lang::Locale SAL_CALL AccessibleGridControlBase::getLocale()
     SolarMutexGuard g;
 
     ensureAlive();
-    if( m_xParent.is() )
-    {
-        css::uno::Reference< css::accessibility::XAccessibleContext >
-            xParentContext( m_xParent->getAccessibleContext() );
-        if( xParentContext.is() )
-            return xParentContext->getLocale();
-    }
+    if (m_pParent.is())
+        return m_pParent->getLocale();
+
     throw IllegalAccessibleComponentStateException();
 }
 
-// XServiceInfo
-
-sal_Bool SAL_CALL AccessibleGridControlBase::supportsService(
-        const OUString& rServiceName )
-{
-    return cppu::supportsService(this, rServiceName);
-}
-
-Sequence< OUString > SAL_CALL AccessibleGridControlBase::getSupportedServiceNames()
-{
-    return { u"com.sun.star.accessibility.AccessibleContext"_ustr };
-}
 // internal virtual methods
 
 bool AccessibleGridControlBase::implIsShowing()
 {
     bool bShowing = false;
-    if( m_xParent.is() )
+    if (m_pParent.is())
     {
-        css::uno::Reference< css::accessibility::XAccessibleComponent >
-            xParentComp( m_xParent->getAccessibleContext(), uno::UNO_QUERY );
-        if( xParentComp.is() )
-            bShowing = implGetBoundingBox().Overlaps(
-                vcl::unohelper::ConvertToVCLRect(xParentComp->getBounds()));
+        bShowing = implGetBoundingBox().Overlaps(
+            vcl::unohelper::ConvertToVCLRect(m_pParent->getBounds()));
     }
     return bShowing;
 }
@@ -156,14 +137,10 @@ tools::Rectangle AccessibleGridControlBase::implGetBoundingBox()
 {
     // calculate parent-relative position from own and parent's absolute position
     tools::Rectangle aBound(implGetBoundingBoxOnScreen());
-    if (!m_xParent.is())
+    if (!m_pParent.is())
         return aBound;
 
-    uno::Reference<css::accessibility::XAccessibleComponent> xParentComponent(m_xParent->getAccessibleContext(), uno::UNO_QUERY);
-    if (!xParentComponent.is())
-        return aBound;
-
-    awt::Point aParentPos = xParentComponent->getLocationOnScreen();
+    awt::Point aParentPos = m_pParent->getLocationOnScreen();
     aBound.Move(-aParentPos.X, -aParentPos.Y);
     return aBound;
 }
@@ -178,7 +155,7 @@ sal_Int64 AccessibleGridControlBase::implCreateStateSet()
         if( implIsShowing() )
             nStateSet |= AccessibleStateType::SHOWING;
         // GridControl fills StateSet with states depending on object type
-        m_aTable.FillAccessibleStateSet( nStateSet, getType() );
+        m_rTable.FillAccessibleStateSet(nStateSet, getType());
     }
     else
         nStateSet |= AccessibleStateType::DEFUNC;
@@ -235,15 +212,15 @@ sal_Int32 SAL_CALL AccessibleGridControlBase::getForeground(  )
     ensureAlive();
 
     Color nColor;
-    if (m_aTable.IsControlForeground())
-        nColor = m_aTable.GetControlForeground();
+    if (m_rTable.IsControlForeground())
+        nColor = m_rTable.GetControlForeground();
     else
     {
         vcl::Font aFont;
-        if (m_aTable.IsControlFont() )
-            aFont = m_aTable.GetControlFont();
+        if (m_rTable.IsControlFont())
+            aFont = m_rTable.GetControlFont();
         else
-            aFont = m_aTable.GetFont();
+            aFont = m_rTable.GetFont();
         nColor = aFont.GetColor();
     }
     return sal_Int32(nColor);
@@ -255,10 +232,10 @@ sal_Int32 SAL_CALL AccessibleGridControlBase::getBackground(  )
 
     ensureAlive();
     Color nColor;
-    if (m_aTable.IsControlBackground())
-        nColor = m_aTable.GetControlBackground();
+    if (m_rTable.IsControlBackground())
+        nColor = m_rTable.GetControlBackground();
     else
-        nColor = m_aTable.GetBackground().GetColor();
+        nColor = m_rTable.GetBackground().GetColor();
     return sal_Int32(nColor);
 }
 

@@ -466,6 +466,7 @@ void BarChart::createShapes()
 
     sal_Int32 nStartIndex = 0;
     sal_Int32 nEndIndex = VSeriesPlotter::getPointCount();
+
     //iterate through all x values per indices
     for( sal_Int32 nPointIndex = nStartIndex; nPointIndex < nEndIndex; nPointIndex++ )
     {
@@ -482,14 +483,15 @@ void BarChart::createShapes()
                 if( nPointIndex >= nSlotPoints )
                     continue;
 
-                double fMinimumY = 0.0, fMaximumY = 0.0;
+                // Min and max for the category
+                double fCatMinY = 0.0, fCatMaxY = 0.0;
                 rXSlot.calculateYMinAndMaxForCategory( nPointIndex
-                    , isSeparateStackingForDifferentSigns( 1 ), fMinimumY, fMaximumY, nAttachedAxisIndex );
+                    , isSeparateStackingForDifferentSigns( 1 ), fCatMinY, fCatMaxY, nAttachedAxisIndex );
 
-                if( !std::isnan( fMaximumY ) && fMaximumY > 0)
-                    aLogicYSumMap[nAttachedAxisIndex] += fMaximumY;
-                if( !std::isnan( fMinimumY ) && fMinimumY < 0)
-                    aLogicYSumMap[nAttachedAxisIndex] += fabs(fMinimumY);
+                if( !std::isnan( fCatMaxY ) && fCatMaxY > 0)
+                    aLogicYSumMap[nAttachedAxisIndex] += fCatMaxY;
+                if( !std::isnan( fCatMinY ) && fCatMinY < 0)
+                    aLogicYSumMap[nAttachedAxisIndex] += fabs(fCatMinY);
             }
         }
 
@@ -619,7 +621,8 @@ void BarChart::doZSlot(
         doXSlot(rXSlot, bDrawConnectionLines, bDrawConnectionLinesInited, nZ, nPointIndex, nStartIndex,
                 xSeriesTarget, xRegressionCurveTarget, xRegressionCurveEquationTarget, xTextTarget,
                 aShapeSet, aSeriesFormerPointMap, aLogicYSumMap,
-                fLogicBaseWidth, fSlotX, pPosHelper, fLogicPositiveYSum, fLogicNegativeYSum, nAttachedAxisIndex);
+                fLogicBaseWidth, fSlotX, pPosHelper, fLogicPositiveYSum,
+                fLogicNegativeYSum, nAttachedAxisIndex);
 
         fSlotX+=1.0;
     }//next x slot
@@ -786,12 +789,14 @@ void BarChart::doXSlot(
             double fUnclippedUpperYValue = fUpperYValue;
 
             //apply clipping to Y
-            if( !pPosHelper->clipYRange(fLowerYValue,fUpperYValue) )
-            {
-                if( bDrawConnectionLines )
-                    bOnlyConnectionLinesForThisPoint = true;
-                else
-                    continue;
+            if (!m_bAlignCenter) {
+                if( !pPosHelper->clipYRange(fLowerYValue,fUpperYValue) )
+                {
+                    if( bDrawConnectionLines )
+                        bOnlyConnectionLinesForThisPoint = true;
+                    else
+                        continue;
+                }
             }
             //@todo clipping of X and Z is not fully integrated so far, as there is a need to create different objects
 
@@ -869,6 +874,18 @@ void BarChart::doXSlot(
             //pPosHelper->isSameForGivenResolution( fLogicX-fLogicBarWidth/2.0, fLowerYValue, fLogicZ
             //                            , fLogicX+fLogicBarWidth/2.0, fLowerYValue, fLogicZ );
 
+            if (m_bAlignCenter) {
+                // Center the bar around the middle of the value axis range, as
+                // for funnel charts.
+                double fScaledMinY = pPosHelper->getLogicMinY();
+                double fScaledMaxY = pPosHelper->getLogicMaxY();
+                pPosHelper->doLogicScaling(nullptr, &fScaledMinY, nullptr);
+                pPosHelper->doLogicScaling(nullptr, &fScaledMaxY, nullptr);
+                double fShift = (fScaledMinY + fScaledMaxY - fLowerYValue - fUpperYValue) / 2.0;
+                fLowerYValue += fShift;
+                fUpperYValue += fShift;
+            }
+
             //create partial point
             if( !approxEqual(fLowerYValue,fUpperYValue) )
             {
@@ -913,20 +930,40 @@ void BarChart::doXSlot(
                 }
                 else //m_nDimension!=3
                 {
-                    drawing::Position3D aLeftUpperPoint( fLogicX-fLogicBarWidth/2.0,fUpperYValue,fLogicZ );
-                    drawing::Position3D aRightUpperPoint( fLogicX+fLogicBarWidth/2.0,fUpperYValue,fLogicZ );
                     std::vector<std::vector<css::drawing::Position3D>> aPoly
                     {
                         { // inner vector
-                            drawing::Position3D( fLogicX-fLogicBarWidth/2.0,fLowerYValue,fLogicZ),
-                            drawing::Position3D( fLogicX+fLogicBarWidth/2.0,fLowerYValue,fLogicZ),
-                            aRightUpperPoint,
-                            aLeftUpperPoint,
-                            drawing::Position3D( fLogicX-fLogicBarWidth/2.0,fLowerYValue,fLogicZ)
+                            drawing::Position3D( fLogicX-fLogicBarWidth/2.0, fLowerYValue, fLogicZ),
+                            drawing::Position3D( fLogicX+fLogicBarWidth/2.0, fLowerYValue, fLogicZ),
+                            drawing::Position3D( fLogicX+fLogicBarWidth/2.0, fUpperYValue, fLogicZ),
+                            drawing::Position3D( fLogicX-fLogicBarWidth/2.0, fUpperYValue, fLogicZ )
                         }
                     };
                     pPosHelper->transformScaledLogicToScene( aPoly );
-                    xShape = ShapeFactory::createArea2D( xSeriesGroupShape_Shapes, aPoly );
+
+                    // set up a clip polygon for cropping any glow or shadow effect rendered
+                    // below the (logical) bottom side of the bar
+                    double fStartYValue = fLowerYValue;
+                    double fHeight = fUpperYValue - fLowerYValue;
+                    // we need to avoid cropping anything else but what below the bottom side of the bar
+                    constexpr double dM = 1000;
+                    if (fHeight < 0)
+                    {
+                        fHeight = -fHeight;
+                        fStartYValue = fUpperYValue;
+                    }
+                    std::vector<std::vector<css::drawing::Position3D>> aClipPoly
+                    {
+                        { // inner vector
+                            drawing::Position3D(fLogicX + dM*fLogicBarWidth, fStartYValue, fLogicZ),
+                            drawing::Position3D(fLogicX + dM*fLogicBarWidth, fStartYValue + dM*fHeight, fLogicZ),
+                            drawing::Position3D(fLogicX - dM*fLogicBarWidth, fStartYValue + dM*fHeight, fLogicZ),
+                            drawing::Position3D(fLogicX - dM*fLogicBarWidth, fStartYValue, fLogicZ)
+                        }
+                    };
+                    pPosHelper->transformScaledLogicToScene( aClipPoly );
+
+                    xShape = ShapeFactory::createArea2D( xSeriesGroupShape_Shapes, aPoly, &aClipPoly );
                     PropertyMapper::setMappedProperties( *xShape, xDataPointProperties, PropertyMapper::getPropertyNameMapForFilledSeriesProperties() );
                 }
 

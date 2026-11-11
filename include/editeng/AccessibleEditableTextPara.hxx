@@ -25,7 +25,6 @@
 #include <tools/gen.hxx>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleEditableText.hpp>
 #include <com/sun/star/accessibility/XAccessibleTextAttributes.hpp>
@@ -72,8 +71,8 @@ public:
     // - add parameter <_pParaManager> (default value NULL)
     //   This has to be the instance of <AccessibleParaManager>, which
     //   created and manages this accessible paragraph.
-    AccessibleEditableTextPara ( css::uno::Reference< css::accessibility::XAccessible > xParent,
-                                 const AccessibleParaManager* _pParaManager = nullptr );
+    AccessibleEditableTextPara(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                               const AccessibleParaManager* _pParaManager = nullptr);
 
     // XAccessibleContext
     virtual sal_Int64 SAL_CALL getAccessibleChildCount() override;
@@ -335,7 +334,7 @@ private:
     sal_Int64 mnStateSet;
 
     /// The shape we're the accessible for (unguarded)
-    css::uno::Reference< css::accessibility::XAccessible > mxParent;
+    rtl::Reference<comphelper::OAccessible> mpParent;
 
 private:
     // Text paragraphs should provide FLOWS_TO and FLOWS_FROM relations (#i27138#)

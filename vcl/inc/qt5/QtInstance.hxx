@@ -30,6 +30,8 @@
 #include <vclpluginapi.h>
 #ifdef _WIN32
 #include <win/WindowsInstance.hxx>
+#elif defined MACOSX
+#include <osx/MacInstance.hxx>
 #else
 #include <unx/geninst.h>
 #endif
@@ -81,6 +83,8 @@ class VCLPLUG_QT_PUBLIC QtInstance : public QObject,
 #ifndef Q_MOC_RUN
 #ifdef _WIN32
                                      public WindowsInstance,
+#elif defined MACOSX
+                                     public MacInstance,
 #else
                                      public SalGenericInstance,
 #endif
@@ -155,7 +159,7 @@ public:
         }
         else
         {
-            std::invoke_result_t<F> ret;
+            std::invoke_result_t<F> ret{};
             EmscriptenLightweightRunInMainThread_(
                 [&func, &ret] { ret = std::forward<std::invoke_result_t<F>>(func()); });
             return ret;
@@ -186,10 +190,9 @@ public:
                                                                 const OUString& rUIRoot,
                                                                 const OUString& rUIFile,
                                                                 bool bAllowCycleFocusOut) override;
-    virtual weld::MessageDialog* CreateMessageDialog(weld::Widget* pParent,
-                                                     VclMessageType eMessageType,
-                                                     VclButtonsType eButtonType,
-                                                     const OUString& rPrimaryMessage) override;
+    virtual std::unique_ptr<weld::MessageDialog>
+    CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType,
+                        VclButtonsType eButtonType, const OUString& rPrimaryMessage) override;
     virtual std::unique_ptr<weld::ColorChooserDialog>
     CreateColorChooserDialog(weld::Window* pParent, vcl::ColorPickerMode eMode) override;
 
@@ -233,7 +236,7 @@ public:
 
     void* CreateGStreamerSink(const SystemChildWindow*) override;
 
-    bool DoExecute(int& nExitCode) override;
+    bool DoExecute() override;
     void DoQuit() override;
 
     static QWidget* GetQWidget(weld::Widget* pWidget);

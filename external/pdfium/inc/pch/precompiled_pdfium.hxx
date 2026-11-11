@@ -13,8 +13,8 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2026-02-19 12:36:16 using:
- ./bin/update_pch external/pdfium pdfium --cutoff=1 --exclude:system --include:module --include:local
+ Generated on 2026-11-02 18:32:54 using:
+ bin/update_pch external/pdfium pdfium --cutoff=1 --exclude:system --include:module --include:local
 
  If after updating build fails, use the following command to locate conflicting headers:
  ./bin/update_pch_bisect ./external/pdfium/inc/pch/precompiled_pdfium.hxx "make external/pdfium.build" --find-conflicts
@@ -31,13 +31,15 @@
 #include <agg_vcgen_stroke.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
-#include <cassert>
-#include <cfloat>
-#include <climits>
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <ctype.h>
 #include <functional>
+#include <hb-subset.h>
+#include <hb.h>
 #include <initializer_list>
 #include <iterator>
 #include <limits.h>
@@ -51,11 +53,14 @@
 #include <optional>
 #include <ostream>
 #include <queue>
+#include <ratio>
 #include <set>
 #include <sstream>
 #include <stack>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -76,6 +81,7 @@
 #include <constants/annotation_flags.h>
 #include <constants/appearance.h>
 #include <constants/ascii.h>
+#include <constants/catalog.h>
 #include <constants/font_encodings.h>
 #include <constants/form_fields.h>
 #include <constants/form_flags.h>
@@ -90,24 +96,25 @@
 #include <core/fpdfapi/cmaps/Japan1/cmaps_japan1.h>
 #include <core/fpdfapi/cmaps/Korea1/cmaps_korea1.h>
 #include <core/fpdfapi/cmaps/fpdf_cmaps.h>
-#include <core/fpdfapi/edit/cpdf_contentstream_write_utils.h>
 #include <core/fpdfapi/edit/cpdf_creator.h>
+#include <core/fpdfapi/edit/cpdf_font_util.h>
+#include <core/fpdfapi/edit/cpdf_fontsubsetter.h>
 #include <core/fpdfapi/edit/cpdf_npagetooneexporter.h>
 #include <core/fpdfapi/edit/cpdf_pagecontentgenerator.h>
 #include <core/fpdfapi/edit/cpdf_pagecontentmanager.h>
 #include <core/fpdfapi/edit/cpdf_pageexporter.h>
 #include <core/fpdfapi/edit/cpdf_pageorganizer.h>
 #include <core/fpdfapi/edit/cpdf_stringarchivestream.h>
-#include <core/fpdfapi/font/cfx_cttgsubtable.h>
-#include <core/fpdfapi/font/cfx_stockfontarray.h>
 #include <core/fpdfapi/font/cpdf_cid2unicodemap.h>
 #include <core/fpdfapi/font/cpdf_cidfont.h>
 #include <core/fpdfapi/font/cpdf_cmap.h>
 #include <core/fpdfapi/font/cpdf_cmapparser.h>
+#include <core/fpdfapi/font/cpdf_facebasedsimplefont.h>
 #include <core/fpdfapi/font/cpdf_font.h>
 #include <core/fpdfapi/font/cpdf_fontencoding.h>
 #include <core/fpdfapi/font/cpdf_fontglobals.h>
 #include <core/fpdfapi/font/cpdf_simplefont.h>
+#include <core/fpdfapi/font/cpdf_stockfontarray.h>
 #include <core/fpdfapi/font/cpdf_tounicodemap.h>
 #include <core/fpdfapi/font/cpdf_truetypefont.h>
 #include <core/fpdfapi/font/cpdf_type1font.h>
@@ -197,7 +204,6 @@
 #include <core/fpdfapi/parser/fpdf_parser_decode.h>
 #include <core/fpdfapi/parser/fpdf_parser_utility.h>
 #include <core/fpdfapi/parser/object_tree_traversal_util.h>
-#include <core/fpdfapi/render/charposlist.h>
 #include <core/fpdfapi/render/cpdf_devicebuffer.h>
 #include <core/fpdfapi/render/cpdf_docrenderdata.h>
 #include <core/fpdfapi/render/cpdf_imagerenderer.h>
@@ -240,6 +246,7 @@
 #include <core/fpdfdoc/cpdf_structtree.h>
 #include <core/fpdfdoc/cpdf_viewerpreferences.h>
 #include <core/fpdfdoc/cpvt_fontmap.h>
+#include <core/fpdfdoc/cpvt_line.h>
 #include <core/fpdfdoc/cpvt_section.h>
 #include <core/fpdfdoc/cpvt_variabletext.h>
 #include <core/fpdfdoc/cpvt_word.h>
@@ -258,27 +265,29 @@
 #include <core/fxcodec/gif/cfx_gif.h>
 #include <core/fxcodec/gif/lzw_decompressor.h>
 #include <core/fxcodec/icc/icc_transform.h>
-#include <core/fxcodec/jbig2/JBig2_ArithDecoder.h>
-#include <core/fxcodec/jbig2/JBig2_ArithIntDecoder.h>
-#include <core/fxcodec/jbig2/JBig2_BitStream.h>
-#include <core/fxcodec/jbig2/JBig2_Context.h>
-#include <core/fxcodec/jbig2/JBig2_Define.h>
-#include <core/fxcodec/jbig2/JBig2_DocumentContext.h>
-#include <core/fxcodec/jbig2/JBig2_GrdProc.h>
-#include <core/fxcodec/jbig2/JBig2_GrrdProc.h>
-#include <core/fxcodec/jbig2/JBig2_HtrdProc.h>
-#include <core/fxcodec/jbig2/JBig2_HuffmanDecoder.h>
-#include <core/fxcodec/jbig2/JBig2_HuffmanTable.h>
-#include <core/fxcodec/jbig2/JBig2_Image.h>
-#include <core/fxcodec/jbig2/JBig2_PatternDict.h>
-#include <core/fxcodec/jbig2/JBig2_PddProc.h>
-#include <core/fxcodec/jbig2/JBig2_SddProc.h>
-#include <core/fxcodec/jbig2/JBig2_Segment.h>
-#include <core/fxcodec/jbig2/JBig2_SymbolDict.h>
-#include <core/fxcodec/jbig2/JBig2_TrdProc.h>
+#include <core/fxcodec/image_predictors.h>
+#include <core/fxcodec/jbig2/jbig2_arith_decoder.h>
+#include <core/fxcodec/jbig2/jbig2_arith_int_decoder.h>
+#include <core/fxcodec/jbig2/jbig2_bit_stream.h>
+#include <core/fxcodec/jbig2/jbig2_context.h>
 #include <core/fxcodec/jbig2/jbig2_decoder.h>
+#include <core/fxcodec/jbig2/jbig2_define.h>
+#include <core/fxcodec/jbig2/jbig2_document_context.h>
+#include <core/fxcodec/jbig2/jbig2_grd_proc.h>
+#include <core/fxcodec/jbig2/jbig2_grrd_proc.h>
+#include <core/fxcodec/jbig2/jbig2_htrd_proc.h>
+#include <core/fxcodec/jbig2/jbig2_huffman_decoder.h>
+#include <core/fxcodec/jbig2/jbig2_huffman_table.h>
+#include <core/fxcodec/jbig2/jbig2_image.h>
+#include <core/fxcodec/jbig2/jbig2_pattern_dict.h>
+#include <core/fxcodec/jbig2/jbig2_pdd_proc.h>
+#include <core/fxcodec/jbig2/jbig2_sdd_proc.h>
+#include <core/fxcodec/jbig2/jbig2_segment.h>
+#include <core/fxcodec/jbig2/jbig2_symbol_dict.h>
+#include <core/fxcodec/jbig2/jbig2_trd_proc.h>
 #include <core/fxcodec/jpeg/jpeg_common.h>
 #include <core/fxcodec/jpeg/jpegmodule.h>
+#include <core/fxcodec/jpeg/libjpeg_scanline_decoder.h>
 #include <core/fxcodec/jpx/cjpx_decoder.h>
 #include <core/fxcodec/jpx/jpx_decode_utils.h>
 #include <core/fxcodec/scanlinedecoder.h>
@@ -287,12 +296,14 @@
 #include <core/fxcrt/binary_buffer.h>
 #include <core/fxcrt/byteorder.h>
 #include <core/fxcrt/bytestring.h>
+#include <core/fxcrt/bytestring_pool.h>
+#include <core/fxcrt/cfx_bidi_resolver.h>
 #include <core/fxcrt/cfx_bitstream.h>
 #include <core/fxcrt/cfx_datetime.h>
+#include <core/fxcrt/cfx_fileaccess_stream.h>
 #include <core/fxcrt/cfx_memorystream.h>
+#include <core/fxcrt/cfx_read_only_container_stream.h>
 #include <core/fxcrt/cfx_read_only_span_stream.h>
-#include <core/fxcrt/cfx_read_only_string_stream.h>
-#include <core/fxcrt/cfx_read_only_vector_stream.h>
 #include <core/fxcrt/cfx_seekablestreamproxy.h>
 #include <core/fxcrt/cfx_timer.h>
 #include <core/fxcrt/check.h>
@@ -325,10 +336,11 @@
 #include <core/fxcrt/css/cfx_cssvaluelistparser.h>
 #include <core/fxcrt/data_vector.h>
 #include <core/fxcrt/debug/alias.h>
-#include <core/fxcrt/fileaccess_iface.h>
 #include <core/fxcrt/fixed_size_data_vector.h>
 #include <core/fxcrt/fx_2d_size.h>
 #include <core/fxcrt/fx_bidi.h>
+#include <core/fxcrt/fx_ceil_div.h>
+#include <core/fxcrt/fx_ceil_log2.h>
 #include <core/fxcrt/fx_codepage.h>
 #include <core/fxcrt/fx_coordinates.h>
 #include <core/fxcrt/fx_extension.h>
@@ -344,6 +356,7 @@
 #include <core/fxcrt/fx_string_wrappers.h>
 #include <core/fxcrt/fx_system.h>
 #include <core/fxcrt/fx_unicode.h>
+#include <core/fxcrt/mask.h>
 #include <core/fxcrt/maybe_owned.h>
 #include <core/fxcrt/notreached.h>
 #include <core/fxcrt/numerics/clamped_math.h>
@@ -354,13 +367,16 @@
 #include <core/fxcrt/ptr_util.h>
 #include <core/fxcrt/raw_span.h>
 #include <core/fxcrt/retain_ptr.h>
+#include <core/fxcrt/scoped_locale.h>
 #include <core/fxcrt/scoped_set_insertion.h>
 #include <core/fxcrt/span.h>
+#include <core/fxcrt/span_io.h>
 #include <core/fxcrt/span_util.h>
 #include <core/fxcrt/stl_util.h>
+#include <core/fxcrt/stream_write_utils.h>
 #include <core/fxcrt/string_data_template.h>
-#include <core/fxcrt/string_pool_template.h>
 #include <core/fxcrt/string_template.h>
+#include <core/fxcrt/to_underlying.h>
 #include <core/fxcrt/unowned_ptr.h>
 #include <core/fxcrt/unowned_ptr_exclusion.h>
 #include <core/fxcrt/utf16.h>
@@ -379,8 +395,10 @@
 #include <core/fxge/agg/cfx_agg_devicedriver.h>
 #include <core/fxge/agg/cfx_agg_imagerenderer.h>
 #include <core/fxge/calculate_pitch.h>
+#include <core/fxge/cfx_charmap_resolver.h>
 #include <core/fxge/cfx_color.h>
-#include <core/fxge/cfx_defaultrenderdevice.h>
+#include <core/fxge/cfx_cttgsubtable.h>
+#include <core/fxge/cfx_cttnametable.h>
 #include <core/fxge/cfx_drawutils.h>
 #include <core/fxge/cfx_face.h>
 #include <core/fxge/cfx_fillrenderoptions.h>
@@ -395,9 +413,9 @@
 #include <core/fxge/cfx_graphstatedata.h>
 #include <core/fxge/cfx_path.h>
 #include <core/fxge/cfx_renderdevice.h>
+#include <core/fxge/cfx_standardfont.h>
 #include <core/fxge/cfx_substfont.h>
 #include <core/fxge/cfx_textrenderoptions.h>
-#include <core/fxge/cfx_unicodeencoding.h>
 #include <core/fxge/dib/blend.h>
 #include <core/fxge/dib/cfx_bitmapstorer.h>
 #include <core/fxge/dib/cfx_cmyk_to_srgb.h>
@@ -406,9 +424,12 @@
 #include <core/fxge/dib/cfx_imagestretcher.h>
 #include <core/fxge/dib/cfx_imagetransformer.h>
 #include <core/fxge/dib/cfx_scanlinecompositor.h>
+#include <core/fxge/dib/cfx_scanlinecompositor_hwy.h>
 #include <core/fxge/dib/cstretchengine.h>
+#include <core/fxge/dib/cstretchengine_hwy.h>
 #include <core/fxge/dib/fx_dib.h>
 #include <core/fxge/dib/scanlinecomposer_iface.h>
+#include <core/fxge/display_list_device_driver.h>
 #include <core/fxge/fontdata/chromefontdata/chromefontdata.h>
 #include <core/fxge/freetype/fx_freetype.h>
 #include <core/fxge/fx_font.h>
@@ -431,6 +452,7 @@
 #include <fpdfsdk/cpdfsdk_pauseadapter.h>
 #include <fpdfsdk/cpdfsdk_renderpage.h>
 #include <fpdfsdk/cpdfsdk_widget.h>
+#include <fpdfsdk/display_list_renderer.h>
 #include <fpdfsdk/formfiller/cffl_button.h>
 #include <fpdfsdk/formfiller/cffl_checkbox.h>
 #include <fpdfsdk/formfiller/cffl_combobox.h>
@@ -461,6 +483,20 @@
 #include <fxjs/cjs_runtimestub.h>
 #include <fxjs/ijs_event_context.h>
 #include <fxjs/ijs_runtime.h>
+#include <hwy/abort.h>
+#include <hwy/aligned_allocator.h>
+#include <hwy/base.h>
+#include <hwy/detect_compiler_arch.h>
+#include <hwy/detect_targets.h>
+#include <hwy/foreach_target.h>
+#include <hwy/highway.h>
+#include <hwy/per_target.h>
+#include <hwy/print.h>
+#include <hwy/robust_statistics.h>
+#include <hwy/stats.h>
+#include <hwy/targets.h>
+#include <hwy/timer.h>
+#include <hwy/x86_cpuid.h>
 #include <public/fpdf_annot.h>
 #include <public/fpdf_attachment.h>
 #include <public/fpdf_catalog.h>
@@ -480,6 +516,7 @@
 #include <public/fpdf_text.h>
 #include <public/fpdf_transformpage.h>
 #include <public/fpdfview.h>
+#include <third_party/abseil-cpp/absl/container/flat_hash_set.h>
 #include <third_party/agg23/agg_clip_liang_barsky.h>
 #include <third_party/agg23/agg_conv_dash.h>
 #include <third_party/agg23/agg_conv_stroke.h>
@@ -489,6 +526,8 @@
 #include <third_party/agg23/agg_rasterizer_scanline_aa.h>
 #include <third_party/agg23/agg_renderer_scanline.h>
 #include <third_party/agg23/agg_scanline_u.h>
+#include <third_party/highway/src/hwy/foreach_target.h>
+#include <third_party/highway/src/hwy/highway.h>
 #endif // PCH_LEVEL >= 3
 #if PCH_LEVEL >= 4
 #endif // PCH_LEVEL >= 4

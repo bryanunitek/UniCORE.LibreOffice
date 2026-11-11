@@ -10,6 +10,7 @@
 
 #include "helper/qahelper.hxx"
 #include <document.hxx>
+#include <docsh.hxx>
 #include <address.hxx>
 #include <dbdata.hxx>
 #include <datamapper.hxx>
@@ -17,6 +18,8 @@
 #include <orcusxml.hxx>
 #include <sortparam.hxx>
 #include <datatransformation.hxx>
+#include <comphelper/embeddedobjectcontainer.hxx>
+#include <sfx2/linkmgr.hxx>
 
 #include <memory>
 
@@ -34,6 +37,8 @@ public:
     void testBaseImport();
     void testTdf169541_TwoDataMapping();
     void testTdf169610_SortTransform();
+    void testLinkUpdateGate();
+    void testDBImportRefreshDeferred();
 
     CPPUNIT_TEST_SUITE(ScDataProvidersTest);
     CPPUNIT_TEST(testCSVImport);
@@ -43,6 +48,8 @@ public:
     CPPUNIT_TEST(testBaseImport);
     CPPUNIT_TEST(testTdf169541_TwoDataMapping);
     CPPUNIT_TEST(testTdf169610_SortTransform);
+    CPPUNIT_TEST(testLinkUpdateGate);
+    CPPUNIT_TEST(testDBImportRefreshDeferred);
     CPPUNIT_TEST_SUITE_END();
 };
 
@@ -303,6 +310,68 @@ void ScDataProvidersTest::testTdf169610_SortTransform()
     CPPUNIT_ASSERT_EQUAL(9.0, pDoc->GetValue(5, 4, 0));
     CPPUNIT_ASSERT_EQUAL(u"Tom"_ustr, pDoc->GetString(3, 11, 0));
     CPPUNIT_ASSERT_EQUAL(14.0, pDoc->GetValue(5, 11, 0));
+}
+
+void ScDataProvidersTest::testLinkUpdateGate()
+{
+    // A data mapping loaded from a document is an external link. Its data must
+    // not refresh from the source file until the user allows link updating,
+    // the same gate that governs sheet links and area links.
+    createScDoc("mappinggate.fods");
+    ScDocument* pDoc = getScDoc();
+    CPPUNIT_ASSERT(pDoc);
+    ScDocShell* pDocShell = getScDocShell();
+    CPPUNIT_ASSERT(pDocShell);
+
+    // Loading the mapping registered it as a link in the LinkManager.
+    auto& rDataSources = pDoc->GetExternalDataMapper().getDataSources();
+    CPPUNIT_ASSERT_EQUAL(size_t(1), rDataSources.size());
+    sfx2::LinkManager* pLinkManager = pDoc->GetLinkManager();
+    CPPUNIT_ASSERT(pLinkManager);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pLinkManager->GetLinks().size());
+
+    // The saved document holds "unchanged" in A1; the source file holds
+    // "changed". The href stored in the document is not portable, so point the
+    // source at the real test file before asking for an update.
+    rDataSources[0].setURL(createFileURL(u"csv/mappinggate.csv"));
+    CPPUNIT_ASSERT_EQUAL(u"unchanged"_ustr, pDoc->GetString(0, 0, 0));
+
+    // With updating not allowed, updating the links leaves the saved value.
+    pDocShell->GetEmbeddedObjectContainer().setUserAllowsLinkUpdate(false);
+    pLinkManager->UpdateAllLinks(false, OUString());
+    CPPUNIT_ASSERT_EQUAL(u"unchanged"_ustr, pDoc->GetString(0, 0, 0));
+
+    // Once the user allows updating, the same update brings in the live value.
+    pDocShell->GetEmbeddedObjectContainer().setUserAllowsLinkUpdate(true);
+    pLinkManager->UpdateAllLinks(false, OUString());
+    CPPUNIT_ASSERT_EQUAL(u"changed"_ustr, pDoc->GetString(0, 0, 0));
+}
+
+void ScDataProvidersTest::testDBImportRefreshDeferred()
+{
+    // A database range that imports from a data source on a refresh delay is an external link.
+    // Its refresh must not fetch the data until the user allows link updating.
+    createScDoc("dbimportrefresh.fods");
+    ScDocument* pDoc = getScDoc();
+    CPPUNIT_ASSERT(pDoc);
+    ScDocShell* pDocShell = getScDocShell();
+    CPPUNIT_ASSERT(pDocShell);
+
+    // The document counts as having external links, so the user is asked about updating.
+    CPPUNIT_ASSERT(pDoc->HasExternalLinks());
+
+    ScDBData* pDBData = pDoc->GetDBCollection()->getNamedDBs().findByUpperName(u"MYIMPORT"_ustr);
+    CPPUNIT_ASSERT(pDBData);
+
+    // With updating not allowed, the refresh leaves the saved value.
+    pDocShell->GetEmbeddedObjectContainer().setUserAllowsLinkUpdate(false);
+    pDBData->Timer::Invoke();
+    CPPUNIT_ASSERT_EQUAL(u"unchanged"_ustr, pDoc->GetString(0, 0, 0));
+
+    // Once the user allows updating, the next refresh imports the data source.
+    pDocShell->GetEmbeddedObjectContainer().setUserAllowsLinkUpdate(true);
+    pDBData->Timer::Invoke();
+    CPPUNIT_ASSERT_EQUAL(u"Identifier"_ustr, pDoc->GetString(0, 0, 0));
 }
 
 ScDataProvidersTest::ScDataProvidersTest()

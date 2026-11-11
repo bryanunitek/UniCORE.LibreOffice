@@ -53,7 +53,6 @@ public:
         PICT
     };
     void resolve(RTFShape& rShape, bool bClose, ShapeOrPict shapeOrPict);
-    void close();
     void append(std::u16string_view aKey, std::u16string_view aValue);
     /// Append property on the current parent.
     void appendGroupProperty(std::u16string_view aKey, std::u16string_view aValue);

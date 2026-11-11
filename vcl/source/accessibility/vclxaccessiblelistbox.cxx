@@ -24,22 +24,8 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
 VCLXAccessibleListBox::VCLXAccessibleListBox(ListBox* pListBox)
-    : VCLXAccessibleBox(pListBox, VCLXAccessibleBox::LISTBOX, false)
+    : VCLXAccessibleBox(pListBox, VCLXAccessibleBox::BoxType::LISTBOX, false)
 {
-}
-
-// XServiceInfo
-
-OUString VCLXAccessibleListBox::getImplementationName()
-{
-    return u"com.sun.star.comp.toolkit.AccessibleListBox"_ustr;
-}
-
-
-Sequence< OUString > VCLXAccessibleListBox::getSupportedServiceNames()
-{
-    return comphelper::concatSequences(VCLXAccessibleBox::getSupportedServiceNames(),
-                                       std::initializer_list<OUString>{u"com.sun.star.accessibility.AccessibleListBox"_ustr});
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

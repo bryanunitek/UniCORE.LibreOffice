@@ -18,7 +18,6 @@ gb_MERGE_LIBRARY_LIST := \
 		basprov \
 	) \
 	basegfx \
-	canvasfactory \
 	canvastools \
 	chart2 \
 	chart2api \
@@ -72,12 +71,10 @@ gb_MERGE_LIBRARY_LIST := \
 	passwordcontainer \
 	sax \
 	sb \
-	simplecanvas \
 	sfx \
 	sofficeapp \
 	sot \
 	spell \
-	$(if $(or $(DISABLE_GUI),$(ENABLE_WASM_STRIP_SPLASH)),,spl) \
 	srtrs1 \
 	$(call gb_Helper_optional,SCRIPTING,stringresource) \
 	svgio \
@@ -180,7 +177,6 @@ gb_MERGE_LIBRARY_LIST += \
 	$(if $(filter WNT,$(OS)), \
 		smplmail \
 	) \
-	solver \
 	storagefd \
 	svgfilter \
 	t602filter \

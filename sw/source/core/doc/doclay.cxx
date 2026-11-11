@@ -30,7 +30,6 @@
 #include <osl/diagnose.h>
 #include <svx/svdouno.hxx>
 #include <editeng/frmdiritem.hxx>
-#include <istype.hxx>
 #include <swmodule.hxx>
 #include <modcfg.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -83,7 +82,6 @@
 #include <strings.hrc>
 #include <frameformats.hxx>
 #include <tools/datetimeutils.hxx>
-#include <comphelper/string.hxx>
 #include <o3tl/string_view.hxx>
 
 #include <sortedobjs.hxx>
@@ -1401,7 +1399,7 @@ UIName SwDoc::GetUniqueShapeName() const
 
 UIName SwDoc::GetUniqueDrawObjectName() const
 {
-    return lcl_GetUniqueFlyName(*this, TranslateId(nullptr, "DrawObject"), RES_DRAWFRMFMT);
+    return lcl_GetUniqueFlyName(*this, TranslateId(nullptr, "DrawObject "), RES_DRAWFRMFMT);
 }
 
 const SwFlyFrameFormat* SwDoc::FindFlyByName( const UIName& rName, SwNodeType nNdTyp ) const

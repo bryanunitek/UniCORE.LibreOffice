@@ -8,6 +8,7 @@
  */
 
 #include <test/htmltesttools.hxx>
+#include <drwlayer.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
@@ -17,11 +18,19 @@
 #include <editeng/udlnitem.hxx>
 
 #include <comphelper/propertyvalue.hxx>
+#include <comphelper/compbase.hxx>
+#include <comphelper/processfactory.hxx>
 #include <svl/numformat.hxx>
 #include <svl/zformat.hxx>
+#include <svx/svdograf.hxx>
+#include <svx/svdpage.hxx>
+#include <sot/exchange.hxx>
 
 #include <helper/qahelper.hxx>
 #include <impex.hxx>
+
+#include <com/sun/star/datatransfer/XTransferable.hpp>
+#include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
 
 using namespace com::sun::star;
 
@@ -188,8 +197,8 @@ CPPUNIT_TEST_FIXTURE(Test, testPasteSingleCell)
     // Given a document with '1' in A1 and '2' in B1:
     createScDoc();
     ScDocument* pDoc = getScDoc();
-    pDoc->SetValue(ScAddress(0, 0, 0), 1.0);
-    pDoc->SetValue(ScAddress(1, 0, 0), 2.0);
+    pDoc->SetValue(0, 0, 0, 1.0);
+    pDoc->SetValue(1, 0, 0, 2.0);
 
     // When pasting SUM(A1:B1) into C1:
     ScAddress aCellPos(/*nColP=*/2, /*nRowP=*/0, /*nTabP=*/0);
@@ -223,7 +232,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf79298_strikeout_variants)
     // Verify HTML strikeout tags (<del>, <s>, and <strike>)
     for (size_t nCol = 0; nCol < 3; ++nCol)
     {
-        const ScPatternAttr* pAttr = pDoc->GetPattern(ScAddress(0, nCol, 0));
+        const ScPatternAttr* pAttr = pDoc->GetPattern(0, nCol, 0);
         CPPUNIT_ASSERT_MESSAGE("Failed to get cell attribute.", pAttr);
         const SvxCrossedOutItem& rCrossedOutItem = pAttr->GetItem(ATTR_FONT_CROSSEDOUT);
         CPPUNIT_ASSERT_EQUAL(FontStrikeout::STRIKEOUT_SINGLE, rCrossedOutItem.GetStrikeout());
@@ -242,13 +251,56 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf132770_inserted_text)
 
     // Verify HTML inserted text tag <ins>
     ScDocument* pDoc = getScDoc();
-    const ScPatternAttr* pAttr = pDoc->GetPattern(ScAddress(0, 0, 0));
+    const ScPatternAttr* pAttr = pDoc->GetPattern(0, 0, 0);
     CPPUNIT_ASSERT_MESSAGE("Failed to get cell attribute.", pAttr);
     const SvxUnderlineItem& rUnderlineItem = pAttr->GetItem(ATTR_FONT_UNDERLINE);
     // Without the accompanying fix in place, this tests would have failed with:
     // - Expected: 1 (FontLineStyle::LINESTYLE_SINGLE)
     // - Actual  : 0 (FontLineStyle::NONE)
     CPPUNIT_ASSERT_EQUAL(FontLineStyle::LINESTYLE_SINGLE, rUnderlineItem.GetLineStyle());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf168166_rowspan_colspan)
+{
+    // Paste a table containing rowspan and colspan:
+    //
+    //   <tr><td rowspan="2">A</td><td>B</td></tr>
+    //   <tr><td rowspan="3" colspan="2">C</td><td>D</td></tr>
+    //
+    //   +---+---+
+    //   | A | B |
+    //   |   +---+---+---+
+    //   |   |   C   | D |
+    //   +---+       +---+
+    //       |       |
+    //       |       |
+    //       +-------+
+    //
+    // Without the fix in place, C locked one column per row instead of one per column:
+    //
+    //   +---+---+
+    //   | A | B |
+    //   |   +---+---+---+---+
+    //   |   |   C   |   | D |
+    //   +---+       +---+---+
+    //       |       |
+    //       |       |
+    //       +-------+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+    ScAddress aCellPos(/*nColP=*/0, /*nRowP=*/0, /*nTabP=*/0);
+    ScImportExport aImporter(*pDoc, aCellPos);
+    SvFileStream aFile(createFileURL(u"tdf168166_rowspan_colspan.html"), StreamMode::READ);
+    SvMemoryStream aMemory;
+    aMemory.WriteStream(aFile);
+    aMemory.Seek(0);
+    CPPUNIT_ASSERT(aImporter.ImportStream(aMemory, OUString(), SotClipboardFormatId::HTML));
+
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: D
+    // - Actual  :
+    // i.e. an empty column exists between column C and D
+    CPPUNIT_ASSERT_EQUAL(u"D"_ustr, pDoc->GetString(/*col=*/3, /*row=*/1, /*tab=*/0));
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testCopyText)
@@ -359,6 +411,113 @@ CPPUNIT_TEST_FIXTURE(Test, testCopyFormula)
     // - XPath '(//td)[3]' no attribute 'data-sheets-formula' exist
     // i.e. only the formula result was exported, not the formula.
     assertXPath(pHtmlDoc, "(//td)[3]", "data-sheets-formula", u"=SUM(R[-2]C:R[-1]C)");
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testHTMLEmbeddedImagePaste)
+{
+    class HTMLTransferable : public comphelper::WeakImplHelper<datatransfer::XTransferable>
+    {
+    public:
+        HTMLTransferable(const OUString& url)
+            : m_aFileURL(url)
+        {
+        }
+
+        // XTransferable
+        uno::Any SAL_CALL getTransferData(const datatransfer::DataFlavor& aFlavor) override
+        {
+            if (!isDataFlavorSupported(aFlavor))
+                return {};
+            SvFileStream aStream(m_aFileURL, StreamMode::READ);
+            uno::Sequence<sal_Int8> bytes(aStream.remainingSize());
+            aStream.ReadBytes(bytes.getArray(), aStream.remainingSize());
+            return uno::Any(bytes);
+        }
+        uno::Sequence<datatransfer::DataFlavor> SAL_CALL getTransferDataFlavors() override
+        {
+            return { getHTMLFlavor() };
+        }
+        sal_Bool SAL_CALL isDataFlavorSupported(const datatransfer::DataFlavor& aFlavor) override
+        {
+            return aFlavor.MimeType.equalsIgnoreAsciiCase(getHTMLFlavor().MimeType);
+        }
+
+    private:
+        OUString m_aFileURL;
+
+        static datatransfer::DataFlavor getHTMLFlavor()
+        {
+            datatransfer::DataFlavor ret;
+            CPPUNIT_ASSERT(SotExchange::GetFormatDataFlavor(SotClipboardFormatId::HTML, ret));
+            return ret;
+        }
+    };
+
+    createScDoc();
+    ScDocument& rDoc = *getScDoc();
+    // Put HTML with embedded image data into system clipboard:
+    auto xContext(comphelper::getProcessComponentContext());
+    auto xClipboard = xContext->getServiceManager()
+                          ->createInstanceWithContext(
+                              u"com.sun.star.datatransfer.clipboard.SystemClipboard"_ustr, xContext)
+                          .queryThrow<datatransfer::clipboard::XClipboard>();
+    xClipboard->setContents(new HTMLTransferable(createFileURL(u"html.clipboard.html")), {});
+
+    dispatchCommand(mxComponent, u".uno:Paste"_ustr, {});
+
+    ScDrawLayer* pDrawLayer = rDoc.GetDrawLayer();
+    CPPUNIT_ASSERT(pDrawLayer);
+
+    const SdrPage* pPage = pDrawLayer->GetPage(0);
+    CPPUNIT_ASSERT(pPage);
+
+    SdrGrafObj* pObject = dynamic_cast<SdrGrafObj*>(pPage->GetObj(0));
+    CPPUNIT_ASSERT(pObject);
+    CPPUNIT_ASSERT(!pObject->IsLinkedGraphic());
+
+    const GraphicObject& rGraphicObj = pObject->GetGraphicObject(true);
+    const Graphic& rGraphic = rGraphicObj.GetGraphic();
+    CPPUNIT_ASSERT_EQUAL(int(GraphicType::Bitmap), int(rGraphic.GetType()));
+    CPPUNIT_ASSERT_EQUAL(sal_uLong(16848), rGraphic.GetSizeBytes());
+
+    const Bitmap& rBitmap = rGraphic.GetBitmapRef();
+    const Color aBorderColor = rBitmap.GetPixelColor(4, 4);
+    Color aExpectedBorderColor(0x00, 0x00, 0x00);
+    CPPUNIT_ASSERT_EQUAL(aExpectedBorderColor, aBorderColor);
+
+    const Color aFillColor = rBitmap.GetPixelColor(20, 20);
+    Color aExpectedFillColor(0xff, 0x00, 0x00);
+    CPPUNIT_ASSERT_EQUAL(aExpectedFillColor, aFillColor);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf39217_paste_image_undo)
+{
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    // Create an HTML table including a picture loaded from a URL
+    OUString aImageURL = m_directories.getURLFromSrc(u"/sc/qa/unit/tiledrendering/data/smile.png");
+    OString aHtml = "<table><tr><td><img src=\""
+                    + OUStringToOString(aImageURL, RTL_TEXTENCODING_UTF8) + "\"></td></tr></table>";
+
+    // Import the HTML table into cell A1 and check that the picture exists in the sheet
+    SvMemoryStream aStream(const_cast<char*>(aHtml.getStr()), aHtml.getLength(), StreamMode::READ);
+    ScImportExport aImporter(*pDoc, ScAddress(0, 0, 0));
+    CPPUNIT_ASSERT(aImporter.ImportStream(aStream, OUString(), SotClipboardFormatId::HTML));
+    const SdrPage* pPage = pDoc->GetDrawLayer()->GetPage(0);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pPage->GetObjCount());
+
+    // When undoing the paste, the picture has to be removed without crashing
+    dispatchCommand(mxComponent, u".uno:Undo"_ustr, {});
+    // Without the fix in place, this test would have failed with:
+    // - Expected: 0
+    // - Actual  : 1
+    // i.e. the pasted picture was not removed after the undo action
+    CPPUNIT_ASSERT_EQUAL(size_t(0), pPage->GetObjCount());
+
+    // The redo action has to restore the picture
+    dispatchCommand(mxComponent, u".uno:Redo"_ustr, {});
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pPage->GetObjCount());
 }
 }
 

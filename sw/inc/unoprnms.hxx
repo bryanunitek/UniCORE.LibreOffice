@@ -76,6 +76,7 @@ inline constexpr OUString UNO_NAME_PARA_HYPHENATION_COMPOUND_MIN_LEADING_CHARS
     = u"ParaHyphenationCompoundMinLeadingChars"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_COMPOUND_MIN_TRAILING_CHARS
     = u"ParaHyphenationCompoundMinTrailingChars"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_LEVEL = u"ParaHyphenationLevel"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_MAX_HYPHENS = u"ParaHyphenationMaxHyphens"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_MIN_WORD_LENGTH
     = u"ParaHyphenationMinWordLength"_ustr;
@@ -90,6 +91,8 @@ inline constexpr OUString UNO_NAME_PARA_HYPHENATION_NO_LAST_WORD
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_KEEP = u"ParaHyphenationKeep"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_KEEP_TYPE = u"ParaHyphenationKeepType"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_KEEP_LINE = u"ParaHyphenationKeepLine"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_SPLIT_COMPOUND_WORD
+    = u"ParaHyphenationSplitCompoundWord"_ustr;
 inline constexpr OUString UNO_NAME_LEFT_MARGIN = u"LeftMargin"_ustr;
 inline constexpr OUString UNO_NAME_RIGHT_MARGIN = u"RightMargin"_ustr;
 inline constexpr OUString UNO_NAME_GUTTER_MARGIN = u"GutterMargin"_ustr;
@@ -153,6 +156,8 @@ inline constexpr OUString UNO_NAME_CHAR_ESCAPEMENT_HEIGHT = u"CharEscapementHeig
 inline constexpr OUString UNO_NAME_CHAR_TRANSPARENCE = u"CharTransparence"_ustr;
 inline constexpr OUString UNO_NAME_CHAR_OPTICAL_SIZING = u"CharOpticalSizing"_ustr;
 inline constexpr OUString UNO_NAME_CHAR_FONT_VARIATIONS = u"CharFontVariations"_ustr;
+inline constexpr OUString UNO_NAME_CHAR_CJK_FONT_VARIATIONS = u"CharFontVariationsAsian"_ustr;
+inline constexpr OUString UNO_NAME_CHAR_CTL_FONT_VARIATIONS = u"CharFontVariationsComplex"_ustr;
 inline constexpr OUString UNO_NAME_HIDE_TAB_LEADER_AND_PAGE_NUMBERS
     = u"HideTabLeaderAndPageNumber"_ustr;
 inline constexpr OUString UNO_NAME_TAB_IN_TOC = u"TabInTOC"_ustr;
@@ -308,6 +313,7 @@ inline constexpr OUString UNO_NAME_HORI_MIRRORED_ON_EVEN_PAGES = u"HoriMirroredO
 inline constexpr OUString UNO_NAME_HORI_MIRRORED_ON_ODD_PAGES = u"HoriMirroredOnOddPages"_ustr;
 inline constexpr OUString UNO_NAME_HORI_ORIENT_RELATION = u"HoriOrientRelation"_ustr;
 inline constexpr OUString UNO_NAME_HORI_ORIENT_POSITION = u"HoriOrientPosition"_ustr;
+inline constexpr OUString UNO_NAME_HORI_ORIENT_POSITION_EMU = u"HoriOrientPositionEMU"_ustr;
 inline constexpr OUString UNO_NAME_HYPER_LINK_U_R_L = u"HyperLinkURL"_ustr;
 inline constexpr OUString UNO_NAME_HYPER_LINK_TARGET = u"HyperLinkTarget"_ustr;
 inline constexpr OUString UNO_NAME_HYPER_LINK_NAME = u"HyperLinkName"_ustr;
@@ -376,6 +382,7 @@ inline constexpr OUString UNO_NAME_VARIABLE_SUBTYPE = u"VariableSubtype"_ustr;
 inline constexpr OUString UNO_NAME_VERT_ORIENT = u"VertOrient"_ustr;
 inline constexpr OUString UNO_NAME_VERT_MIRRORED = u"VertMirrored"_ustr;
 inline constexpr OUString UNO_NAME_VERT_ORIENT_POSITION = u"VertOrientPosition"_ustr;
+inline constexpr OUString UNO_NAME_VERT_ORIENT_POSITION_EMU = u"VertOrientPositionEMU"_ustr;
 inline constexpr OUString UNO_NAME_VERT_ORIENT_RELATION = u"VertOrientRelation"_ustr;
 inline constexpr OUString UNO_NAME_IS_VISIBLE = u"IsVisible"_ustr;
 inline constexpr OUString UNO_NAME_WIDTH = u"Width"_ustr;
@@ -516,6 +523,7 @@ inline constexpr OUString UNO_NAME_TEXT_USER_DEFINED_ATTRIBUTES = u"TextUserDefi
 inline constexpr OUString UNO_NAME_FILE_PATH = u"FilePath"_ustr;
 inline constexpr OUString UNO_NAME_PARA_CHAPTER_NUMBERING_LEVEL = u"ParaChapterNumberingLevel"_ustr;
 inline constexpr OUString UNO_NAME_PARA_COMPOSER = u"ParaComposer"_ustr;
+inline constexpr OUString UNO_NAME_PARA_IS_COMPOUND_BASED = u"ParaIsCompoundBased"_ustr;
 inline constexpr OUString UNO_NAME_PARA_CONDITIONAL_STYLE_NAME = u"ParaConditionalStyleName"_ustr;
 inline constexpr OUString UNO_NAME_CHAPTER_NUMBERING_LEVEL = u"ChapterNumberingLevel"_ustr;
 inline constexpr OUString UNO_NAME_NUMBERING_SEPARATOR = u"NumberingSeparator"_ustr;
@@ -588,6 +596,7 @@ inline constexpr OUString UNO_NAME_IS_SORT_ASCENDING = u"IsSortAscending"_ustr;
 inline constexpr OUString UNO_NAME_SORT_KEY = u"SortKey"_ustr;
 inline constexpr OUString UNO_NAME_FIELDS = u"Fields"_ustr;
 inline constexpr OUString UNO_NAME_DATE_TIME_VALUE = u"DateTimeValue"_ustr;
+inline constexpr OUString UNO_NAME_DATE_TIME_UTC = u"DateTimeUTC"_ustr;
 inline constexpr OUString UNO_NAME_IS_ON = u"IsOn"_ustr;
 inline constexpr OUString UNO_NAME_Z_ORDER = u"ZOrder"_ustr;
 inline constexpr OUString UNO_NAME_CONTENT_SECTION = u"ContentSection"_ustr;
@@ -887,6 +896,8 @@ inline constexpr OUString UNO_NAME_LINE_WIDTH = u"LineWidth"_ustr;
 inline constexpr OUString UNO_NAME_PARA_CONTEXT_MARGIN = u"ParaContextMargin"_ustr;
 inline constexpr OUString UNO_NAME_PARAGRAPH_STYLE_NAME = u"ParagraphStyleName"_ustr;
 inline constexpr OUString UNO_NAME_FIRST_IS_SHARED = u"FirstIsShared"_ustr;
+inline constexpr OUString UNO_NAME_HEADER_NO_FIRST = u"HeaderNoFirst"_ustr;
+inline constexpr OUString UNO_NAME_FOOTER_NO_FIRST = u"FooterNoFirst"_ustr;
 inline constexpr OUString UNO_NAME_HEADER_TEXT_FIRST = u"HeaderTextFirst"_ustr;
 inline constexpr OUString UNO_NAME_FOOTER_TEXT_FIRST = u"FooterTextFirst"_ustr;
 inline constexpr OUString UNO_NAME_INITIALS = u"Initials"_ustr;

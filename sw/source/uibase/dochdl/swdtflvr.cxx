@@ -99,6 +99,7 @@
 #include <wrtsh.hxx>
 #include <swmodule.hxx>
 #include <view.hxx>
+#include <dbmgr.hxx>
 #include <docsh.hxx>
 #include <wdocsh.hxx>
 #include <fldbas.hxx>
@@ -541,12 +542,10 @@ bool SwTransferable::GetData( const DataFlavor& rFlavor, const OUString& rDestDo
         {
             SwContentAtPos aContentAtPos( IsAttrAtPos::InetAttr );
 
-            Point aPos( SwEditWin::GetDDStartPosX(), SwEditWin::GetDDStartPosY());
-
             bool bSelect = g_bExecuteDrag &&
                             m_pWrtShell->GetView().GetDocShell() &&
                             !m_pWrtShell->GetView().GetDocShell()->IsReadOnly();
-            if( m_pWrtShell->GetContentAtPos( aPos, aContentAtPos, bSelect ) )
+            if (m_pWrtShell->GetContentAtPos(SwEditWin::GetDDStartPos(), aContentAtPos, bSelect))
             {
                 m_oBookmark.emplace(
                         static_cast<const SwFormatINetFormat*>(aContentAtPos.aFnd.pAttr)->GetValue(),
@@ -691,7 +690,7 @@ bool SwTransferable::GetData( const DataFlavor& rFlavor, const OUString& rDestDo
             {
                 SwDoc& rDoc = lcl_GetDoc(*m_pClpDocFac);
                 m_aDocShellRef = new SwDocShell(rDoc, SfxObjectCreateMode::EMBEDDED);
-                m_aDocShellRef->DoInitNew();
+                m_aDocShellRef->DoInitNew(SfxNewDocumentMacros::Disallow);
                 SwTransferable::InitOle( m_aDocShellRef );
             }
             bOK = SetObject( &m_aDocShellRef, SWTRANSFER_OBJECTTYPE_SWOLE,
@@ -1029,7 +1028,7 @@ int SwTransferable::PrepareForCopy( bool bIsCut, bool bDeleteRedlines )
         m_pClpDocFac.reset(new SwDocFac);
         SwDoc& rDoc = lcl_GetDoc(*m_pClpDocFac);
         m_aDocShellRef = new SwDocShell(rDoc, SfxObjectCreateMode::EMBEDDED);
-        m_aDocShellRef->DoInitNew();
+        m_aDocShellRef->DoInitNew(SfxNewDocumentMacros::Disallow);
         m_pWrtShell->Copy(rDoc);
 
         AddFormat( SotClipboardFormatId::EMBED_SOURCE );
@@ -3363,7 +3362,9 @@ bool SwTransferable::PasteDBData( const TransferableDataHelper& rData,
             {
                 pConnectionItem.reset(new SfxUnoAnyItem(FN_DB_CONNECTION_ANY, aDesc[DataAccessDescriptorProperty::Connection]));
                 pColumnItem.reset(new SfxUnoAnyItem(FN_DB_COLUMN_ANY, aDesc[DataAccessDescriptorProperty::ColumnObject]));
-                pSourceItem.reset(new SfxUnoAnyItem(FN_DB_DATA_SOURCE_ANY, Any(aDesc.getDataSource())));
+                pSourceItem.reset(new SfxUnoAnyItem(
+                    FN_DB_DATA_SOURCE_ANY,
+                    Any(rSh.GetDBManager()->GetDocumentDataSourceName(aDesc.getDataSource()))));
                 pCommandItem.reset(new SfxUnoAnyItem(FN_DB_DATA_COMMAND_ANY, aDesc[DataAccessDescriptorProperty::Command]));
                 pCommandTypeItem.reset(new SfxUnoAnyItem(FN_DB_DATA_COMMAND_TYPE_ANY, aDesc[DataAccessDescriptorProperty::CommandType]));
                 pColumnNameItem.reset(new SfxUnoAnyItem(FN_DB_DATA_COLUMN_NAME_ANY, aDesc[DataAccessDescriptorProperty::ColumnName]));
@@ -3783,9 +3784,8 @@ void SwTransferable::SetDataForDragAndDrop( const Point& rSttPos )
     {
         // is only one field - selected?
         SwContentAtPos aContentAtPos( IsAttrAtPos::InetAttr );
-        Point aPos( SwEditWin::GetDDStartPosX(), SwEditWin::GetDDStartPosY());
 
-        if( m_pWrtShell->GetContentAtPos( aPos, aContentAtPos ) )
+        if (m_pWrtShell->GetContentAtPos(SwEditWin::GetDDStartPos(), aContentAtPos))
         {
             AddFormat( SotClipboardFormatId::STRING );
             AddFormat( SotClipboardFormatId::SOLK );
@@ -4332,7 +4332,7 @@ bool SwTransferable::PrivateDrop( SwWrtShell& rSh, const Point& rDragPt,
     bSttWrd = !bEndWrd && rSh.IsStartWord();
     bSttPara= rSh.IsSttPara();
 
-    Point aSttPt( SwEditWin::GetDDStartPosX(), SwEditWin::GetDDStartPosY() );
+    Point aSttPt = SwEditWin::GetDDStartPos();
 
     // at first, select InetFields!
     if( TransferBufferType::InetField == m_eBufferType )

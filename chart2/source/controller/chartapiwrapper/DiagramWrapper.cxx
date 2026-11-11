@@ -151,7 +151,11 @@ enum
     // Exposed here so the ODF/OOXML exporters can pick them up via the chart property map
     PROP_DIAGRAM_BIN_WIDTH,
     PROP_DIAGRAM_BIN_COUNT,
-    PROP_DIAGRAM_FREQUENCY_TYPE
+    PROP_DIAGRAM_FREQUENCY_TYPE,
+    PROP_DIAGRAM_USE_UNDERFLOW_BIN,
+    PROP_DIAGRAM_UNDERFLOW_BIN_VALUE,
+    PROP_DIAGRAM_USE_OVERFLOW_BIN,
+    PROP_DIAGRAM_OVERFLOW_BIN_VALUE
 };
 
 void lcl_AddPropertiesToVector(
@@ -240,6 +244,22 @@ void lcl_AddPropertiesToVector(
     rOutProperties.emplace_back("FrequencyType",
                   PROP_DIAGRAM_FREQUENCY_TYPE,
                   cppu::UnoType<sal_Int32>::get(),
+                  beans::PropertyAttribute::BOUND | beans::PropertyAttribute::MAYBEDEFAULT);
+    rOutProperties.emplace_back("UseUnderflowBin",
+                  PROP_DIAGRAM_USE_UNDERFLOW_BIN,
+                  cppu::UnoType<bool>::get(),
+                  beans::PropertyAttribute::BOUND | beans::PropertyAttribute::MAYBEDEFAULT);
+    rOutProperties.emplace_back("UnderflowBinValue",
+                  PROP_DIAGRAM_UNDERFLOW_BIN_VALUE,
+                  cppu::UnoType<double>::get(),
+                  beans::PropertyAttribute::BOUND | beans::PropertyAttribute::MAYBEDEFAULT);
+    rOutProperties.emplace_back("UseOverflowBin",
+                  PROP_DIAGRAM_USE_OVERFLOW_BIN,
+                  cppu::UnoType<bool>::get(),
+                  beans::PropertyAttribute::BOUND | beans::PropertyAttribute::MAYBEDEFAULT);
+    rOutProperties.emplace_back("OverflowBinValue",
+                  PROP_DIAGRAM_OVERFLOW_BIN_VALUE,
+                  cppu::UnoType<double>::get(),
                   beans::PropertyAttribute::BOUND | beans::PropertyAttribute::MAYBEDEFAULT);
 
     //new for XY charts
@@ -550,6 +570,9 @@ OUString lcl_getDiagramType( std::u16string_view rTemplateServiceName )
         if( aName.find( u"Bubble" ) != std::u16string_view::npos )
             return u"com.sun.star.chart.BubbleDiagram"_ustr;
 
+        if( aName.find( u"CorrelationCircle" ) != std::u16string_view::npos )
+            return u"com.sun.star.chart.CorrelationCircleDiagram"_ustr;
+
         // Note: this must be checked after Bar, Net and Scatter
 
         // "Symbol" "StackedSymbol" "PercentStackedSymbol" "Line" "StackedLine"
@@ -587,6 +610,7 @@ OUString lcl_getOldChartTypeName( const OUString & rNewChartTypeName )
         {u"com.sun.star.chart2.NetChartType", u"com.sun.star.chart.NetDiagram"_ustr},
         {u"com.sun.star.chart2.CandleStickChartType", u"com.sun.star.chart.StockDiagram"_ustr},
         {u"com.sun.star.chart2.BubbleChartType", u"com.sun.star.chart.BubbleDiagram"_ustr},
+        {u"com.sun.star.chart2.CorrelationCircleChartType", u"com.sun.star.chart.CorrelationCircleDiagram"_ustr},
         {u"com.sun.star.chart2.FunnelChartType", u"com.sun.star.chart.FunnelDiagram"_ustr},
         {u"com.sun.star.chart2.BoxWhiskerChartType", u"com.sun.star.chart.BoxWhiskerDiagram"_ustr},
         {u"com.sun.star.chart2.ClusteredColumnChartType", u"com.sun.star.chart.ClusteredColumnDiagram"_ustr},
@@ -1529,7 +1553,7 @@ void WrappedNumberOfLinesProperty::setPropertyValue( const Any& rOuterValue, con
 {
     sal_Int32 nNewValue;
     if( ! (rOuterValue >>= nNewValue) )
-        throw lang::IllegalArgumentException( u"property NumberOfLines requires sal_Int32 value"_ustr, nullptr, 0 );
+        throw lang::IllegalArgumentException( u"Property NumberOfLines requires sal_Int32 value"_ustr, nullptr, 0 );
 
     m_aOuterValue = rOuterValue;
 
@@ -1984,6 +2008,14 @@ std::vector< std::unique_ptr<WrappedProperty> > DiagramWrapper::createWrappedPro
         u"BinCount"_ustr, uno::Any(sal_Int32(0)), m_spChart2ModelContact));
     aWrappedProperties.emplace_back(new WrappedHistogramProperty(
         u"FrequencyType"_ustr, uno::Any(sal_Int32(0)), m_spChart2ModelContact));
+    aWrappedProperties.emplace_back(new WrappedHistogramProperty(
+        u"UseUnderflowBin"_ustr, uno::Any(false), m_spChart2ModelContact));
+    aWrappedProperties.emplace_back(new WrappedHistogramProperty(
+        u"UnderflowBinValue"_ustr, uno::Any(0.0), m_spChart2ModelContact));
+    aWrappedProperties.emplace_back(new WrappedHistogramProperty(
+        u"UseOverflowBin"_ustr, uno::Any(false), m_spChart2ModelContact));
+    aWrappedProperties.emplace_back(new WrappedHistogramProperty(
+        u"OverflowBinValue"_ustr, uno::Any(0.0), m_spChart2ModelContact));
 
     return aWrappedProperties;
 }

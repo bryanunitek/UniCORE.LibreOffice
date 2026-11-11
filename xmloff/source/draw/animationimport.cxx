@@ -18,7 +18,9 @@
  */
 
 #include <memory>
+#include <optional>
 #include <xmloff/unointerfacetouniqueidentifiermapper.hxx>
+#include <xmloff/SoundReference.hxx>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/animations/AnimationTransformType.hpp>
 #include <com/sun/star/animations/XAnimationNodeSupplier.hpp>
@@ -558,6 +560,7 @@ void AnimationNodeContext::init_node(  const css::uno::Reference< css::xml::sax:
         std::string_view aKeyTimes;
         bool bHaveXmlId( false );
         OUString sXmlId;
+        std::optional<sal_Int16> oExtSubtype;
 
         sal_Int16 nEnum;
         for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
@@ -712,8 +715,20 @@ void AnimationNodeContext::init_node(  const css::uno::Reference< css::xml::sax:
             {
                 if( nNodeType == AnimationNodeType::AUDIO )
                 {
+                    const OUString aRawURL( aIter.toString() );
                     Reference< XAudio > xAudio( mxNode, UNO_QUERY_THROW );
-                    xAudio->setSource( Any(lcl_GetMediaReference(GetImport(), aIter.toString())) );
+                    xAudio->setSource( xmloff::makeSoundSource(
+                        lcl_GetMediaReference(GetImport(), aRawURL)) );
+                    // A sound outside the document package is a link the model
+                    // tracks; tell the model so it knows to look for one.
+                    if( !GetImport().IsPackageURL(aRawURL) )
+                    {
+                        Reference< css::beans::XPropertySet >
+                            xModelProps( GetImport().GetModel(), UNO_QUERY );
+                        if( xModelProps.is() )
+                            xModelProps->setPropertyValue(
+                                u"HasExternalAnimationSoundLink"_ustr, css::uno::Any(true) );
+                    }
                     break;
                 }
                 [[fallthrough]];
@@ -1027,6 +1042,17 @@ void AnimationNodeContext::init_node(  const css::uno::Reference< css::xml::sax:
             }
             break;
 
+            case XML_ELEMENT(COL_EXT, XML_SUBTYPE):
+            case XML_ELEMENT(LO_EXT, XML_SUBTYPE):
+            {
+                // Applied after all attributes, so it wins over the smil:subtype fallback.
+                if (xTransitionFilter.is()
+                    && SvXMLUnitConverter::convertEnum(nEnum, aIter.toView(),
+                                                       aAnimations_EnumMap_TransitionSubTypeExt))
+                    oExtSubtype = nEnum;
+            }
+            break;
+
             case XML_ELEMENT(SMIL, XML_MODE):
             case XML_ELEMENT(SMIL_COMPAT, XML_MODE):
             case XML_ELEMENT(SMIL_SO52, XML_MODE):
@@ -1132,6 +1158,9 @@ void AnimationNodeContext::init_node(  const css::uno::Reference< css::xml::sax:
             }
             }
         }
+
+        if (oExtSubtype)
+            xTransitionFilter->setSubtype(*oExtSubtype);
 
         if (!sXmlId.isEmpty())
         {
@@ -1327,8 +1356,8 @@ void AnimationNodeContext::postProcessRootNode( const Reference< XAnimationNode 
                         case AnimationNodeType::AUDIO:
                         {
                             Reference< XAudio > xAudio( xChildNode, UNO_QUERY_THROW );
-                            OUString sSoundURL;
-                            if( (xAudio->getSource() >>= sSoundURL) && !sSoundURL.isEmpty() )
+                            OUString sSoundURL = xmloff::getSoundURL( xAudio->getSource() );
+                            if( !sSoundURL.isEmpty() )
                             {
                                 xPageProps->setPropertyValue(u"Sound"_ustr, Any(sSoundURL) );
 

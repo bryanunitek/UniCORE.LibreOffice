@@ -36,6 +36,9 @@ using namespace com::sun::star::task;
 using namespace com::sun::star::ucb;
 using namespace com::sun::star::uno;
 
+constexpr sal_uInt16 HTTP_DEFAULT_PORT = 80;
+constexpr sal_uInt16 HTTPS_DEFAULT_PORT = 443;
+
 DetailsContainer::DetailsContainer(PlaceEditDialog* pDialog)
     : m_pDialog(pDialog)
 {
@@ -79,10 +82,7 @@ void DetailsContainer::notifyChange( )
     m_aChangeHdl.Call( this );
 }
 
-IMPL_LINK_NOARG( DetailsContainer, ValueChangeHdl, weld::Entry&, void )
-{
-    notifyChange( );
-}
+IMPL_LINK_NOARG(DetailsContainer, ValueChangeHdl, weld::TextWidget&, void) { notifyChange(); }
 
 HostDetailsContainer::HostDetailsContainer(PlaceEditDialog* pDialog, sal_uInt16 nPort, OUString sScheme) :
     DetailsContainer( pDialog ),
@@ -152,8 +152,13 @@ bool HostDetailsContainer::verifyScheme( const OUString& sScheme )
     return sScheme == Concat2View( m_sScheme + "://" );
 }
 
+void HostDetailsContainer::setDefaultPort(sal_uInt16 nDefaultPort)
+{
+    m_nDefaultPort = nDefaultPort;
+}
+
 DavDetailsContainer::DavDetailsContainer(PlaceEditDialog* pBuilder)
-    : HostDetailsContainer(pBuilder, 80, u"http"_ustr)
+    : HostDetailsContainer(pBuilder, HTTP_DEFAULT_PORT, u"http"_ustr)
 {
     m_pDialog->m_xCBDavs->connect_toggled(LINK(this, DavDetailsContainer, ToggledDavsHdl));
 
@@ -192,10 +197,12 @@ IMPL_LINK( DavDetailsContainer, ToggledDavsHdl, weld::Toggleable&, rCheckBox, vo
 {
     // Change default port if needed
     bool bCheckedDavs = rCheckBox.get_active();
-    if ( m_pDialog->m_xEDPort->get_value() == 80 && bCheckedDavs )
-        m_pDialog->m_xEDPort->set_value( 443 );
-    else if ( m_pDialog->m_xEDPort->get_value() == 443 && !bCheckedDavs )
-        m_pDialog->m_xEDPort->set_value( 80 );
+    if ( m_pDialog->m_xEDPort->get_value() == HTTP_DEFAULT_PORT && bCheckedDavs )
+        m_pDialog->m_xEDPort->set_value( HTTPS_DEFAULT_PORT );
+    else if ( m_pDialog->m_xEDPort->get_value() == HTTPS_DEFAULT_PORT && !bCheckedDavs )
+        m_pDialog->m_xEDPort->set_value( HTTP_DEFAULT_PORT );
+
+    setDefaultPort(bCheckedDavs ? HTTPS_DEFAULT_PORT : HTTP_DEFAULT_PORT);
 
     OUString sScheme( u"http"_ustr );
     if ( bCheckedDavs )
@@ -310,13 +317,12 @@ void CmisDetailsContainer::set_visible( bool bShow )
         m_pDialog->m_xRepositoryBox->hide();
         m_pDialog->m_xEDRoot->hide();
         m_pDialog->m_xFTRoot->hide();
-#if defined OAUTH2REQUEST_SUPPORTED
+
         if (m_sBinding == GDRIVE_BASE_URL || m_sBinding == ONEDRIVE_BASE_URL)
         {
             m_pDialog->m_xFTShare->hide();
             m_pDialog->m_xEDShare->hide();
         }
-#endif
     }
     else
     {
@@ -335,10 +341,8 @@ void CmisDetailsContainer::set_visible( bool bShow )
 
 bool CmisDetailsContainer::enablePassword()
 {
-#if defined OAUTH2REQUEST_SUPPORTED
     if (m_sBinding == GDRIVE_BASE_URL || m_sBinding == ONEDRIVE_BASE_URL)
         return false;
-#endif
     return DetailsContainer::enablePassword();
 }
 

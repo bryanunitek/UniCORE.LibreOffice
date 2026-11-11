@@ -1073,6 +1073,22 @@ void SwNodes::SectionUpDown( const SwNodeIndex & aStart, const SwNodeIndex & aEn
     }
 }
 
+namespace
+{
+    // Nothing updates the pointer from a SwTableBox to its cell's start node, so an emptied cell
+    // keeps its start and end node while the table that owns the cell stays. nLastSurvivingNode is
+    // the index of the last node that this deletion leaves in place, so a table at or below it
+    // stays and a table above it goes.
+    bool IsStartNodeOfSurvivingTableBox(const SwNode* pNode, SwNodeOffset nLastSurvivingNode)
+    {
+        const SwStartNode* pStartNode = pNode->GetStartNode();
+        if (!pStartNode || pStartNode->GetStartNodeType() != SwTableBoxStartNode)
+            return false;
+        const SwTableNode* pTableNode = pStartNode->FindTableNode();
+        return pTableNode && pTableNode->GetIndex() <= nLastSurvivingNode;
+    }
+}
+
 void SwNodes::Delete(const SwNodeIndex &rIndex, SwNodeOffset nNodes)
 {
     Delete(rIndex.GetNode(), nNodes);
@@ -1196,7 +1212,8 @@ void SwNodes::Delete(const SwNode &rIndex, SwNodeOffset nNodes)
             --aRg.aEnd;
             while(  pTmpNode &&
                     ( pCurrentNode = &aRg.aEnd.GetNode())->GetStartNode() &&
-                    pCurrentNode->StartOfSectionIndex() )
+                    pCurrentNode->StartOfSectionIndex() &&
+                    !IsStartNodeOfSurvivingTableBox(pCurrentNode, aRg.aStart.GetIndex()) )
             {
                 // remove end and start node
                 DelNodes( aRg.aEnd, SwNodeOffset(2) );
@@ -1235,7 +1252,9 @@ void SwNodes::Delete(const SwNode &rIndex, SwNodeOffset nNodes)
     // delete all empty start/end node pairs
     while( aRg.aEnd.GetNode().GetEndNode() &&
             ( pCurrentNode = &aRg.aStart.GetNode())->GetStartNode() &&
-            pCurrentNode->StartOfSectionIndex() )
+            pCurrentNode->StartOfSectionIndex() &&
+            !IsStartNodeOfSurvivingTableBox(pCurrentNode,
+                                            aRg.aStart.GetIndex() - SwNodeOffset(1)) )
     // but none of the holy 5. (???)
     {
         DelNodes( aRg.aStart, SwNodeOffset(2) );  // delete start and end node
@@ -2037,10 +2056,11 @@ SwContentNode* SwNodes::GoNextSection(SwPosition* pIdx, bool bSkipHidden, bool b
     return pNd;
 }
 
-static SwContentNode* goPrevSection(const SwNode& rNode, bool bSkipHidden, bool bSkipProtect)
+static SwContentNode* goPrevSection(const SwNode& rNode, bool bSkipHidden, bool bSkipProtect,
+                                    bool canCrossBoundary)
 {
     const SwNodes& rNodes = rNode.GetNodes();
-    SwNodeOffset first(startOfGlobalSection(rNode));
+    SwNodeOffset first(canCrossBoundary ? SwNodeOffset(0) : startOfGlobalSection(rNode));
     for (SwNodeOffset i(rNode.GetIndex()); i > first; --i)
     {
         SwNode* pNd = rNodes[i];
@@ -2069,18 +2089,20 @@ static SwContentNode* goPrevSection(const SwNode& rNode, bool bSkipHidden, bool 
 }
 
 ///@see SwNodes::GoNextSection
-SwContentNode* SwNodes::GoPrevSection(SwNodeIndex* pIdx, bool bSkipHidden, bool bSkipProtect)
+SwContentNode* SwNodes::GoPrevSection(SwNodeIndex* pIdx, bool bSkipHidden, bool bSkipProtect,
+                                     bool canCrossBoundary)
 {
-    SwContentNode* pNd = goPrevSection(pIdx->GetNode(), bSkipHidden, bSkipProtect);
+    SwContentNode* pNd = goPrevSection(pIdx->GetNode(), bSkipHidden, bSkipProtect, canCrossBoundary);
     if (pNd)
         *pIdx = *pNd;
     return pNd;
 }
 
 ///@see SwNodes::GoNextSection
-SwContentNode* SwNodes::GoPrevSection(SwPosition* pIdx, bool bSkipHidden, bool bSkipProtect)
+SwContentNode* SwNodes::GoPrevSection(SwPosition* pIdx, bool bSkipHidden, bool bSkipProtect,
+                                     bool canCrossBoundary)
 {
-    SwContentNode* pNd = goPrevSection(pIdx->GetNode(), bSkipHidden, bSkipProtect);
+    SwContentNode* pNd = goPrevSection(pIdx->GetNode(), bSkipHidden, bSkipProtect, canCrossBoundary);
     if (pNd)
         pIdx->AssignStartIndex(*pNd);
     return pNd;

@@ -47,6 +47,7 @@
 #include <comphelper/interfacecontainer3.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/propertyvalue.hxx>
+#include <comphelper/scripturl.hxx>
 #include <comphelper/types.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <svtools/imageresourceaccess.hxx>
@@ -290,6 +291,10 @@ namespace frm
                     aURL.Complete = xModel->getURL();
                     aURL.Complete += aURL.Mark;
                 }
+
+                if (comphelper::isScriptURL(aURL.Complete)
+                    && !SfxObjectShell::isDocumentScriptAllowed(aURL.Complete, xModel))
+                    return;
 
                 bool bDispatchUrlInternal = false;
                 xSet->getPropertyValue(PROPERTY_DISPATCHURLINTERNAL) >>= bDispatchUrlInternal;
@@ -745,9 +750,9 @@ namespace frm
 
         if (!rURL.isEmpty() && !::svt::GraphicAccess::isSupportedURL( rURL ) )
         {
-            m_pMedium.reset(new SfxMedium(rURL, StreamMode::STD_READ));
-
             SfxObjectShell *pObjSh = GetObjectShell();
+
+            m_pMedium.reset(new SfxMedium(rURL, StreamMode::STD_READ));
 
             if( pObjSh )
             {

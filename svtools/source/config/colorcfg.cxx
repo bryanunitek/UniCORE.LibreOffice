@@ -362,10 +362,6 @@ void ColorConfig_Impl::LoadThemeColorsFromRegistry()
 
     rThemeColors.SetWindowColor(GetColorValue(svtools::WINDOWCOLOR).nColor);
     rThemeColors.SetWindowTextColor(GetColorValue(svtools::WINDOWTEXTCOLOR).nColor);
-    rThemeColors.SetWriterNotebookbarColor(GetColorValue(svtools::WRITERNOTEBOOKBARCOLOR).nColor);
-    rThemeColors.SetCalcNotebookbarColor(GetColorValue(svtools::CALCNOTEBOOKBARCOLOR).nColor);
-    rThemeColors.SetImpressNotebookbarColor(GetColorValue(svtools::IMPRESSNOTEBOOKBARCOLOR).nColor);
-    rThemeColors.SetDrawNotebookbarColor(GetColorValue(svtools::DRAWNOTEBOOKBARCOLOR).nColor);
     rThemeColors.SetBaseColor(GetColorValue(svtools::BASECOLOR).nColor);
     rThemeColors.SetButtonColor(GetColorValue(svtools::BUTTONCOLOR).nColor);
     rThemeColors.SetButtonTextColor(GetColorValue(svtools::BUTTONTEXTCOLOR).nColor);
@@ -465,14 +461,6 @@ static Color lcl_GetDefaultUIColor(ColorConfigEntry eEntry)
             return rStyleSettings.GetWindowColor();
         case WINDOWTEXTCOLOR:
             return rStyleSettings.GetWindowTextColor();
-        case WRITERNOTEBOOKBARCOLOR:
-            return rStyleSettings.GetWriterNotebookbarColor();
-        case CALCNOTEBOOKBARCOLOR:
-            return rStyleSettings.GetCalcNotebookbarColor();
-        case IMPRESSNOTEBOOKBARCOLOR:
-            return rStyleSettings.GetImpressNotebookbarColor();
-        case DRAWNOTEBOOKBARCOLOR:
-            return rStyleSettings.GetDrawNotebookbarColor();
         case BASECOLOR:
             return rStyleSettings.GetFieldColor();
         case BUTTONCOLOR:
@@ -484,6 +472,7 @@ static Color lcl_GetDefaultUIColor(ColorConfigEntry eEntry)
         case DISABLEDCOLOR:
             return rStyleSettings.GetDisableColor();
         case DISABLEDTEXTCOLOR:
+            return rStyleSettings.GetDisableTextColor();
         case SHADECOLOR:
             return rStyleSettings.GetShadowColor();
         case SEPARATORCOLOR:
@@ -545,8 +534,8 @@ Color ColorConfig::GetDefaultColor(ColorConfigEntry eEntry, int nMod)
         { COL_BLACK,        COL_BLACK       }, // FONTCOLOR
         { COL_BLUE,         Color(0x1D99F3) }, // LINKS
         { Color(0x0000cc),  Color(0x9B59B6) }, // LINKSVISITED
-        { COL_LIGHTRED,     Color(0xC9211E) }, // SPELL
-        { COL_LIGHTBLUE,    Color(0x729FCF) }, // GRAMMAR
+        { Color(0xf10d0c),  Color(0xf10d0c) }, // SPELL    (Dark Red 1)
+        { Color(0x3465a4),  Color(0x3465a4) }, // GRAMMAR  (Dark Blue 1)
         { COL_LIGHTMAGENTA, Color(0x780373) }, // SMARTTAGS
         { COL_GRAY,         Color(0x1C1C1C) }, // SHADOWCOLOR
         { COL_GRAY7,        COL_GRAY7       }, // WRITERTEXTGRID
@@ -728,17 +717,13 @@ void ColorConfig_Impl::UpdateSettings()
     aStyleSettings.SetActiveTabColor(aColor);
     aStyleSettings.SetHelpColor(aColor);
 
-    aStyleSettings.SetWriterNotebookbarColor(GetColorValue(WRITERNOTEBOOKBARCOLOR, true).nColor);
-    aStyleSettings.SetCalcNotebookbarColor(GetColorValue(CALCNOTEBOOKBARCOLOR, true).nColor);
-    aStyleSettings.SetImpressNotebookbarColor(GetColorValue(IMPRESSNOTEBOOKBARCOLOR, true).nColor);
-    aStyleSettings.SetDrawNotebookbarColor(GetColorValue(DRAWNOTEBOOKBARCOLOR, true).nColor);
-
     aColor = GetColorValue(BASECOLOR, true).nColor;
     aStyleSettings.SetInactiveTabColor(aColor);
     aStyleSettings.SetListBoxWindowBackgroundColor(aColor);
     aStyleSettings.SetFieldColor(aColor);
 
     aStyleSettings.SetDisableColor(GetColorValue(DISABLEDCOLOR, true).nColor);
+    aStyleSettings.SetDisableTextColor(GetColorValue(DISABLEDTEXTCOLOR, true).nColor);
 
     aColor = GetColorValue(ACCENTCOLOR, true).nColor;
     aStyleSettings.SetAccentColor(aColor);
@@ -871,9 +856,9 @@ void EditableColorConfig::SetModified()
     m_bModified = true;
 }
 
-void EditableColorConfig::Commit()
+void EditableColorConfig::Commit(const bool bForceUpdate)
 {
-    if(m_bModified)
+    if(m_bModified || bForceUpdate)
         m_pImpl->SetModified();
     if(m_pImpl->IsModified())
     {

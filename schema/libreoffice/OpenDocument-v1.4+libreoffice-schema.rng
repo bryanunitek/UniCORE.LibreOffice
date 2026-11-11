@@ -67,6 +67,12 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
 
     <rng:define name="style-graphic-properties-attlist">
       <rng:interleave>
+        <!-- https://issues.oasis-open.org/browse/OFFICE-4142 -->
+        <rng:optional>
+          <rng:attribute name="draw:decorative">
+            <rng:ref name="boolean"/>
+          </rng:attribute>
+        </rng:optional>
         <rng:optional>
           <rng:attribute name="draw:stroke">
             <rng:choice>
@@ -1023,6 +1029,13 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
             <rng:ref name="string"/>
           </rng:attribute>
         </rng:optional>
+        <!-- The moment the comment was written. dc:date carries the author's wall clock with
+             no zone, so this is what pins the comment to a point in time. -->
+        <rng:optional>
+          <rng:attribute name="loext:date-utc">
+            <rng:ref name="dateTime"/>
+          </rng:attribute>
+        </rng:optional>
       </rng:interleave>
     </rng:define>
 
@@ -1257,6 +1270,9 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
         </rng:optional>
         <rng:optional>
           <rng:ref name="loext-qrcode"/>
+        </rng:optional>
+        <rng:optional>
+          <rng:ref name="loext-graphic-clip-poly"/>
         </rng:optional>
 
       </rng:element>
@@ -2180,7 +2196,73 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
     </rng:element>
   </rng:define>
 
-   </rng:include>
+    <rng:define name="draw-g">
+      <rng:element name="draw:g">
+        <rng:ref name="draw-g-attlist"/>
+        <rng:ref name="common-draw-z-index-attlist"/>
+        <rng:ref name="common-draw-name-attlist"/>
+        <rng:ref name="common-draw-id-attlist"/>
+        <rng:ref name="common-draw-style-name-attlist"/>
+        <rng:ref name="common-text-spreadsheet-shape-attlist"/>
+        <rng:ref name="common-draw-caption-id-attlist"/>
+        <!-- For SmartArt round-trip (Armin Le Grand) CO 26.04 -->
+        <rng:optional>
+          <rng:ref name="loext-diagram"/>
+        </rng:optional>
+        <!-- https://issues.oasis-open.org/browse/OFFICE-4132 -->
+        <rng:ref name="common-draw-shape-accessibility"/>
+        <rng:optional>
+          <rng:ref name="office-event-listeners"/>
+        </rng:optional>
+        <rng:zeroOrMore>
+          <rng:ref name="draw-glue-point"/>
+        </rng:zeroOrMore>
+        <rng:zeroOrMore>
+          <rng:ref name="shape"/>
+        </rng:zeroOrMore>
+      </rng:element>
+    </rng:define>
+
+    <rng:define name="anim-transition-filter-attlist">
+      <rng:interleave>
+        <rng:attribute name="smil:type">
+          <rng:ref name="string"/>
+        </rng:attribute>
+        <rng:optional>
+          <rng:attribute name="smil:subtype">
+            <rng:ref name="string"/>
+          </rng:attribute>
+        </rng:optional>
+        <!-- A subtype that has no SMIL name, e.g. airplane: smil:subtype has a fallback then. -->
+        <rng:optional>
+          <rng:attribute name="loext:subtype">
+            <rng:ref name="string"/>
+          </rng:attribute>
+        </rng:optional>
+        <rng:optional>
+          <rng:attribute name="smil:direction">
+            <rng:choice>
+              <rng:value>forward</rng:value>
+              <rng:value>reverse</rng:value>
+            </rng:choice>
+          </rng:attribute>
+        </rng:optional>
+        <rng:optional>
+          <rng:attribute name="smil:fadeColor">
+            <rng:ref name="color"/>
+          </rng:attribute>
+        </rng:optional>
+        <rng:optional>
+          <rng:attribute name="smil:mode">
+            <rng:choice>
+              <rng:value>in</rng:value>
+              <rng:value>out</rng:value>
+            </rng:choice>
+          </rng:attribute>
+        </rng:optional>
+      </rng:interleave>
+    </rng:define>
+  </rng:include>
 
     <!-- TODO no proposal -->
   <rng:define name="loext-threaded-comment">
@@ -2297,6 +2379,14 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
       </rng:attribute>
       <rng:attribute name="loext:can-add-comment">
         <rng:ref name="boolean"/>
+      </rng:attribute>
+    </rng:element>
+  </rng:define>
+
+  <rng:define name="loext-graphic-clip-poly">
+    <rng:element name="loext:graphic-clip-poly">
+      <rng:attribute name="svg:d">
+        <rng:ref name="string"/>
       </rng:attribute>
     </rng:element>
   </rng:define>
@@ -2449,6 +2539,31 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
       <rng:ref name="table-table-cell-attlist"/>
       <rng:ref name="table-table-cell-content"/>
     </rng:element>
+  </rng:define>
+  <!-- True on a formula cell that is a dynamic-array master. -->
+  <rng:define name="table-table-cell-attlist-extra" combine="interleave">
+    <rng:optional>
+      <rng:attribute name="loext:spill">
+        <rng:ref name="boolean"/>
+      </rng:attribute>
+    </rng:optional>
+  </rng:define>
+  <!-- The prompt an empty placeholder shows, when the document authors one of its own. -->
+  <rng:define name="presentation-shape-attlist" combine="interleave">
+    <rng:optional>
+      <rng:attribute name="loext:placeholder-prompt">
+        <rng:ref name="string"/>
+      </rng:attribute>
+    </rng:optional>
+  </rng:define>
+  <!-- The class a placeholder has, where it differs from the class of what represents it: one
+       waiting for a picture is written as a frame of text while it holds text. -->
+  <rng:define name="presentation-shape-attlist" combine="interleave">
+    <rng:optional>
+      <rng:attribute name="loext:placeholder-class">
+        <rng:ref name="presentation-classes"/>
+      </rng:attribute>
+    </rng:optional>
   </rng:define>
   <rng:define name="loext-columns-and-groups">
     <rng:oneOrMore>
@@ -2881,6 +2996,7 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
       <rng:attribute name="loext:class">
         <rng:choice>
           <rng:value>loext:histogram</rng:value>
+          <rng:value>loext:correlation-circle</rng:value>
         </rng:choice>
       </rng:attribute>
     </rng:optional>
@@ -3223,6 +3339,15 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
   </rng:define>
 
   <!-- TODO no proposal -->
+  <rng:define name="style-text-properties-attlist" combine="interleave">
+    <rng:optional>
+      <rng:attribute name="loext:hyphenation-level">
+        <rng:ref name="percent"/>
+      </rng:attribute>
+    </rng:optional>
+  </rng:define>
+
+  <!-- TODO no proposal -->
   <rng:define name="style-paragraph-properties-attlist" combine="interleave">
     <rng:optional>
       <!-- default value: column -->
@@ -3241,6 +3366,15 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
   <rng:define name="style-paragraph-properties-attlist" combine="interleave">
     <rng:optional>
       <rng:attribute name="loext:hyphenation-keep-line">
+        <rng:ref name="boolean"/>
+      </rng:attribute>
+    </rng:optional>
+  </rng:define>
+
+  <!-- TODO no proposal -->
+  <rng:define name="style-paragraph-properties-attlist" combine="interleave">
+    <rng:optional>
+      <rng:attribute name="loext:hyphenation-split-compound-word">
         <rng:ref name="boolean"/>
       </rng:attribute>
     </rng:optional>
@@ -3330,6 +3464,15 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
   <rng:define name="style-paragraph-properties-attlist" combine="interleave">
     <rng:optional>
       <rng:attribute name="loext:paragraph-composer">
+        <rng:ref name="boolean"/>
+      </rng:attribute>
+    </rng:optional>
+  </rng:define>
+
+  <!-- TODO no proposal -->
+  <rng:define name="style-paragraph-properties-attlist" combine="interleave">
+    <rng:optional>
+      <rng:attribute name="loext:compound-based">
         <rng:ref name="boolean"/>
       </rng:attribute>
     </rng:optional>
@@ -3787,6 +3930,26 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
         <rng:data type="integer"/>
       </rng:attribute>
     </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:use-underflow-bin">
+        <rng:ref name="boolean"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:underflow-bin-value">
+        <rng:data type="double"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:use-overflow-bin">
+        <rng:ref name="boolean"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:overflow-bin-value">
+        <rng:data type="double"/>
+      </rng:attribute>
+    </rng:optional>
   </rng:define>
 
   <!-- https://issues.oasis-open.org/browse/OFFICE-4107 -->
@@ -4172,6 +4335,16 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
         <rng:ref name="string"/>
       </rng:attribute>
     </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:font-variation-settings-asian">
+        <rng:ref name="string"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:font-variation-settings-complex">
+        <rng:ref name="string"/>
+      </rng:attribute>
+    </rng:optional>
   </rng:define>
 
   <!-- TODO no proposal -->
@@ -4252,6 +4425,54 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
     <rng:optional>
       <rng:attribute name="loext:decorative">
         <rng:ref name="boolean"/>
+      </rng:attribute>
+    </rng:optional>
+  </rng:define>
+
+  <!-- TODO no proposal: a "standard horizontal rule", laid out and cropped its own way -->
+  <rng:define name="style-graphic-properties-attlist" combine="interleave">
+    <rng:optional>
+      <rng:attribute name="loext:horizontal-rule">
+        <rng:ref name="boolean"/>
+      </rng:attribute>
+    </rng:optional>
+  </rng:define>
+
+  <!-- TODO no proposal: a mirrored copy of the shape below it, fading out away from the shape -->
+  <rng:define name="style-graphic-properties-attlist" combine="interleave">
+    <rng:optional>
+      <rng:attribute name="loext:reflection">
+        <rng:ref name="boolean"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:reflection-distance">
+        <rng:ref name="nonNegativeLength"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:reflection-blur">
+        <rng:ref name="nonNegativeLength"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:reflection-start-transparency">
+        <rng:ref name="zeroToHundredPercent"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:reflection-start-position">
+        <rng:ref name="zeroToHundredPercent"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:reflection-end-transparency">
+        <rng:ref name="zeroToHundredPercent"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:reflection-end-position">
+        <rng:ref name="zeroToHundredPercent"/>
       </rng:attribute>
     </rng:optional>
   </rng:define>
@@ -4417,6 +4638,46 @@ xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.
         </rng:attribute>
       </rng:optional>
       <rng:ref name="office-change-info"/>
+    </rng:element>
+  </rng:define>
+
+    <!-- TODO: no proposal -->
+    <!-- enables empty header/footer on first page -->
+    <rng:define name="style-master-page-attlist" combine="interleave">
+      <rng:optional>
+        <rng:attribute name="loext:is-first-page-header-enabled">
+          <!-- default value: true iff any header element exists -->
+          <rng:ref name="boolean"/>
+        </rng:attribute>
+      </rng:optional>
+      <rng:optional>
+        <rng:attribute name="loext:is-first-page-footer-enabled">
+          <rng:ref name="boolean"/>
+        </rng:attribute>
+      </rng:optional>
+    </rng:define>
+
+  <!-- TODO proposal -->
+  <rng:define name="style-page-layout-properties-attlist" combine="interleave">
+    <rng:optional>
+      <rng:attribute name="loext:min-page-margin-top">
+        <rng:ref name="nonNegativeLength"/>
+      </rng:attribute>
+    </rng:optional>
+    <rng:optional>
+      <rng:attribute name="loext:min-page-margin-bottom">
+        <rng:ref name="nonNegativeLength"/>
+      </rng:attribute>
+    </rng:optional>
+  </rng:define>
+
+  <!-- For SmartArt round-trip (Armin Le Grand) CO 26.04 -->
+  <rng:define name="loext-diagram">
+    <rng:element name="loext:diagram">
+      <rng:element name="loext:layout"><rng:ref name="string"/></rng:element>
+      <rng:element name="loext:data"><rng:ref name="string"/></rng:element>
+      <rng:element name="loext:colors"><rng:ref name="string"/></rng:element>
+      <rng:element name="loext:quickstyle"><rng:ref name="string"/></rng:element>
     </rng:element>
   </rng:define>
 </rng:grammar>

@@ -21,12 +21,10 @@
 
 #include <vector>
 
-#ifdef DBG_ANIM_LOG
-#include <stdio.h>
-#endif
 #include <rtl/ustring.hxx>
 
 class SvStream;
+class SdSoundLink;
 
 namespace ppt
 {
@@ -55,7 +53,8 @@ class ExSoundCollection
 {
     public:
 
-        sal_uInt32              GetId(const OUString&);
+        void                    SetReferer(const OUString& rReferer) { maReferer = rReferer; }
+        sal_uInt32              GetId(const SdSoundLink&);
 
         /// @return size of a complete SoundCollectionContainer.
         sal_uInt32              GetSize() const;
@@ -64,6 +63,7 @@ class ExSoundCollection
 private:
 
     std::vector<ExSoundEntry> maEntries;
+    OUString maReferer;
 };
 
 } // namespace ppt

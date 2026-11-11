@@ -269,7 +269,8 @@ void SAL_CALL ScDocumentConfiguration::setPropertyValue(
         {
             if( pDocShell->GetCreateMode() != SfxObjectCreateMode::EMBEDDED )
             {
-                SfxPrinter *pTempPrinter = pDocShell->GetPrinter( true );
+                // tdf#42673 - do not create the possibly unreachable printer for the default value
+                SfxPrinter* pTempPrinter = pDocShell->GetPrinter(bPreferPrinterPapersize);
                 if (pTempPrinter)
                     pTempPrinter->SetPrinterSettingsPreferred( bPreferPrinterPapersize );
             }
@@ -565,7 +566,7 @@ uno::Any SAL_CALL ScDocumentConfiguration::getPropertyValue( const OUString& aPr
     else if ( aPropertyName == SC_UNO_MODIFYPASSWORDINFO )
         aRet <<= pDocShell->GetModifyPasswordInfo();
     else if (aPropertyName == SC_UNO_MODIFYPASSWORDHASH)
-        aRet <<= pDocShell->GetModifyPasswordHash();
+        aRet <<= static_cast<sal_Int32>(pDocShell->GetModifyPasswordHash());
     else if (aPropertyName == SC_UNO_EMBED_FONTS)
         aRet <<= rDoc.IsEmbedFonts();
     else if (aPropertyName == SC_UNO_EMBED_ONLY_USED_FONTS)

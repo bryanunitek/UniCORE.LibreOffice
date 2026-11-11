@@ -277,8 +277,8 @@ namespace vcl
     bool WizardMachine::leaveState(WizardTypes::WizardState)
     {
         // no need to ask the page here.
-        // If we reach this point, we already gave the current page the chance to commit it's data,
-        // and it was allowed to commit it's data
+        // If we reach this point, we already gave the current page the chance to commit its data,
+        // and it was allowed to commit its data
 
         return true;
     }
@@ -294,7 +294,7 @@ namespace vcl
             return;
 
         // prevent WizardTravelSuspension from using this instance
-        // after will be destructed due to onFinish and async response call
+        // after it is destructed due to onFinish and async response call
         {
             WizardTravelSuspension aTravelGuard( *this );
             if (!prepareLeaveCurrentState(WizardTypes::eFinish))
@@ -579,8 +579,8 @@ namespace vcl
         OSL_ENSURE( pController != nullptr, "WizardMachine::updateTravelUI: no controller for the current page!" );
 
         bool bCanAdvance =
-                ( !pController || pController->canAdvance() )   // the current page allows to advance
-            &&  canAdvance();                                   // the dialog as a whole allows to advance
+                ( !pController || pController->canAdvance() )   // the current page allows advancing
+            &&  canAdvance();                                   // the dialog as a whole allows advancing
         enableButtons( WizardButtonFlags::NEXT, bCanAdvance );
     }
 
@@ -695,7 +695,7 @@ namespace vcl
 
         return nullptr;
     }
-}   // namespace svt
+}   // namespace vcl
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -77,9 +77,9 @@ public:
                                 const OUString & rMimeType,
                                 bool bSynchron = false );
 
-                        // sal_True => waitinmg for data
+                        // true => waiting for data
     virtual bool        IsPending() const;
-                        // sal_True => data complete loaded
+                        // true => data completely loaded
     virtual bool        IsDataComplete() const;
 
     virtual void        Edit(weld::Window *, SvBaseLink *, const Link<const OUString&, void>& rEndEditHdl);

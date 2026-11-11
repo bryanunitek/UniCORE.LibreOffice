@@ -221,6 +221,7 @@ class SwUINumRuleItem;
 
 #define FN_INSERT_BREAK_DLG     (FN_INSERT + 4 )  /* Break */
 #define FN_INSERT_COLUMN_BREAK  (FN_INSERT + 5 )  /* Column break */
+#define FN_CLEAR_EMBEDDED_DATABASE (FN_INSERT + 6 )  /* Remove the embedded database */
 #define FN_INSERT_FIELD         TypedWhichId<SfxStringItem>(FN_INSERT + 8 )  /* Textcommand */
 #define FN_CHANGE_DBFIELD       (FN_INSERT + 9 )  /* Change the database field */
 
@@ -541,7 +542,6 @@ class SwUINumRuleItem;
 #define FN_LINE_NUMBERING_DLG       (FN_EXTRA + 2 )   /* */
 #define FN_HYPHENATE_OPT_DLG        (FN_EXTRA + 5 )   /* */
 #define FN_NO_BREAK                 (FN_EXTRA + 6 )   /* do not hyphenate */
-#define FN_ADD_UNKNOWN              (FN_EXTRA + 7 )   /* learn words */
 #define FN_NUMBERING_OUTLINE_DLG    (FN_EXTRA + 12)   /* */
 #define FN_SORTING_DLG              (FN_EXTRA + 14)   /* */
 #define FN_CALCULATE                (FN_EXTRA + 15)   /* */

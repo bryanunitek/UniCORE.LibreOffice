@@ -66,7 +66,7 @@ SwContentFrame *SwPageFrame::FindLastBodyContent()
     return pRet;
 }
 
-SwSectionFrame* SwPageFrame::GetEndNoteSection()
+SwLayoutFrame* SwPageFrame::GetEndNoteSectionUpper()
 {
     SwLayoutFrame* pBody = FindBodyCont();
     if (!pBody)
@@ -75,6 +75,46 @@ SwSectionFrame* SwPageFrame::GetEndNoteSection()
     }
 
     SwFrame* pLast = pBody->GetLastLower();
+    if (!pLast || !pLast->IsColumnFrame())
+    {
+        return pBody;
+    }
+
+    // A body frame with columns keeps its text in the column bodies, so the body text ends at
+    // the end of the last column's body.
+    SwFrame* pColumnBody = static_cast<SwLayoutFrame*>(pLast)->Lower();
+    assert(pColumnBody && pColumnBody->IsBodyFrame() && "column frame without a body frame");
+    return static_cast<SwLayoutFrame*>(pColumnBody);
+}
+
+void SwPageFrame::InsertEndNoteSection(SwSectionFrame& rSection)
+{
+    SwLayoutFrame* pParent = GetEndNoteSectionUpper();
+    SwFrame* pBefore = FindLastBodyContent();
+    while (pBefore)
+    {
+        // Check if the last content frame is directly under the body frame or there is
+        // something in-between, e.g. a section frame.
+        if (pBefore->GetUpper() == pParent)
+        {
+            break;
+        }
+
+        // If so, insert behind the parent of the content frame, not inside the parent.
+        pBefore = pBefore->GetUpper();
+    }
+    rSection.InsertBehind(pParent, pBefore);
+}
+
+SwSectionFrame* SwPageFrame::GetEndNoteSection()
+{
+    SwLayoutFrame* pUpper = GetEndNoteSectionUpper();
+    if (!pUpper)
+    {
+        return nullptr;
+    }
+
+    SwFrame* pLast = pUpper->GetLastLower();
     if (!pLast || !pLast->IsSctFrame())
     {
         return nullptr;
@@ -403,7 +443,7 @@ const SwLayoutFrame *SwFrame::ImplGetNextLayoutLeaf( bool bFwd ) const
          if ( !bGoingDown )
          {
              // I cannot go down, because either I'm currently going up or
-             // because the is no lower.
+             // because there is no lower.
              // I'll try to go forward:
              p = lcl_FindLayoutFrame( pFrame, bFwd );
              bGoingFwdOrBwd = nullptr != p;

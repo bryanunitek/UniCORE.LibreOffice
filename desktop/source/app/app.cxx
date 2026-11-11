@@ -29,6 +29,10 @@
 
 #include <sal/config.h>
 
+#if HAVE_FEATURE_UI && !ENABLE_WASM_STRIP_SPLASH
+#include <splash/splash.hxx>
+#endif
+
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
@@ -1231,10 +1235,8 @@ void Desktop::Exception(ExceptionCategory nCategory)
             osl_removeSignalHandler( pSignalHandler );
 
         restartOnMac(false);
-#if !ENABLE_WASM_STRIP_SPLASH
-        if ( m_rSplashScreen.is() )
-            m_rSplashScreen->reset();
-#endif
+        if (m_pSplashScreen)
+            m_pSplashScreen->reset();
 
         _exit( EXITHELPER_CRASH_WITH_RESTART );
     }
@@ -1355,9 +1357,7 @@ int Desktop::Main()
     Translate::SetReadStringHook(ReplaceStringHookProc);
 
     // Startup screen
-#if !ENABLE_WASM_STRIP_SPLASH
     OpenSplashScreen();
-#endif
 
     SetSplashScreenProgress(10);
     recordTime(startT, "SetSplashScreenProgress(10): time = ");
@@ -1780,10 +1780,8 @@ int Desktop::doShutdown()
     if ( bRR )
     {
         restartOnMac(true);
-#if !ENABLE_WASM_STRIP_SPLASH
-        if ( m_rSplashScreen.is() )
-            m_rSplashScreen->reset();
-#endif
+        if (m_pSplashScreen)
+            m_pSplashScreen->reset();
 
         return EXITHELPER_NORMAL_RESTART;
     }
@@ -2339,11 +2337,11 @@ OUString GetURL_Impl(
         return rName;
     }
 
-    // Add path separator to these directory and make given URL (rName) absolute by using of current working directory
+    // Add path separator to this directory and make given URL (rName) absolute by using current working directory
     // Attention: "setFinalSlash()" is necessary for calling "smartRel2Abs()"!!!
     // Otherwise last part will be ignored and wrong result will be returned!!!
-    // "smartRel2Abs()" interpret given URL as file not as path. So he truncate last element to get the base path ...
-    // But if we add a separator - he doesn't do it anymore.
+    // "smartRel2Abs()" interpret given URL as file not as path. So it truncates last element to get the base path ...
+    // But if we add a separator - it doesn't do it anymore.
     INetURLObject aObj;
     if (cwdUrl) {
         aObj.SetURL(*cwdUrl);
@@ -2511,9 +2509,9 @@ void Desktop::HandleAppEvent( const ApplicationEvent& rAppEvent )
     }
 }
 
-#if !ENABLE_WASM_STRIP_SPLASH
 void Desktop::OpenSplashScreen()
 {
+#if HAVE_FEATURE_UI && !ENABLE_WASM_STRIP_SPLASH
     const CommandLineArgs &rCmdLine = GetCommandLineArgs();
     // Show intro only if this is normal start (e.g. no server, no quickstart, no printing )
     if ( !(!rCmdLine.IsInvisible() &&
@@ -2546,57 +2544,35 @@ void Desktop::OpenSplashScreen()
     else if ( rCmdLine.IsWeb() )
         aAppName = "web";
 
-    // Which splash to use
-    OUString aSplashService( u"com.sun.star.office.SplashScreen"_ustr );
-    if ( rCmdLine.HasSplashPipe() )
-        aSplashService = "com.sun.star.office.PipeSplashScreen";
-
-    Sequence< Any > aSeq{ Any(true) /* bVisible */, Any(aAppName) };
-    const css::uno::Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
-    m_rSplashScreen.set(
-        xContext->getServiceManager()->createInstanceWithArgumentsAndContext(aSplashService, aSeq, xContext),
-        UNO_QUERY);
-
-    if(m_rSplashScreen.is())
-            m_rSplashScreen->start(u"SplashScreen"_ustr, 100);
-
-}
+    m_pSplashScreen = std::make_unique<SplashScreen>(aAppName);
+    m_pSplashScreen->start();
 #endif
+}
 
 void Desktop::SetSplashScreenProgress(sal_Int32 iProgress)
 {
-#if ENABLE_WASM_STRIP_SPLASH
-    (void) iProgress;
-#else
-    if(m_rSplashScreen.is())
+    if (m_pSplashScreen)
     {
-        m_rSplashScreen->setValue(iProgress);
+        m_pSplashScreen->setValue(iProgress);
     }
-#endif
 }
 
 void Desktop::SetSplashScreenText( const OUString& rText )
 {
-#if ENABLE_WASM_STRIP_SPLASH
-    (void) rText;
-#else
-    if( m_rSplashScreen.is() )
+    if (m_pSplashScreen)
     {
-        m_rSplashScreen->setText( rText );
+        m_pSplashScreen->setText(rText);
     }
-#endif
 }
 
 void Desktop::CloseSplashScreen()
 {
-#if !ENABLE_WASM_STRIP_SPLASH
-    if(m_rSplashScreen.is())
+    if (m_pSplashScreen)
     {
         SolarMutexGuard ensureSolarMutex;
-        m_rSplashScreen->end();
-        m_rSplashScreen = nullptr;
+        m_pSplashScreen->end();
+        m_pSplashScreen.reset();
     }
-#endif
 }
 
 
@@ -2651,7 +2627,7 @@ void Desktop::ShowBackingComponent(Desktop * progress)
     Reference< XController > xStartModule = StartModule::createWithParentWindow( xContext, xContainerWindow);
     // Attention: You MUST(!) call setComponent() before you call attachFrame().
     // Because the backing component set the property "IsBackingMode" of the frame
-    // to true inside attachFrame(). But setComponent() reset this state everytimes ...
+    // to true inside attachFrame(). But setComponent() resets this state every time ...
     xBackingFrame->setComponent(Reference< XWindow >(xStartModule, UNO_QUERY), xStartModule);
     if (progress != nullptr)
     {

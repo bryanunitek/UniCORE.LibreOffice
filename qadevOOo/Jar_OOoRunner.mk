@@ -340,9 +340,7 @@ $(eval $(call gb_Jar_add_sourcefiles,OOoRunner,\
     qadevOOo/tests/java/ifc/drawing/_TextShapeDescriptor \
     qadevOOo/tests/java/ifc/drawing/_XConnectorShape \
     qadevOOo/tests/java/ifc/drawing/_XControlShape \
-    qadevOOo/tests/java/ifc/drawing/_XDrawPageDuplicator \
     qadevOOo/tests/java/ifc/drawing/_XDrawPages \
-    qadevOOo/tests/java/ifc/drawing/_XDrawPagesSupplier \
     qadevOOo/tests/java/ifc/drawing/_XDrawPageSupplier \
     qadevOOo/tests/java/ifc/drawing/_XDrawView \
     qadevOOo/tests/java/ifc/drawing/_XGluePointsSupplier \
@@ -763,7 +761,6 @@ $(eval $(call gb_Jar_add_sourcefiles,OOoRunner,\
     qadevOOo/tests/java/mod/_dbaccess/OSingleSelectQueryComposer \
     qadevOOo/tests/java/mod/_dbaccess/OSQLMessageDialog \
     qadevOOo/tests/java/mod/_dbaccess/SbaXGridControl \
-    qadevOOo/tests/java/mod/_dbaccess/TableWindowAccessibility \
     qadevOOo/tests/java/mod/_dbpool/OConnectionPool \
     qadevOOo/tests/java/mod/_defreg/NestedRegistry \
     qadevOOo/tests/java/mod/_dtrans/generic \
@@ -1021,10 +1018,6 @@ $(eval $(call gb_Jar_add_sourcefiles,OOoRunner,\
     qadevOOo/tests/java/mod/_streams/uno/ObjectOutputStream \
     qadevOOo/tests/java/mod/_streams/uno/Pipe \
     qadevOOo/tests/java/mod/_streams/uno/Pump \
-    qadevOOo/tests/java/mod/_svtools/AccessibleBrowseBox \
-    qadevOOo/tests/java/mod/_svtools/AccessibleBrowseBoxHeaderBar \
-    qadevOOo/tests/java/mod/_svtools/AccessibleBrowseBoxHeaderCell \
-    qadevOOo/tests/java/mod/_svtools/AccessibleBrowseBoxTable \
     qadevOOo/tests/java/mod/_svtools/AccessibleBrowseBoxTableCell \
     qadevOOo/tests/java/mod/_svtools/AccessibleIconChoiceCtrl \
     qadevOOo/tests/java/mod/_svtools/AccessibleIconChoiceCtrlEntry \
@@ -1145,8 +1138,6 @@ $(eval $(call gb_Jar_add_sourcefiles,OOoRunner,\
     qadevOOo/tests/java/mod/_toolkit/AccessibleComboBox \
     qadevOOo/tests/java/mod/_toolkit/AccessibleDropDownComboBox \
     qadevOOo/tests/java/mod/_toolkit/AccessibleEdit \
-    qadevOOo/tests/java/mod/_toolkit/AccessibleList \
-    qadevOOo/tests/java/mod/_toolkit/AccessibleListBox \
     qadevOOo/tests/java/mod/_toolkit/AccessibleListItem \
     qadevOOo/tests/java/mod/_toolkit/AccessibleMenu \
     qadevOOo/tests/java/mod/_toolkit/AccessibleMenuBar \

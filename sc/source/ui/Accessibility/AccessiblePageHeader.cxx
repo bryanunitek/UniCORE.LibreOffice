@@ -47,14 +47,15 @@ using namespace ::com::sun::star::accessibility;
 
 const sal_uInt8     MAX_AREAS = 3;
 
-ScAccessiblePageHeader::ScAccessiblePageHeader( const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-                            ScPreviewShell* pViewShell, bool bHeader, sal_Int32 nIndex ) :
-ScAccessibleContextBase( rxParent, bHeader ? AccessibleRole::HEADER : AccessibleRole::FOOTER ),
-    mpViewShell( pViewShell ),
-    mnIndex( nIndex ),
-    mbHeader( bHeader ),
-    maAreas(MAX_AREAS, rtl::Reference<ScAccessiblePageHeaderArea>()),
-    mnChildCount(-1)
+ScAccessiblePageHeader::ScAccessiblePageHeader(
+    const rtl::Reference<comphelper::OAccessible>& rpParent, ScPreviewShell* pViewShell,
+    bool bHeader, sal_Int32 nIndex)
+    : ScAccessibleContextBase(rpParent, bHeader ? AccessibleRole::HEADER : AccessibleRole::FOOTER)
+    , mpViewShell(pViewShell)
+    , mnIndex(nIndex)
+    , mbHeader(bHeader)
+    , maAreas(MAX_AREAS, rtl::Reference<ScAccessiblePageHeaderArea>())
+    , mnChildCount(-1)
 {
     if (mpViewShell)
         mpViewShell->AddAccessibilityObject(*this);
@@ -133,7 +134,7 @@ void ScAccessiblePageHeader::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 
 uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleAtPoint( const awt::Point& aPoint )
 {
-    uno::Reference<XAccessible> xRet;
+    rtl::Reference<ScAccessiblePageHeaderArea> pRet;
 
     if (containsPoint(aPoint))
     {
@@ -146,17 +147,17 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleAtPo
         {
             // return the first with content, because they have all the same Bounding Box
             sal_uInt8 i(0);
-            while(!xRet.is() && i < MAX_AREAS)
+            while (!pRet.is() && i < MAX_AREAS)
             {
                 if (maAreas[i].is())
-                    xRet = maAreas[i].get();
+                    pRet = maAreas[i].get();
                 else
                     ++i;
             }
         }
     }
 
-    return xRet;
+    return pRet;
 }
 
 void SAL_CALL ScAccessiblePageHeader::grabFocus()
@@ -208,7 +209,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleChil
     SolarMutexGuard aGuard;
     ensureAlive();
 
-    uno::Reference<XAccessible> xRet;
+    rtl::Reference<ScAccessiblePageHeaderArea> pRet;
 
     if(mnChildCount < 0)
         getAccessibleChildCount();
@@ -220,7 +221,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleChil
             {
                 if (nIndex == 0)
                 {
-                    xRet = rxArea.get();
+                    pRet = rxArea.get();
                     break;
                 }
                 else
@@ -228,10 +229,10 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleChil
             }
         }
 
-    if ( !xRet.is() )
+    if (!pRet.is())
         throw lang::IndexOutOfBoundsException();
 
-    return xRet;
+    return pRet;
 }
 
 sal_Int64 SAL_CALL ScAccessiblePageHeader::getAccessibleIndexInParent()

@@ -27,8 +27,6 @@
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
 #include <comphelper/OAccessible.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <svl/lstner.hxx>
@@ -45,15 +43,14 @@ class SdrModel;
 class SdrPage;
 class SdrView;
 
-/** @descr
-        This base class provides an implementation of the
-        <code>AccessibleContext</code> service.
-*/
+// avoid LNK2005 duplicate ImplInheritanceHelper definitions with MSVC
+class SvxGraphCtrlAccessibleContextBase : public comphelper::OAccessible
+{
+};
 
 class SvxGraphCtrlAccessibleContext final
-    : public cppu::ImplInheritanceHelper<comphelper::OAccessible,
-                                         css::accessibility::XAccessibleSelection,
-                                         css::lang::XServiceInfo>,
+    : public cppu::ImplInheritanceHelper<SvxGraphCtrlAccessibleContextBase,
+                                         css::accessibility::XAccessibleSelection>,
       public SfxListener,
       public ::accessibility::IAccessibleViewForwarder
 {
@@ -83,11 +80,6 @@ public:
     virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet> SAL_CALL getAccessibleRelationSet() override;
     virtual sal_Int64 SAL_CALL getAccessibleStateSet() override;
     virtual css::lang::Locale SAL_CALL getLocale() override;
-
-    // XServiceInfo
-    virtual OUString SAL_CALL getImplementationName() override;
-    virtual sal_Bool SAL_CALL supportsService (const OUString& sServiceName) override;
-    virtual css::uno::Sequence< OUString> SAL_CALL getSupportedServiceNames() override;
 
     // XAccessibleSelection
     virtual void SAL_CALL selectAccessibleChild( sal_Int64 nChildIndex ) override;
@@ -121,7 +113,8 @@ private:
     /// @throws css::lang::IndexOutOfBoundsException
     SdrObject* getSdrObject( sal_Int64 nIndex );
 
-    css::uno::Reference< css::accessibility::XAccessible > getAccessible( const SdrObject* pObj );
+    rtl::Reference<comphelper::OAccessible> getAccessibleParentImpl() const;
+    rtl::Reference<::accessibility::AccessibleShape> getAccessible(const SdrObject* pObj);
 
     /** Description of this object.  This is not a constant because it can
         be set from the outside.

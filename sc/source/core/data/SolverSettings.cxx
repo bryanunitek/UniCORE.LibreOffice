@@ -401,9 +401,9 @@ void SolverSettings::WriteConstraintPart(ConstraintPart ePart, tools::Long nInde
         return;
 
     OUString sRange = m_aConstraintParts[ePart] + OUString::number(nIndex);
-    ScRangeData* pNewEntry = new ScRangeData(m_rDoc, sRange, sValue);
+    std::unique_ptr<ScRangeData> pNewEntry(new ScRangeData(m_rDoc, sRange, sValue));
     pNewEntry->AddType(ScRangeData::Type::Hidden);
-    m_pRangeName->insert(pNewEntry);
+    m_pRangeName->insert(std::move(pNewEntry));
 }
 
 // Reads a single constraint part from its associated named range; returns false if the named
@@ -437,6 +437,11 @@ void SolverSettings::ReadEngine()
         // If no engine is defined, use CoinMP solver as default
         m_sLOEngineName = "com.sun.star.comp.Calc.CoinMPSolver";
     }
+
+    // The Lpsolve solver has been removed. A document that still names it is
+    // solved by CoinMP, which handles the same linear models.
+    if (m_sLOEngineName == "com.sun.star.comp.Calc.LpsolveSolver")
+        m_sLOEngineName = u"com.sun.star.comp.Calc.CoinMPSolver"_ustr;
 
     if (SolverNamesToExcelEngines.count(m_sLOEngineName))
     {
@@ -517,7 +522,7 @@ void SolverSettings::SaveSolverSettings()
 /* Reads the current value of the parameter in the named range into rValue
  * If the value does not exist, the rValue is left unchanged
  * This is private because it is only used during initialization
- * Returns true if the value exits; returns false otherwise
+ * Returns true if the value exists; returns false otherwise
  */
 bool SolverSettings::ReadParamValue(SolverParameter eParam, OUString& rValue, bool bRemoveQuotes)
 {
@@ -616,9 +621,9 @@ void SolverSettings::WriteParamValue(SolverParameter eParam, OUString sValue, bo
     const auto iter = m_mNamedRanges.find(eParam);
     assert(iter != m_mNamedRanges.end());
     OUString sRange = iter->second;
-    ScRangeData* pNewEntry = new ScRangeData(m_rDoc, sRange, sValue);
+    std::unique_ptr<ScRangeData> pNewEntry(new ScRangeData(m_rDoc, sRange, sValue));
     pNewEntry->AddType(ScRangeData::Type::Hidden);
-    m_pRangeName->insert(pNewEntry);
+    m_pRangeName->insert(std::move(pNewEntry));
 }
 
 // Writes a parameter value of type 'double' to the file as a named range
@@ -633,9 +638,9 @@ void SolverSettings::WriteDoubleParamValue(SolverParameter eParam, std::u16strin
     OUString sLocalizedValue = rtl::math::doubleToUString(
         fValue, rtl_math_StringFormat_Automatic, rtl_math_DecimalPlaces_Max,
         ScGlobal::getLocaleData().getNumDecimalSep()[0], true);
-    ScRangeData* pNewEntry = new ScRangeData(m_rDoc, sRange, sLocalizedValue);
+    std::unique_ptr<ScRangeData> pNewEntry(new ScRangeData(m_rDoc, sRange, sLocalizedValue));
     pNewEntry->AddType(ScRangeData::Type::Hidden);
-    m_pRangeName->insert(pNewEntry);
+    m_pRangeName->insert(std::move(pNewEntry));
 }
 
 void SolverSettings::GetEngineOptions(css::uno::Sequence<css::beans::PropertyValue>& aOptions)
@@ -752,7 +757,7 @@ void SolverSettings::DeleteAllNamedRanges()
         m_pRangeName->erase(*pItem);
 }
 
-/* Sets all solver parameters to their default values and clear all constraints.
+/* Sets all solver parameters to their default values and clears all constraints.
  * This method only resets the object properties, but does not save changes to the
  * document. To save changes, call SaveSolverSettings().
  */

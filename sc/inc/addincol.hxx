@@ -20,6 +20,7 @@
 #pragma once
 
 #include <memory>
+#include <com/sun/star/frame/XModel3.hpp>
 #include <com/sun/star/uno/Any.h>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.h>
@@ -201,6 +202,7 @@ private:
     css::uno::Reference<css::uno::XInterface> xCaller;
     ScDocument&                 mrDoc;
     bool                        bValidCount;
+    LanguageType                meLanguage;     // of the number formats a result gives
     // result:
     FormulaError                nErrCode;
     bool                        bHasString;
@@ -208,8 +210,10 @@ private:
     OUString                    aString;
     ScMatrixRef                 xMatrix;
     css::uno::Reference<css::sheet::XVolatileResult> xVarRes;
+    sal_uInt32                  mnNumberFormat; // of a single numeric result
 
     void            ExecuteCallWithArgs(css::uno::Sequence<css::uno::Any>& rCallArgs);
+    void            SetFormattedResult( const css::uno::Any& rNewRes );
 
 public:
                     // exact name
@@ -218,12 +222,13 @@ public:
                     ~ScUnoAddInCall();
 
     bool                NeedsCaller() const;
-    void                SetCaller( const css::uno::Reference<css::uno::XInterface>& rInterface );
+    void SetCaller(const css::uno::Reference<css::frame::XModel3>& rModel);
     void                SetCallerFromObjectShell( const SfxObjectShell* pSh );
 
     bool                ValidParamCount() { return bValidCount;}
     ScAddInArgumentType GetArgType( sal_Int32 nPos );
     void                SetParam( sal_Int32 nPos, const css::uno::Any& rValue );
+    void                SetLanguage( LanguageType eLanguage ) { meLanguage = eLanguage; }
 
     void                ExecuteCall();
 
@@ -235,6 +240,8 @@ public:
     bool                HasVarRes() const       { return xVarRes.is(); }
     double              GetValue() const        { return fValue; }
     const OUString&     GetString() const       { return aString; }
+                        /// NUMBERFORMAT_ENTRY_NOT_FOUND if none
+    sal_uInt32          GetNumberFormat() const { return mnNumberFormat; }
     const ScMatrixRef&  GetMatrix() const       { return xMatrix;}
     const css::uno::Reference<css::sheet::XVolatileResult>&
                         GetVarRes() const       { return xVarRes; }

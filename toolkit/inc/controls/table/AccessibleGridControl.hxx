@@ -22,7 +22,7 @@
 #include "AccessibleGridControlBase.hxx"
 #include "AccessibleGridControlHeader.hxx"
 #include "AccessibleGridControlTable.hxx"
-#include "tablecontrol.hxx"
+#include "TableControl.hxx"
 
 #include <cppuhelper/weakref.hxx>
 #include <rtl/ref.hxx>
@@ -63,17 +63,9 @@ namespace accessibility {
     /** Grabs the focus to the Grid Control. */
     virtual void SAL_CALL grabFocus() override;
 
-    // XServiceInfo -----------------------------------------------------------
-
-    /** @return
-            The name of this class.
-    */
-    virtual OUString SAL_CALL getImplementationName() override;
-
 public:
-    AccessibleGridControl(
-        const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
-        svt::table::TableControl& _rTable);
+    AccessibleGridControl(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                          svt::table::TableControl& _rTable);
 
     // helper functions
 

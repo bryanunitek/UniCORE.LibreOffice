@@ -35,6 +35,7 @@
 #include "porfld.hxx"
 #include "porfly.hxx"
 #include "portab.hxx"
+#include "portxt.hxx"
 #include <txatbase.hxx>
 #include <charfmt.hxx>
 #include "redlnitr.hxx"
@@ -209,6 +210,16 @@ SwTextPaintOmitter::~SwTextPaintOmitter()
 }
 }
 
+// Where the space that an object reserved for its wrap begins, measured in the line, or the end of
+// the line when no object follows this portion.
+static SwTwips wrapStart(const SwLinePortion* pPor)
+{
+    for (const SwLinePortion* p = pPor->GetNextPortion(); p; p = p->GetNextPortion())
+        if (p->IsFlyPortion())
+            return static_cast<const SwFlyPortion*>(p)->GetFix();
+    return SAL_MAX_INT32;
+}
+
 // There are two possibilities to output transparent font:
 // 1) DrawRect on the whole line and DrawText afterwards
 //    (objectively fast, subjectively slow)
@@ -235,6 +246,7 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
     GetInfo().SetPos( GetTopLeft() );
 
     const bool bDrawInWindow = GetInfo().OnWin();
+    const bool bDrawMetaFile = GetInfo().GetOut()->GetConnectMetaFile();
 
     // 6882: blank lines can't be optimized by removing them if Formatting Marks are shown
     const bool bEndPor = GetInfo().GetOpt().IsParagraph() && GetInfo().GetText().isEmpty();
@@ -250,8 +262,6 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
         Frame_Info aFrameInfo(*m_pFrame, false); // open LBody
         roTaggedParagraph.emplace(nullptr, &aFrameInfo, nullptr, *GetInfo().GetOut());
     }
-
-    SwTaggedPDFHelper::EndCurrentLink(*GetInfo().GetOut());
 
     // Optimization!
     SwTwips nMaxRight = std::min<SwTwips>( rPaint.Right(), Right() );
@@ -298,7 +308,7 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
     // bClip decides if there's a need to clip
     // The whole thing must be done before retouching
 
-    bool bClip = ( bDrawInWindow || bUnderSized ) && !rClip.IsChg();
+    bool bClip = ( bDrawInWindow || bUnderSized || bDrawMetaFile ) && !rClip.IsChg();
     if( bClip && pPor )
     {
         // If TopLeft or BottomLeft of the line are outside, the we must clip.
@@ -309,7 +319,7 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
             GetInfo().GetPos().Y() + nTmpHeight > rPaint.Top() + rPaint.Height() )
         {
             bClip = false;
-            rClip.ChgClip(rPaint, m_pFrame, m_pCurr->GetExtraAscent(), m_pCurr->GetExtraDescent());
+            rClip.ChgClip(rPaint, m_pFrame, m_pCurr->GetExtraAscent().as_twip<sal_Int32>(), m_pCurr->GetExtraDescent().as_twip<sal_Int32>());
         }
 #if OSL_DEBUG_LEVEL > 1
         static bool bClipAlways = false;
@@ -444,7 +454,8 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
                 GetRedln()->Seek(*m_pFont, pos.first->GetIndex(), pos.second, 0);
             }
         }
-        else if( pPor->InTextGrp() || pPor->InFieldGrp() || pPor->InTabGrp() )
+        else if( pPor->InTextGrp() || pPor->InFieldGrp() || pPor->InTabGrp()
+                 || pPor->IsHolePortion() )
             SeekAndChg( GetInfo() );
         else if ( !bFirst && pPor->IsBreakPortion() && GetInfo().GetOpt().IsParagraph() )
         {
@@ -467,7 +478,7 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
             GetInfo().X() + pPor->Width() + ( pPor->Height() / 2 ) > nMaxRight )
         {
             bClip = false;
-            rClip.ChgClip(rPaint, m_pFrame, m_pCurr->GetExtraAscent(), m_pCurr->GetExtraDescent());
+            rClip.ChgClip(rPaint, m_pFrame, m_pCurr->GetExtraAscent().as_twip<sal_Int32>(), m_pCurr->GetExtraDescent().as_twip<sal_Int32>());
         }
 
         // Portions, which lay "below" the text like post-its
@@ -533,6 +544,15 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
                     GetInfo().X( GetInfo().X() +
                             m_pCurr->GetLetterSpacing() * (sal_Int32(m_pCurr->GetLetterCount())) +
                             m_pCurr->GetScaleWidthSpacing() );
+                }
+                // tdf#171959: a trailing blank hangs outside the line, so the adjustment can leave
+                // it in the space an object reserved for its wrap. Its decorations must not be
+                // drawn in there, no differently than on the margin.
+                if (pPor->IsHolePortion())
+                {
+                    auto& rHole = static_cast<SwHolePortion&>(*pPor);
+                    if (rHole.ShowUnderline() && GetInfo().X() >= nTmpLeft + wrapStart(pPor))
+                        rHole.SetShowUnderline(false);
                 }
                 pPor->Paint( GetInfo() );
             }
@@ -643,7 +663,7 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
     if( bDrawInWindow )
     {
         // If special vertical alignment is enabled, GetInfo().Y() is the
-        // top of the current line. Therefore is has to be adjusted for
+        // top of the current line. Therefore it has to be adjusted for
         // the painting of the remaining stuff. We first store the old value.
         const SwTwips nOldY = GetInfo().Y();
 
@@ -745,12 +765,12 @@ void SwTextPainter::CheckSpecialUnderline( const SwLinePortion* pPor,
 
     // If current underline matches the common underline font, we continue
     // to use the common underline font.
-    // Bug 120769:Color of underline display wrongly
+    // Bug 120769: Color of underline displayed wrongly
     if ( GetInfo().GetUnderFnt() &&
         GetInfo().GetUnderFnt()->GetFont().GetUnderline() == GetFnt()->GetUnderline() &&
         GetInfo().GetFont() && GetInfo().GetFont()->GetUnderColor() != COL_AUTO )
         return;
-    //Bug 120769(End)
+    // Bug 120769 (End)
 
     OSL_ENSURE( GetFnt() && LINESTYLE_NONE != GetFnt()->GetUnderline(),
             "CheckSpecialUnderline without underlined font" );

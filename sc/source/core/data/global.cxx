@@ -48,6 +48,7 @@
 #include <i18nlangtag/mslangid.hxx>
 #include <comphelper/doublecheckedinit.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/scripturl.hxx>
 #include <comphelper/string.hxx>
 #include <unotools/calendarwrapper.hxx>
 #include <unotools/collatorwrapper.hxx>
@@ -433,6 +434,9 @@ OUString ScGlobal::GetLongErrorString(FormulaError nErr)
         case FormulaError::NoValue:
             pErrNumber = STR_LONG_ERR_NO_VALUE;
         break;
+        case FormulaError::NotAFunction:
+            pErrNumber = STR_LONG_ERR_NOT_FUNC;
+        break;
         case FormulaError::NotAvailable:
             pErrNumber = STR_LONG_ERR_NV;
         break;
@@ -528,7 +532,7 @@ void ScGlobal::InitTextHeight(SfxItemPool& rPool)
 {
     // this gets handed over the m_pMessagePool in ScModule::ScModule, so
     // the previously used item ScPatternAttr is unchanged. This allows to
-    // just use an temporary incarnation of a CellAttributeHelper here
+    // just use a temporary incarnation of a CellAttributeHelper here
     const CellAttributeHelper aTempHelper(rPool);
     const ScPatternAttr& rDefaultCellAttribute(aTempHelper.getDefaultCellAttribute());
 
@@ -587,40 +591,40 @@ void ScGlobal::Clear()
     xDrawClipDocShellRef.clear();
 }
 
-rtl_TextEncoding ScGlobal::GetCharsetValue( std::u16string_view rCharSet )
+rtl_TextEncoding ScGlobal::GetEncodingValue( std::u16string_view rEncoding )
 {
     // new TextEncoding values
-    if ( CharClass::isAsciiNumeric( rCharSet ) )
+    if ( CharClass::isAsciiNumeric( rEncoding ) )
     {
-        sal_Int32 nVal = o3tl::toInt32(rCharSet);
+        sal_Int32 nVal = o3tl::toInt32(rEncoding);
         if ( nVal == RTL_TEXTENCODING_DONTKNOW )
             return osl_getThreadTextEncoding();
         return static_cast<rtl_TextEncoding>(nVal);
     }
     // old CharSet values for compatibility
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"ANSI")     ) return RTL_TEXTENCODING_MS_1252;
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"MAC")      ) return RTL_TEXTENCODING_APPLE_ROMAN;
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"IBMPC")    ) return RTL_TEXTENCODING_IBM_850;
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"IBMPC_437")) return RTL_TEXTENCODING_IBM_437;
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"IBMPC_850")) return RTL_TEXTENCODING_IBM_850;
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"IBMPC_860")) return RTL_TEXTENCODING_IBM_860;
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"IBMPC_861")) return RTL_TEXTENCODING_IBM_861;
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"IBMPC_863")) return RTL_TEXTENCODING_IBM_863;
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"IBMPC_865")) return RTL_TEXTENCODING_IBM_865;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"ANSI")     ) return RTL_TEXTENCODING_MS_1252;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"MAC")      ) return RTL_TEXTENCODING_APPLE_ROMAN;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"IBMPC")    ) return RTL_TEXTENCODING_IBM_850;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"IBMPC_437")) return RTL_TEXTENCODING_IBM_437;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"IBMPC_850")) return RTL_TEXTENCODING_IBM_850;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"IBMPC_860")) return RTL_TEXTENCODING_IBM_860;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"IBMPC_861")) return RTL_TEXTENCODING_IBM_861;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"IBMPC_863")) return RTL_TEXTENCODING_IBM_863;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"IBMPC_865")) return RTL_TEXTENCODING_IBM_865;
     // Some wrong "help" on the net mentions UTF8 and even unoconv uses it,
     // which worked accidentally if the system encoding is UTF-8 anyway, so
     // support it ;) but only when reading.
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"UTF8"))      return RTL_TEXTENCODING_UTF8;
-    else if (o3tl::equalsIgnoreAsciiCase(rCharSet, u"UTF-8"))     return RTL_TEXTENCODING_UTF8;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"UTF8"))      return RTL_TEXTENCODING_UTF8;
+    else if (o3tl::equalsIgnoreAsciiCase(rEncoding, u"UTF-8"))     return RTL_TEXTENCODING_UTF8;
     else return osl_getThreadTextEncoding();
 }
 
-OUString ScGlobal::GetCharsetString( rtl_TextEncoding eVal )
+OUString ScGlobal::GetEncodingString( rtl_TextEncoding eVal )
 {
     const char* pChar;
     switch ( eVal )
     {
-        // old CharSet strings for compatibility
+        // old encoding strings for compatibility
         case RTL_TEXTENCODING_MS_1252:      pChar = "ANSI";         break;
         case RTL_TEXTENCODING_APPLE_ROMAN:  pChar = "MAC";          break;
         // IBMPC == IBMPC_850
@@ -878,9 +882,7 @@ void ScGlobal::OpenURL(const OUString& rURL, const OUString& rTarget, bool bIgno
     // Also don't mess around with a vnd.sun.star.script or service or other
     // internal "URI".
     if (!aUrlName.startsWith("#")
-            && !aUrlName.startsWithIgnoreAsciiCase("vnd.sun.star.script:")
-            && !aUrlName.startsWithIgnoreAsciiCase("macro:")
-            && !aUrlName.startsWithIgnoreAsciiCase("slot:")
+            && !comphelper::isScriptURL(aUrlName)
             && !aUrlName.startsWithIgnoreAsciiCase("service:")
             && !aUrlName.startsWithIgnoreAsciiCase(".uno:"))
     {

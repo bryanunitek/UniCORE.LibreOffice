@@ -1613,6 +1613,32 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         }
         break;
 
+        case SID_REMOVE_SLIDE_SECTION_AND_SLIDES:
+        {
+            SdPage* pPage = GetActualPage();
+            if (pPage)
+            {
+                sal_uInt16 nPage = (pPage->GetPageNum() - 1) / 2;
+                sd::SlideSectionManager& rMgr = GetDoc()->GetSectionManager();
+                sal_Int32 nSectionIdx = rMgr.GetSectionIndexForSlide(nPage);
+                if (nSectionIdx >= 0 && rMgr.IsSectionStart(nPage))
+                {
+                    const bool bUndo = GetDoc()->IsUndoEnabled();
+                    if (bUndo)
+                        GetView()->BegUndo(
+                            SdResId(STR_UNDO_REMOVE_SLIDE_SECTION_AND_SLIDES));
+
+                    rMgr.RemoveSectionSlides(nSectionIdx);
+
+                    if (bUndo)
+                        GetView()->EndUndo();
+                    GetDocSh()->SetModified();
+                    ResetActualPage();
+                }
+            }
+        }
+        break;
+
         case SID_RENAME_SLIDE_SECTION:
         {
             sd::SlideSectionManager& rMgr = GetDoc()->GetSectionManager();
@@ -3158,8 +3184,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                     //there exists a previous numbering level
                     if (nDepth != sal_uInt16(-1) && nDepth > 0)
                     {
-                        Paragraph* pPara = pOL->GetParagraph(aSel.end.nPara);
-                        pOL->Remove(pPara, 1);
+                        pOL->Remove(aSel.end.nPara, 1);
                     }
                 }
             }
@@ -4432,7 +4457,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             // Open ThemeColorEditDialog to create/edit the new color set
             auto pSubDialog = std::make_shared<svx::ThemeColorEditDialog>(GetFrameWeld(), *pCurrentColorSet);
 
-            weld::DialogController::runAsync(pSubDialog, [pSubDialog, this](sal_uInt32 nResult) {
+            weld::DialogController::runAsync(pSubDialog, [pSubDialog](sal_uInt32 nResult) {
                 if (nResult != RET_OK)
                     return;
 
@@ -4441,8 +4466,6 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 {
                     // Add the new color set to the global collection
                     svx::ColorSets::get().insert(aColorSet);
-                    // Invalidate to update the toolbar control
-                    GetViewFrame()->GetBindings().Invalidate(SID_ADD_THEME);
                 }
             });
 
@@ -4486,6 +4509,13 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_ATTR_GLOW_TEXT_RADIUS:
         case SID_ATTR_GLOW_TEXT_TRANSPARENCY:
         case SID_ATTR_SOFTEDGE_RADIUS:
+        case SID_ATTR_REFLECTION:
+        case SID_ATTR_REFLECTION_DISTANCE:
+        case SID_ATTR_REFLECTION_BLUR_RADIUS:
+        case SID_ATTR_REFLECTION_START_TRANSPARENCY:
+        case SID_ATTR_REFLECTION_START_POSITION:
+        case SID_ATTR_REFLECTION_END_TRANSPARENCY:
+        case SID_ATTR_REFLECTION_END_POSITION:
         case SID_ATTR_TEXTCOLUMNS_NUMBER:
         case SID_ATTR_TEXTCOLUMNS_SPACING:
         case SID_ATTR_TEXT_AUTOGROWWIDTH:

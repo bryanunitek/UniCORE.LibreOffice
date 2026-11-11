@@ -142,6 +142,8 @@ public:
     void HandleRedline( Sprm& rSprm );
 
     virtual void commentProps(const OUString& sId, const CommentProperties& rProps) override;
+    virtual void commentDurableId(const OUString& sParaId, const OUString& sDurableId) override;
+    virtual void commentDateUtc(const OUString& sDurableId, const OUString& sDateUtc) override;
 
     rtl::Reference<SwXStyleFamily> const & GetCharacterStyles();
     OUString GetUnusedCharacterStyleName();
@@ -195,7 +197,6 @@ private:
     static css::style::TabAlign getTabAlignFromValue(const sal_Int32 nIntValue);
     static sal_Unicode getFillCharFromValue(const sal_Int32 nIntValue);
     bool mbHasControls;
-    bool mbWasShapeInPara;
     bool mbIsLastPara = false;
     std::unique_ptr< GraphicZOrderHelper > m_zOrderHelper;
     OUString m_sGlossaryEntryName;

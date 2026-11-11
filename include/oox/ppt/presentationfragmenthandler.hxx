@@ -58,6 +58,8 @@ private:
                            const OUString& rMasterFragmentPath);
     void saveThemeToGrabBag(const oox::drawingml::ThemePtr& pThemePtr, sal_Int32 nThemeIdx);
     void saveColorMapToGrabBag(const oox::drawingml::ClrMapPtr& pClrMapPtr);
+    void saveLayoutColorMapToGrabBag(const oox::drawingml::ClrMapPtr& pClrMapPtr,
+                                     sal_Int32 nMasterIndex);
     void importCustomSlideShow(std::vector<CustomShow>& rCustomShowList);
     static void importSlideNames(const ::oox::core::XmlFilterBase& rFilter, const std::vector<SlidePersistPtr>& rSlidePersist);
     void saveSections();
@@ -83,6 +85,8 @@ private:
 
     CommentAuthorList           maAuthorList;
     bool                        mbCommentAuthorsRead; // read commentAuthors.xml only once
+    ModernCommentAuthorList maModernAuthorList;
+    bool mbModernCommentAuthorsRead = false; // read authors.xml only once
 
     bool mbEmbedTrueTypeFonts = false;
     bool mbInSectionExtension = false;

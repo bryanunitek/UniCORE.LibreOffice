@@ -163,7 +163,7 @@ public class RunnerService implements XJob, XServiceInfo,
     /**
      * Function for reading all supported services
      *
-     * @return An aaray with all supported service names
+     * @return An array with all supported service names
      * @see com.sun.star.lang.XServiceInfo
      */
     public String[] getSupportedServiceNames() {
@@ -256,7 +256,7 @@ public class RunnerService implements XJob, XServiceInfo,
    * Gives a factory for creating the service.
    * This method is called by the <code>JavaLoader</code>
    * <p>
-   * @return  returns a <code>XSingleServiceFactory</code> for creating the component
+   * @return  returns an <code>XSingleServiceFactory</code> for creating the component
    * @param   implName     the name of the implementation for which a service is desired
    * @param   multiFactory the service manager to be used if needed
    * @param   regKey       the registryKey

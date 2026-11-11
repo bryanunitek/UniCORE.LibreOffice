@@ -2180,13 +2180,13 @@ bool SvxShape::setPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
                     // #123616# be a little bit more flexible regarding the data type used
                     if( auto s = o3tl::tryAccess<drawing::PointSequenceSequence>(rValue) )
                     {
-                        // get polygpon data from PointSequenceSequence
+                        // get polygon data from PointSequenceSequence
                         aNewPolyPolygon = basegfx::utils::UnoPointSequenceSequenceToB2DPolyPolygon(
                             *s);
                     }
                     else if( auto cs = o3tl::tryAccess<drawing::PolyPolygonBezierCoords>(rValue) )
                     {
-                        // get polygpon data from PolyPolygonBezierCoords
+                        // get polygon data from PolyPolygonBezierCoords
                         aNewPolyPolygon = basegfx::utils::UnoPolyPolygonBezierCoordsToB2DPolyPolygon(
                             *cs);
                     }
@@ -2341,26 +2341,27 @@ bool SvxShape::setPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
     }
 
     case OWN_ATTR_TEXTFITTOSIZE_FONT_SCALE:
-    {
-        double fScale = 0.0;
-        if (rValue >>= fScale)
-        {
-            SdrTextFitToSizeTypeItem aItem(pSdrObject->GetMergedItem(SDRATTR_TEXT_FITTOSIZE));
-            aItem.setFontScale(fScale / 100.0);
-            pSdrObject->SetMergedItem(aItem);
-            return true;
-        }
-        break;
-    }
-
     case OWN_ATTR_TEXTFITTOSIZE_SPACING_SCALE:
     {
         double fScale = 0.0;
         if (rValue >>= fScale)
         {
-            SdrTextFitToSizeTypeItem aItem(pSdrObject->GetMergedItem(SDRATTR_TEXT_FITTOSIZE));
-            aItem.setSpacingScale(fScale / 100.0);
-            pSdrObject->SetMergedItem(aItem);
+            // A multi-property call may already hold the fit item to apply at the end.
+            std::optional<SfxItemSet>& rCollected = mpImpl->moItemSet;
+            const bool bCollected = mbIsMultiPropertyCall && rCollected
+                                    && rCollected->GetItemState(SDRATTR_TEXT_FITTOSIZE)
+                                           == SfxItemState::SET;
+            SdrTextFitToSizeTypeItem aItem(
+                bCollected ? rCollected->Get(SDRATTR_TEXT_FITTOSIZE)
+                           : pSdrObject->GetMergedItem(SDRATTR_TEXT_FITTOSIZE));
+            if (pProperty->nWID == OWN_ATTR_TEXTFITTOSIZE_FONT_SCALE)
+                aItem.setFontScale(fScale / 100.0);
+            else
+                aItem.setSpacingScale(fScale / 100.0);
+            if (bCollected)
+                rCollected->Put(aItem);
+            else
+                pSdrObject->SetMergedItem(aItem);
             return true;
         }
         break;
@@ -2393,6 +2394,16 @@ bool SvxShape::setPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
         if (rValue >>= isDecorative)
         {
             pSdrObject->SetDecorative(isDecorative);
+            return true;
+        }
+        break;
+    }
+    case OWN_ATTR_MISC_OBJ_HORIZONTAL_RULE:
+    {
+        bool isHorizontalRule;
+        if (rValue >>= isHorizontalRule)
+        {
+            pSdrObject->SetHorizontalRule(isHorizontalRule);
             return true;
         }
         break;
@@ -2851,6 +2862,12 @@ bool SvxShape::getPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
         break;
     }
 
+    case OWN_ATTR_MISC_OBJ_HORIZONTAL_RULE:
+    {
+        rValue <<= GetSdrObject()->IsHorizontalRule();
+        break;
+    }
+
     case SDRATTR_OBJPRINTABLE:
         rValue <<= GetSdrObject()->IsPrintable();
         break;
@@ -2993,6 +3010,13 @@ bool SvxShape::getPropertyStateImpl( const SfxItemPropertyMapEntry* pProperty, c
         {
             rState = beans::PropertyState_AMBIGUOUS_VALUE;
         }
+    }
+    else if( pProperty->nWID == OWN_ATTR_MISC_OBJ_HORIZONTAL_RULE )
+    {
+        // hardly any shape is a horizontal rule, so report the default and keep the attribute
+        // out of every graphic style that gets written
+        rState = GetSdrObject()->IsHorizontalRule() ? beans::PropertyState_DIRECT_VALUE
+                                                    : beans::PropertyState_DEFAULT_VALUE;
     }
     else if((( pProperty->nWID >= OWN_ATTR_VALUE_START && pProperty->nWID <= OWN_ATTR_VALUE_END ) ||
        ( pProperty->nWID >= SDRATTR_NOTPERSIST_FIRST && pProperty->nWID <= SDRATTR_NOTPERSIST_LAST )) && ( pProperty->nWID != SDRATTR_TEXTDIRECTION ) )

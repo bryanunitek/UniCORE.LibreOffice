@@ -21,7 +21,7 @@
 #include <o3tl/untaint.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld/Builder.hxx>
-#include <vcl/weld/MessageDialog.hxx>
+#include <vcl/weld/Window.hxx>
 #include <svl/stritem.hxx>
 #include <svl/intitem.hxx>
 #include <editeng/keepitem.hxx>
@@ -37,7 +37,6 @@
 #include <sfx2/htmlmode.hxx>
 #include <sfx2/sfxdlg.hxx>
 
-#include <strings.hrc>
 #include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
 
@@ -165,8 +164,8 @@ IMPL_LINK( SwFormatTablePage, RelWidthClickHdl, weld::Toggleable&, rBtn, void )
         m_xWidthMF->SetRefValue(m_pTableData->GetSpace());
         m_xLeftMF->SetRefValue(m_pTableData->GetSpace());
         m_xRightMF->SetRefValue(m_pTableData->GetSpace());
-        m_xLeftMF->SetMetricFieldMin(0); //will be overwritten by the Percentfield
-        m_xRightMF->SetMetricFieldMin(0); //ditto
+        m_xLeftMF->SetMetricFieldMin(0); // will be overwritten by the Percentfield
+        m_xRightMF->SetMetricFieldMin(0); // ditto
         m_xLeftMF->SetMetricFieldMax(99);
         m_xRightMF->SetMetricFieldMax(99);
         m_xLeftMF->set_value(m_xLeftMF->NormalizePercent(nLeft ), FieldUnit::TWIP );
@@ -617,17 +616,6 @@ void    SwFormatTablePage::ActivatePage( const SfxItemSet& rSet )
 
 DeactivateRC SwFormatTablePage::DeactivatePage( SfxItemSet* _pSet )
 {
-    //test the table name for spaces
-    OUString sTableName = m_xNameED->get_text();
-    if(sTableName.indexOf(' ') != -1)
-    {
-        std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(GetFrameWeld(),
-                                                      VclMessageType::Info, VclButtonsType::Ok,
-                                                      SwResId(STR_WRONG_TABLENAME)));
-        xInfoBox->run();
-        m_xNameED->grab_focus();
-        return DeactivateRC::KeepPage;
-    }
     if(_pSet)
     {
         FillItemSet(_pSet);
@@ -1227,16 +1215,16 @@ SwTableTabDlg::SwTableTabDlg(weld::Window* pParent, const SfxItemSet* pItemSet, 
     , m_pShell(pSh)
 {
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
-    AddTabPage(u"table"_ustr, TabResId(RID_TAB_TABLE.aLabel), &SwFormatTablePage::Create,
-               RID_L + RID_TAB_TABLE.sIconName);
-    AddTabPage(u"textflow"_ustr, TabResId(RID_TAB_TEXTFLOW.aLabel), &SwTextFlowPage::Create,
-               RID_L + RID_TAB_TEXTFLOW.sIconName);
-    AddTabPage(u"columns"_ustr, TabResId(RID_TAB_COLUMNS.aLabel), &SwTableColumnPage::Create,
-               RID_L + RID_TAB_COLUMNS.sIconName);
-    AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel),
-               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BORDER), RID_L + RID_TAB_BORDER.sIconName);
-    AddTabPage(u"background"_ustr, TabResId(RID_TAB_BACKGROUND.aLabel),
-               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BKG), RID_L + RID_TAB_BACKGROUND.sIconName);
+    AddTabPage(u"table"_ustr, TabResId(RID_TAB_SWTABLE_TABLE), &SwFormatTablePage::Create,
+               RID_L + RID_TAB_TABLE_IMG);
+    AddTabPage(u"textflow"_ustr, TabResId(RID_TAB_SWTABLE_TEXTFLOW), &SwTextFlowPage::Create,
+               RID_L + RID_TAB_TEXTFLOW_IMG);
+    AddTabPage(u"columns"_ustr, TabResId(RID_TAB_SWTABLE_COLUMNS), &SwTableColumnPage::Create,
+               RID_L + RID_TAB_COLUMNS_IMG);
+    AddTabPage(u"borders"_ustr, TabResId(RID_TAB_SWTABLE_BORDER),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BORDER), RID_L + RID_TAB_BORDER_IMG);
+    AddTabPage(u"background"_ustr, TabResId(RID_TAB_SWTABLE_BACKGROUND),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BKG), RID_L + RID_TAB_BACKGROUND_IMG);
 }
 
 void  SwTableTabDlg::PageCreated(const OUString& rId, SfxTabPage& rPage)
@@ -1272,6 +1260,8 @@ SwTextFlowPage::SwTextFlowPage(weld::Container* pPage, weld::DialogController* p
     , m_xColBrkRB(m_xBuilder->weld_radio_button(u"column"_ustr))
     , m_xPgBrkBeforeRB(m_xBuilder->weld_radio_button(u"before"_ustr))
     , m_xPgBrkAfterRB(m_xBuilder->weld_radio_button(u"after"_ustr))
+    , m_xPgBrkTypeFT(m_xBuilder->weld_label(u"breaktype"_ustr))
+    , m_xPgBrkPositionFT(m_xBuilder->weld_label(u"breakposition"_ustr))
     , m_xPageCollCB(m_xBuilder->weld_check_button(u"pagestyle"_ustr))
     , m_xPageCollLB(m_xBuilder->weld_combo_box(u"pagestylelb"_ustr))
     , m_xPageNoCB(m_xBuilder->weld_check_button(u"pagenoft"_ustr))
@@ -1583,6 +1573,8 @@ void   SwTextFlowPage::Reset( const SfxItemSet* rSet )
         m_xColBrkRB->set_sensitive(false);
         m_xPgBrkBeforeRB->set_sensitive(false);
         m_xPgBrkAfterRB->set_sensitive(false);
+        m_xPgBrkTypeFT->set_sensitive(false);
+        m_xPgBrkPositionFT->set_sensitive(false);
         m_xKeepCB->set_sensitive(false);
         m_xSplitCB->set_sensitive(false);
         m_xPgBrkCB->set_sensitive(false);
@@ -1652,6 +1644,8 @@ IMPL_LINK_NOARG(SwTextFlowPage, PageBreakHdl_Impl, weld::Toggleable&, void)
         m_xColBrkRB->set_sensitive(true);
         m_xPgBrkBeforeRB->set_sensitive(true);
         m_xPgBrkAfterRB->set_sensitive(true);
+        m_xPgBrkTypeFT->set_sensitive(true);
+        m_xPgBrkPositionFT->set_sensitive(true);
 
         if (m_xPgBrkRB->get_active() && m_xPgBrkBeforeRB->get_active())
         {
@@ -1677,6 +1671,8 @@ IMPL_LINK_NOARG(SwTextFlowPage, PageBreakHdl_Impl, weld::Toggleable&, void)
         m_xColBrkRB->set_sensitive(false);
         m_xPgBrkBeforeRB->set_sensitive(false);
         m_xPgBrkAfterRB->set_sensitive(false);
+        m_xPgBrkTypeFT->set_sensitive(false);
+        m_xPgBrkPositionFT->set_sensitive(false);
     }
 }
 
@@ -1765,6 +1761,8 @@ void SwTextFlowPage::DisablePageBreak()
     m_xColBrkRB->set_sensitive(false);
     m_xPgBrkBeforeRB->set_sensitive(false);
     m_xPgBrkAfterRB->set_sensitive(false);
+    m_xPgBrkTypeFT->set_sensitive(false);
+    m_xPgBrkPositionFT->set_sensitive(false);
     m_xPageCollCB->set_sensitive(false);
     m_xPageCollLB->set_sensitive(false);
     m_xPageNoCB->set_sensitive(false);

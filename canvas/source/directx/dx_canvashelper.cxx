@@ -29,7 +29,6 @@
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <com/sun/star/rendering/PathCapType.hpp>
 #include <com/sun/star/rendering/PathJoinType.hpp>
-#include <com/sun/star/rendering/RepaintResult.hpp>
 #include <com/sun/star/rendering/TexturingMode.hpp>
 #include <comphelper/sequence.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
@@ -413,39 +412,6 @@ namespace dxcanvas
         return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::strokeTexturedPolyPolygon( const rendering::XCanvas*                            /*pCanvas*/,
-                                                                                           const uno::Reference< rendering::XPolyPolygon2D >&   /*xPolyPolygon*/,
-                                                                                           const rendering::ViewState&                          /*viewState*/,
-                                                                                           const rendering::RenderState&                        /*renderState*/,
-                                                                                           const uno::Sequence< rendering::Texture >&           /*textures*/,
-                                                                                           const rendering::StrokeAttributes&                   /*strokeAttributes*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-    }
-
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::strokeTextureMappedPolyPolygon( const rendering::XCanvas*                           /*pCanvas*/,
-                                                                                                const uno::Reference< rendering::XPolyPolygon2D >&  /*xPolyPolygon*/,
-                                                                                                const rendering::ViewState&                         /*viewState*/,
-                                                                                                const rendering::RenderState&                       /*renderState*/,
-                                                                                                const uno::Sequence< rendering::Texture >&          /*textures*/,
-                                                                                                const uno::Reference< geometry::XMapping2D >&       /*xMapping*/,
-                                                                                                const rendering::StrokeAttributes&                  /*strokeAttributes*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-    }
-
-    uno::Reference< rendering::XPolyPolygon2D >   CanvasHelper::queryStrokeShapes( const rendering::XCanvas*                            /*pCanvas*/,
-                                                                                   const uno::Reference< rendering::XPolyPolygon2D >&   /*xPolyPolygon*/,
-                                                                                   const rendering::ViewState&                          /*viewState*/,
-                                                                                   const rendering::RenderState&                        /*renderState*/,
-                                                                                   const rendering::StrokeAttributes&                   /*strokeAttributes*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XPolyPolygon2D >(nullptr);
-    }
-
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::fillPolyPolygon( const rendering::XCanvas*                          /*pCanvas*/,
                                                                                  const uno::Reference< rendering::XPolyPolygon2D >& xPolyPolygon,
                                                                                  const rendering::ViewState&                        viewState,
@@ -474,17 +440,6 @@ namespace dxcanvas
         return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::fillTextureMappedPolyPolygon( const rendering::XCanvas*                             /*pCanvas*/,
-                                                                                              const uno::Reference< rendering::XPolyPolygon2D >&    /*xPolyPolygon*/,
-                                                                                              const rendering::ViewState&                           /*viewState*/,
-                                                                                              const rendering::RenderState&                         /*renderState*/,
-                                                                                              const uno::Sequence< rendering::Texture >&            /*textures*/,
-                                                                                              const uno::Reference< geometry::XMapping2D >&         /*xMapping*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-    }
-
     uno::Reference< rendering::XCanvasFont > CanvasHelper::createFont( const rendering::XCanvas*                    /*pCanvas*/,
                                                                        const rendering::FontRequest&                fontRequest,
                                                                        const uno::Sequence< beans::PropertyValue >& extraFontProperties,
@@ -497,14 +452,6 @@ namespace dxcanvas
         }
 
         return uno::Reference< rendering::XCanvasFont >();
-    }
-
-    uno::Sequence< rendering::FontInfo > CanvasHelper::queryAvailableFonts( const rendering::XCanvas*                       /*pCanvas*/,
-                                                                            const rendering::FontInfo&                      /*aFilter*/,
-                                                                            const uno::Sequence< beans::PropertyValue >&    /*aFontProperties*/ )
-    {
-        // TODO
-        return uno::Sequence< rendering::FontInfo >();
     }
 
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawText( const rendering::XCanvas*                         /*pCanvas*/,
@@ -527,8 +474,7 @@ namespace dxcanvas
                 Gdiplus::Color(
                     dxcanvastools::sequenceToArgb(renderState.DeviceColor)));
 
-            CanvasFont::ImplRef pFont(
-                dxcanvastools::canvasFontFromXFont(xFont) );
+            rtl::Reference<CanvasFont> pFont(dxcanvastools::canvasFontFromXFont(xFont));
 
             // Move glyphs up, such that output happens at the font
             // baseline.
@@ -754,7 +700,7 @@ namespace dxcanvas
         {
             GraphicsPathSharedPtr aClipPath( dxcanvastools::graphicsPathFromXPolyPolygon2D( viewState.Clip ) );
 
-            // TODO(P3): Cache clip. SetClip( GraphicsPath ) performs abyssmally on GDI+.
+            // TODO(P3): Cache clip. SetClip( GraphicsPath ) performs abysmally on GDI+.
             // Try SetClip( Rect ) or similar for simple clip paths (need some support in
             // LinePolyPolygon, then)
             ENSURE_OR_THROW(
@@ -787,7 +733,7 @@ namespace dxcanvas
         {
             GraphicsPathSharedPtr aClipPath( dxcanvastools::graphicsPathFromXPolyPolygon2D( renderState.Clip ) );
 
-            // TODO(P3): Cache clip. SetClip( GraphicsPath ) performs abyssmally on GDI+.
+            // TODO(P3): Cache clip. SetClip( GraphicsPath ) performs abysmally on GDI+.
             // Try SetClip( Rect ) or similar for simple clip paths (need some support in
             // LinePolyPolygon, then)
             ENSURE_OR_THROW(
@@ -800,7 +746,7 @@ namespace dxcanvas
         const Gdiplus::CompositingMode eCompositing( calcCompositingMode( renderState.CompositeOperation ) );
         ENSURE_OR_THROW(
             Gdiplus::Ok == rGraphics->SetCompositingMode( eCompositing ),
-            "CanvasHelper::setupGraphicsState(): Cannot set GDI* compositing mode)" );
+            "CanvasHelper::setupGraphicsState(): Cannot set GDI+ compositing mode" );
     }
 
     void CanvasHelper::flush() const

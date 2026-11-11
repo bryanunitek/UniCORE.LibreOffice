@@ -395,7 +395,7 @@ XMLTransformerActionInit const aActionTable[] =
     // process table::conversion-mode
     ENTRY1( XML_NAMESPACE_TABLE, XML_CONVERSION_MODE, XML_ETACTION_PROC_ATTRS, OOO_DDE_CONV_MODE_ACTIONS ),
 
-    // fix <text:alphabatical-index-mark text:main-etry>
+    // fix <text:alphabetical-index-mark text:main-etry>
     ENTRY1( XML_NAMESPACE_TEXT, XML_ALPHABETICAL_INDEX_MARK,       XML_ETACTION_PROC_ATTRS, OOO_ALPHABETICAL_INDEX_MARK_ACTIONS ),
     ENTRY1( XML_NAMESPACE_TEXT, XML_ALPHABETICAL_INDEX_MARK_START, XML_ETACTION_PROC_ATTRS, OOO_ALPHABETICAL_INDEX_MARK_ACTIONS ),
 
@@ -1621,7 +1621,7 @@ void SAL_CALL OOo2OasisTransformer::setTargetDocument(
     if( !GetDocHandler().is() )
     {
         // if initialize hasn't been called, then we have to call it now
-        // to get the sub component initialized.
+        // to get the sub-component initialized.
         Sequence<Any> aArgs( 0 );
         Initialize( aArgs );
     }
@@ -1666,7 +1666,7 @@ void SAL_CALL OOo2OasisTransformer::startDocument()
     if( !GetDocHandler().is() )
     {
         // if initialize hasn't been called, then we have to call it now
-        // to get the sub component initialized.
+        // to get the sub-component initialized.
         Sequence<Any> aArgs( 0 );
         Initialize( aArgs );
     }

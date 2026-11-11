@@ -40,7 +40,6 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 using ::sd::framework::FrameworkHelper;
 
@@ -496,7 +495,7 @@ void EventMultiplexer::Implementation::notifyConfigurationChange (
                 CallListeners (EventMultiplexerEventId::ViewAdded);
 
                 if (rEvent.ResourceId->isBoundToURL(
-                    FrameworkHelper::msCenterPaneURL, AnchorBindingMode_DIRECT))
+                    FrameworkHelper::msCenterPaneURL, sd::framework::AnchorBindingMode::DIRECT))
                 {
                     CallListeners (EventMultiplexerEventId::MainViewAdded);
                 }
@@ -521,13 +520,12 @@ void EventMultiplexer::Implementation::notifyConfigurationChange (
             if (rEvent.ResourceId->getResourceURL().match(FrameworkHelper::msViewURLPrefix))
             {
                 if (rEvent.ResourceId->isBoundToURL(
-                    FrameworkHelper::msCenterPaneURL, AnchorBindingMode_DIRECT))
+                    FrameworkHelper::msCenterPaneURL, sd::framework::AnchorBindingMode::DIRECT))
                 {
                     CallListeners (EventMultiplexerEventId::MainViewRemoved);
                 }
 
-                // Remove selection change listener from slide sorter.  Add
-                // selection change listener at slide sorter.
+                // Remove selection change listener from slide sorter.
                 if (rEvent.ResourceId->getResourceURL() == FrameworkHelper::msSlideSorterURL)
                 {
                     auto pView = dynamic_cast<sd::framework::AbstractView*>(rEvent.ResourceObject.get());
@@ -549,7 +547,6 @@ void EventMultiplexer::Implementation::notifyConfigurationChange (
 
         default: break;
     }
-
 }
 
 void EventMultiplexer::Implementation::disposing(std::unique_lock<std::mutex>& rGuard)

@@ -431,7 +431,7 @@ OUString SAL_CALL SmGraphicAccessible::getTextRange(
         sal_Int32 nEndIndex )
 {
     //!! nEndIndex may be the string length per definition of the interface !!
-    //!! text should be copied exclusive that end index though. And arguments
+    //!! text should be copied exclusive of that end index though. And arguments
     //!! may be switched.
 
     SolarMutexGuard aGuard;
@@ -548,27 +548,6 @@ sal_Bool SAL_CALL SmGraphicAccessible::copyText(
 sal_Bool SAL_CALL SmGraphicAccessible::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
 {
     return false;
-}
-
-OUString SAL_CALL SmGraphicAccessible::getImplementationName()
-{
-    return u"SmGraphicAccessible"_ustr;
-}
-
-sal_Bool SAL_CALL SmGraphicAccessible::supportsService(
-        const OUString& rServiceName )
-{
-    return  cppu::supportsService(this, rServiceName);
-}
-
-Sequence< OUString > SAL_CALL SmGraphicAccessible::getSupportedServiceNames()
-{
-    return {
-        u"css::accessibility::Accessible"_ustr,
-        u"css::accessibility::AccessibleComponent"_ustr,
-        u"css::accessibility::AccessibleContext"_ustr,
-        u"css::accessibility::AccessibleText"_ustr
-    };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,6 +21,7 @@
 
 #include <com/sun/star/i18n/ScriptType.hpp>
 #include <vcl/outdev.hxx>
+#include <libxml/xmlwriter.h>
 #include <editeng/brushitem.hxx>
 #include <editeng/wrlmitem.hxx>
 #include <editeng/kernitem.hxx>
@@ -69,6 +70,23 @@ void SwFont::SetBackColor( std::optional<Color> xNewColor )
     mxBackColor = xNewColor;
     m_bFontChg = true;
     m_aSub[SwFontScript::Latin].m_nFontCacheId = m_aSub[SwFontScript::CJK].m_nFontCacheId = m_aSub[SwFontScript::CTL].m_nFontCacheId = nullptr;
+}
+
+void SwFont::SetBorder(const SvxBoxItem* pBoxItem)
+{
+    if(!pBoxItem) return;
+    SetTopBorder(pBoxItem->GetTop());
+    SetBottomBorder(pBoxItem->GetBottom());
+    SetRightBorder(pBoxItem->GetRight());
+    SetLeftBorder(pBoxItem->GetLeft());
+}
+
+void SwFont::ClearBorders()
+{
+    SetTopBorder(nullptr);
+    SetBottomBorder(nullptr);
+    SetRightBorder(nullptr);
+    SetLeftBorder(nullptr);
 }
 
 void SwFont::SetTopBorder( const editeng::SvxBorderLine* pTopBorder )
@@ -648,14 +666,11 @@ void SwFont::SetDiffFnt( const SfxItemSet *pAttrSet,
             SetHighlightColor(pItem->GetColor());
         if( const SvxBoxItem* pBoxItem = pAttrSet->GetItemIfSet( RES_CHRATR_BOX ) )
         {
-            SetTopBorder(pBoxItem->GetTop());
-            SetBottomBorder(pBoxItem->GetBottom());
-            SetRightBorder(pBoxItem->GetRight());
-            SetLeftBorder(pBoxItem->GetLeft());
-            SetTopBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::TOP));
-            SetBottomBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::BOTTOM));
-            SetRightBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::RIGHT));
-            SetLeftBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::LEFT));
+            SetBorder(pBoxItem);
+            SetBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::TOP),
+                          pBoxItem->GetDistance(SvxBoxItemLine::BOTTOM),
+                          pBoxItem->GetDistance(SvxBoxItemLine::RIGHT),
+                          pBoxItem->GetDistance(SvxBoxItemLine::LEFT));
         }
         if( const SvxShadowItem* pShadowItem = pAttrSet->GetItemIfSet( RES_CHRATR_SHADOW ) )
         {
@@ -669,7 +684,11 @@ void SwFont::SetDiffFnt( const SfxItemSet *pAttrSet,
         if( const SvxOpticalSizingItem* pItem = pAttrSet->GetItemIfSet( RES_CHRATR_OPTICAL_SIZING ) )
             SetOpticalSizing( pItem->GetValue() );
         if( const SvxFontVariationsItem* pItem = pAttrSet->GetItemIfSet( RES_CHRATR_FONT_VARIATIONS ) )
-            SetVariations( pItem->GetVariations() );
+            SetVariations( pItem->GetVariations(), SwFontScript::Latin );
+        if( const SvxFontVariationsItem* pItem = pAttrSet->GetItemIfSet( RES_CHRATR_CJK_FONT_VARIATIONS ) )
+            SetVariations( pItem->GetVariations(), SwFontScript::CJK );
+        if( const SvxFontVariationsItem* pItem = pAttrSet->GetItemIfSet( RES_CHRATR_CTL_FONT_VARIATIONS ) )
+            SetVariations( pItem->GetVariations(), SwFontScript::CTL );
     }
     else
     {
@@ -814,25 +833,16 @@ SwFont::SwFont( const SwAttrSet* pAttrSet,
         SetHighlightColor(COL_TRANSPARENT);
     if( const SvxBoxItem* pBoxItem = pAttrSet->GetItemIfSet( RES_CHRATR_BOX ) )
     {
-        SetTopBorder(pBoxItem->GetTop());
-        SetBottomBorder(pBoxItem->GetBottom());
-        SetRightBorder(pBoxItem->GetRight());
-        SetLeftBorder(pBoxItem->GetLeft());
-        SetTopBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::TOP));
-        SetBottomBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::BOTTOM));
-        SetRightBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::RIGHT));
-        SetLeftBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::LEFT));
+        SetBorder(pBoxItem);
+        SetBorderDist(pBoxItem->GetDistance(SvxBoxItemLine::TOP),
+                      pBoxItem->GetDistance(SvxBoxItemLine::BOTTOM),
+                      pBoxItem->GetDistance(SvxBoxItemLine::RIGHT),
+                      pBoxItem->GetDistance(SvxBoxItemLine::LEFT));
     }
     else
     {
-        SetTopBorder(nullptr);
-        SetBottomBorder(nullptr);
-        SetRightBorder(nullptr);
-        SetLeftBorder(nullptr);
-        SetTopBorderDist(0);
-        SetBottomBorderDist(0);
-        SetRightBorderDist(0);
-        SetLeftBorderDist(0);
+        ClearBorders();
+        SetBorderDist(0,0,0,0);
     }
 
     if( const SvxShadowItem* pShadowItem = pAttrSet->GetItemIfSet( RES_CHRATR_SHADOW ) )
@@ -1011,6 +1021,12 @@ sal_uInt16 SwSubFont::GetHangingBaseline( SwViewShell const *pSh, const OutputDe
 {
     SwFntAccess aFntAccess( m_nFontCacheId, m_nFontIndex, this, pSh );
     return aFntAccess.Get()->GetFontHangingBaseline( pSh, rOut );
+}
+
+bool SwSubFont::HasCJKCodePages(SwViewShell const* pSh, const OutputDevice& rOut)
+{
+    SwFntAccess aFntAccess(m_nFontCacheId, m_nFontIndex, this, pSh);
+    return aFntAccess.Get()->GetFontHasCJKCodePages(pSh, rOut);
 }
 
 Size SwSubFont::GetTextSize_( SwDrawTextInfo& rInf )
@@ -1513,7 +1529,7 @@ void SwDrawTextInfo::Shift( Degree10 nDir )
 SwUnderlineFont::SwUnderlineFont(SwFont& rFnt, TextFrameIndex const nEnd, const Point& rPoint)
         : m_aPos( rPoint ), m_nEnd( nEnd ), m_pFont( &rFnt )
 {
-};
+}
 
 SwUnderlineFont::~SwUnderlineFont()
 {

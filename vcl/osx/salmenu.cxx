@@ -122,7 +122,7 @@ static void initAppMenu()
     static bool bInitialized = false;
     if (bInitialized)
         return;
-    OSX_SALDATA_RUNINMAIN(initAppMenu())
+    OSX_RUNINMAIN(initAppMenu())
     bInitialized = true;
 
     NSMenu* pAppMenu = nil;
@@ -296,15 +296,10 @@ AquaSalMenu::~AquaSalMenu()
     }
 
     [mpMenuTranslations autorelease];
-    if( mpAltTitle )
-        [mpAltTitle autorelease];
 }
 
 bool AquaSalMenu::ShowNativePopupMenu(FloatingWindow * pWin, const tools::Rectangle& rRect, FloatWinPopupFlags nFlags)
 {
-    // set offsets for positioning
-    const float offset = 9.0;
-
     // get the pointers
     AquaSalFrame * pParentAquaSalFrame = static_cast<AquaSalFrame *>(pWin->ImplGetWindowImpl()->mpRealParent->ImplGetFrame());
     NSWindow* pParentNSWindow = pParentAquaSalFrame->mpNSWindow;
@@ -313,28 +308,35 @@ bool AquaSalMenu::ShowNativePopupMenu(FloatingWindow * pWin, const tools::Rectan
     NSRect popupFrame = [pPopupNSView frame];
 
     // create frame rect
-    NSRect displayPopupFrame = NSMakeRect( rRect.Left()+(offset-1), rRect.Top()+(offset+1), popupFrame.size.width, 0 );
+    NSRect displayPopupFrame = NSMakeRect( rRect.Left(), rRect.Top(), popupFrame.size.width, 0 );
     pParentAquaSalFrame->VCLToCocoa(displayPopupFrame, false);
 
     // do the same strange semantics as vcl popup windows to arrive at a frame geometry
     // in mirrored UI case; best done by actually executing the same code
     sal_uInt16 nArrangeIndex;
     pWin->SetPosPixel( FloatingWindow::ImplCalcPos( pWin, rRect, nFlags, nArrangeIndex ) );
-    displayPopupFrame.origin.x = pWin->ImplGetFrame()->GetUnmirroredGeometry().x() - pParentAquaSalFrame->GetUnmirroredGeometry().x() + offset;
-    displayPopupFrame.origin.y = pWin->ImplGetFrame()->GetUnmirroredGeometry().y() - pParentAquaSalFrame->GetUnmirroredGeometry().y() + offset;
+    displayPopupFrame.origin.x = pWin->ImplGetFrame()->GetUnmirroredGeometry().x() - pParentAquaSalFrame->GetUnmirroredGeometry().x();
+    displayPopupFrame.origin.y = pWin->ImplGetFrame()->GetUnmirroredGeometry().y() - pParentAquaSalFrame->GetUnmirroredGeometry().y();
     pParentAquaSalFrame->VCLToCocoa(displayPopupFrame, false);
 
     // #i111992# if this menu was opened due to a key event, prevent dispatching that yet again
     if( [pParentNSView respondsToSelector: @selector(clearLastEvent)] )
         [pParentNSView performSelector:@selector(clearLastEvent)];
 
-    // open popup menu
-    NSPopUpButtonCell * pPopUpButtonCell = [[NSPopUpButtonCell alloc] initTextCell:@"" pullsDown:NO];
-    [pPopUpButtonCell setMenu: mpMenu];
-    [pPopUpButtonCell selectItem:nil];
+    NSEvent *fakeMouseEvent = [NSEvent
+            mouseEventWithType:NSEventTypeRightMouseDown
+            location:displayPopupFrame.origin
+            modifierFlags:0
+            timestamp:0
+            windowNumber:[pParentNSWindow windowNumber]
+            context:nil
+            eventNumber:0
+            clickCount:1
+            pressure:1.0
+        ];
+
     [AquaA11yWrapper setPopupMenuOpen: YES];
-    [pPopUpButtonCell performClickWithFrame:displayPopupFrame inView:pParentNSView];
-    [pPopUpButtonCell release];
+    [NSMenu popUpContextMenu:mpMenu withEvent:fakeMouseEvent forView:pParentNSView];
     [AquaA11yWrapper setPopupMenuOpen: NO];
 
     return true;
@@ -403,10 +405,11 @@ void AquaSalMenu::unsetMainMenu()
     pCurrentMenuBar = nullptr;
 
     // remove all menus except the app menu
-    NSMenu* pMenu = [NSApp mainMenu];
+    NSMenu* pMenu = [[NSApp mainMenu] retain];
     [NSApp setMainMenu:nil];
     for( int nItems = [pMenu numberOfItems]; nItems > 1; nItems-- )
         [pMenu removeItemAtIndex: 1];
+    [pMenu release];
 }
 
 void AquaSalMenu::useAltTitle(bool bAltTitle)
@@ -462,9 +465,9 @@ void AquaSalMenu::setMainMenu()
 void AquaSalMenu::setDefaultMenu()
 {
     // tdf#160427 native menu changes can only be done on the main thread
-    OSX_SALDATA_RUNINMAIN(AquaSalMenu::setDefaultMenu())
+    OSX_RUNINMAIN(AquaSalMenu::setDefaultMenu())
 
-    NSMenu* pMenu = [NSApp mainMenu];
+    NSMenu* pMenu = [[NSApp mainMenu] retain];
 
     unsetMainMenu();
 
@@ -477,6 +480,7 @@ void AquaSalMenu::setDefaultMenu()
             [pMenu insertItem: pItem atIndex: i+1];
     }
     [NSApp setMainMenu:pMenu];
+    [pMenu release];
 
     // Related: tdf#128186 force key window to a native full screen window
     // AquaSalMenu::setDefaultMenu() is generally called when the key
@@ -566,7 +570,7 @@ void AquaSalMenu::SetFrame( const SalFrame *pFrame )
 
 void AquaSalMenu::InsertItem( SalMenuItem* pSalMenuItem, unsigned nPos )
 {
-    OSX_SALDATA_RUNINMAIN(InsertItem(pSalMenuItem, nPos))
+    OSX_RUNINMAIN(InsertItem(pSalMenuItem, nPos))
 
     AquaSalMenuItem *pAquaSalMenuItem = static_cast<AquaSalMenuItem*>(pSalMenuItem);
 
@@ -595,7 +599,7 @@ void AquaSalMenu::InsertItem( SalMenuItem* pSalMenuItem, unsigned nPos )
 void AquaSalMenu::RemoveItem( unsigned nPos )
 {
     // tdf#160427 native menu changes can only be done on the main thread
-    OSX_SALDATA_RUNINMAIN(RemoveItem(nPos))
+    OSX_RUNINMAIN(RemoveItem(nPos))
 
     AquaSalMenuItem* pRemoveItem = nullptr;
     if( nPos == MENU_APPEND || nPos == (maItems.size()-1) )
@@ -935,6 +939,8 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
             );
 }
 
+// Returns a copy of the translated string, if found in the translations dictionary,
+// that the caller owns and is responsible for releasing.
 static NSString *getMenuTranslation( NSDictionary *pDict, OUString rUnoCommand )
 {
     NSDictionary *pLangs = pDict[ [CreateNSString(rUnoCommand) autorelease] ];
@@ -961,7 +967,7 @@ static NSString *getMenuTranslation( NSDictionary *pDict, OUString rUnoCommand )
     if ( !pAltTitle )
         pAltTitle = pLangs[pLang];
 
-    return pAltTitle;
+    return [pAltTitle copy];
 }
 
 /*
@@ -974,6 +980,8 @@ AquaSalMenuItem::AquaSalMenuItem( const SalItemParams* pItemData, NSDictionary *
     mpParentMenu( nullptr ),
     mpSubMenu( nullptr ),
     mpMenuItem( nil ),
+    mpOrigTitle( nil ),
+    mpAltTitle( nil ),
     mpMenuTranslations( [pMenuTranslations retain] )
 {
     if (pItemData->eType == MenuItemType::SEPARATOR)
@@ -1040,6 +1048,9 @@ void AquaSalMenuItem::setTitle(const OUString& i_rText)
     if (aText.endsWith("...", &aText))
         aText += u"\u2026";
 
+    // autorelease on nil should be a noop, but better be safe than sorry
+    if (mpOrigTitle)
+        [mpOrigTitle autorelease];
     mpOrigTitle = CreateNSString( aText );
     if ( !mpOrigTitle )
         return;

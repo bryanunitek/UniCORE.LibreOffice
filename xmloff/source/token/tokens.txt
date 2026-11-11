@@ -98,6 +98,8 @@ loext
 N_LO_EXT_DUMMY
 N_FIELD_DUMMY
 NP_FIELD_DUMMY
+coext
+N_COL_EXT_DUMMY
 m
 cm
 pt
@@ -403,6 +405,7 @@ comma-separated
 command
 comment
 compose
+compound-based
 cond-style-name
 condition
 condition-source
@@ -450,6 +453,7 @@ copy-results-only
 copy-styles
 corner-radius
 correct
+correlation-circle
 cos
 cosh
 cot
@@ -814,6 +818,8 @@ font-style-name
 font-style-name-asian
 font-style-name-complex
 font-variation-settings
+font-variation-settings-asian
+font-variation-settings-complex
 font-variant
 font-weight
 font-weight-asian
@@ -839,6 +845,7 @@ fontwork-start
 fontwork-style
 footer
 footer-first
+is-first-page-footer-enabled
 footer-left
 footer-style
 footer-visible
@@ -922,6 +929,7 @@ square
 gradientTransform
 grand-total
 graphic
+graphic-clip-poly
 gray
 green
 greyscale
@@ -941,6 +949,7 @@ hatch-table
 triple
 header
 header-first
+is-first-page-header-enabled
 header-left
 header-style
 headers
@@ -995,6 +1004,8 @@ hyphenation-zone-page
 hyphenation-zone-spread
 hyphenation-compound-remain-char-count
 hyphenation-compound-push-char-count
+hyphenation-level
+hyphenation-split-compound-word
 i
 icon
 icon-set
@@ -1401,6 +1412,7 @@ outline-style
 outset
 outside
 overflow-behavior
+overflow-bin-value
 overlap
 overlay
 p
@@ -1468,6 +1480,8 @@ density
 bounciness
 pie-offset
 placeholder
+placeholder-class
+placeholder-prompt
 placeholder-type
 placing
 plain-number
@@ -1768,6 +1782,7 @@ specular
 specular-color
 speed
 sphere
+spill
 spiral
 spiral-in
 spiral-inward-left
@@ -2025,6 +2040,7 @@ suggested-signer-email
 suggested-signer-name
 suggested-signer-title
 wave
+underflow-bin-value
 unformatted-text
 union
 unit
@@ -2073,6 +2089,8 @@ user-index-mark-start
 user-index-source
 user-transformed
 username
+use-overflow-bin
+use-underflow-bin
 validation
 value
 value-type
@@ -3300,6 +3318,8 @@ resolved
 page-content-top
 page-content-bottom
 margin-gutter
+min-page-margin-top
+min-page-margin-bottom
 local-url
 target-type
 target-url
@@ -3352,4 +3372,18 @@ color-type
 latin
 asian
 complex
+diagram
+layout
+colors
+quickstyle
+horizontal-rule
+reflection
+reflection-distance
+reflection-blur
+reflection-start-transparency
+reflection-start-position
+reflection-end-transparency
+reflection-end-position
+airplane
+date-utc
 TOKEN_END_DUMMY

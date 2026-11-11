@@ -18,6 +18,9 @@
  */
 
 #include <checklistmenu.hxx>
+
+#include <unordered_map>
+
 #include <o3tl/safeint.hxx>
 #include <o3tl/string_view.hxx>
 #include <globstr.hrc>
@@ -634,8 +637,8 @@ ScCheckListMenuControl::ScCheckListMenuControl(weld::Widget* pParent, ScViewData
     // popup isn't a true dialog
     mxButtonBox->sort_native_button_order();
 
-    mxTreeChecks->enable_toggle_buttons(weld::ColumnToggleType::Check);
-    mxListChecks->enable_toggle_buttons(weld::ColumnToggleType::Check);
+    mxTreeChecks->enable_toggle_buttons();
+    mxListChecks->enable_toggle_buttons();
 
     mxBox->show();
     if (mbIsMultiField)
@@ -861,7 +864,7 @@ namespace
             /*
              * in case marked members are to be included, we include
              * them at the end because we can see in the functions which call
-             * this function that the marked members will be disabled anyways
+             * this function that the marked members will be disabled anyway
              * if lock is checked.
              */
             if (!bIncludeMarkedMembers || (!rMembers[i].mbMarked && !rMembers[i].mbHiddenByOtherFilter))
@@ -923,30 +926,29 @@ void ScCheckListMenuControl::MarkCheckedMembers()
     }
     else
     {
+        // tdf#168193 - look up the row label instead of scanning all members
+        std::unordered_map<OUString, size_t> aNameToMember;
+        aNameToMember.reserve(maMembers.size());
+        for (size_t i = 0; i < maMembers.size(); ++i)
+            // duplicate names keep their first member since they all show up as a single entry
+            aNameToMember.emplace(maMembers[i].maName, i);
+
         // go over the members visible in the popup, and remember which one is
         // checked, and which one is not by setting `mbMarked` to `true`; by default
         // `mbMarked` is `false`, we clear all the marks when lock is unchecked, see
         // at the end of this callback.
-        mpChecks->all_foreach([this](weld::TreeIter& rEntry){
-            if (mpChecks->get_toggle(rEntry) == TRISTATE_TRUE)
+        mpChecks->all_foreach(
+            [this, &aNameToMember](weld::TreeIter& rEntry)
             {
-                for (auto& aMember : maMembers)
+                if (mpChecks->get_toggle(rEntry) == TRISTATE_TRUE)
                 {
-                    if (aMember.maName == mpChecks->get_text(rEntry))
-                    {
-                        aMember.mbMarked = true;
-                        /*
-                         * if there are multiple entries with the same
-                         * name in the range, they all show up as a single
-                         * entry in the autofilter, so we can break
-                         */
-                        break;
-                    }
+                    const auto aItr = aNameToMember.find(mpChecks->get_text(rEntry));
+                    if (aItr != aNameToMember.end())
+                        maMembers[aItr->second].mbMarked = true;
                 }
-            }
 
-            return false;
-        });
+                return false;
+            });
     }
 }
 
@@ -1011,7 +1013,7 @@ IMPL_LINK_NOARG(ScCheckListMenuControl, ComboChangedHdl, weld::ComboBox&, void)
         mxFieldChangedAction->execute();
 }
 
-IMPL_LINK_NOARG(ScCheckListMenuControl, EdModifyHdl, weld::Entry&, void)
+IMPL_LINK_NOARG(ScCheckListMenuControl, EdModifyHdl, weld::TextWidget&, void)
 {
     maSearchEditTimer.Start();
 }
@@ -1854,11 +1856,13 @@ ScListSubMenuControl::ScListSubMenuControl(weld::Widget* pParent, ScCheckListMen
     else
     {
         mxBackColorMenu->set_clicks_to_toggle(1);
-        mxBackColorMenu->enable_toggle_buttons(weld::ColumnToggleType::Radio);
+        mxBackColorMenu->enable_toggle_buttons();
+        mxBackColorMenu->set_toggle_button_type(weld::ColumnToggleType::Radio);
         mxBackColorMenu->connect_selection_changed(
             LINK(this, ScListSubMenuControl, ColorSelChangedHdl));
         mxTextColorMenu->set_clicks_to_toggle(1);
-        mxTextColorMenu->enable_toggle_buttons(weld::ColumnToggleType::Radio);
+        mxTextColorMenu->enable_toggle_buttons();
+        mxTextColorMenu->set_toggle_button_type(weld::ColumnToggleType::Radio);
         mxTextColorMenu->connect_selection_changed(
             LINK(this, ScListSubMenuControl, ColorSelChangedHdl));
         SetupMenu(*mxBackColorMenu);

@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <DocumentContentOperationsManager.hxx>
-#include <DocumentRedlineManager.hxx>
 #include <wrtsh.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -79,7 +78,6 @@
 #include <o3tl/safeint.hxx>
 #include <sal/log.hxx>
 #include <unotools/charclass.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/transliterationwrapper.hxx>
 #include <i18nutil/transliteration.hxx>
 #include <i18nutil/guessparadirection.hxx>
@@ -602,6 +600,7 @@ namespace sw
                         }
                         case CH_TXT_ATR_FIELDSTART:
                         {
+                            // can be null while a node split moves the text ahead of the fieldmarks
                             auto const pFieldMark(rIDMA.getFieldmarkAt(SwPosition(rTextNode, i)));
                             startedFields.emplace(pFieldMark, false, 0, 0);
                             break;
@@ -614,7 +613,8 @@ namespace sw
                             }
                             else
                             {   // no way to find the field via MarkManager...
-                                assert(std::get<0>(startedFields.top())->IsCoveringPosition(SwPosition(rTextNode, i)));
+                                assert((std::get<0>(startedFields.top()) == nullptr && rTextNode.HasHints() && rTextNode.GetSwpHints().IsInSplitNode())
+                                    || std::get<0>(startedFields.top())->IsCoveringPosition(SwPosition(rTextNode, i)));
                                 std::get<1>(startedFields.top()) = true;
                                 std::get<2>(startedFields.top()) = n;
                                 std::get<3>(startedFields.top()) = i;
@@ -629,7 +629,8 @@ namespace sw
                             }
                             else
                             {   // fieldmarks must not overlap => stack
-                                assert(std::get<0>(startedFields.top()) == rIDMA.getFieldmarkAt(SwPosition(rTextNode, i)));
+                                assert((std::get<0>(startedFields.top()) == nullptr && rTextNode.HasHints() && rTextNode.GetSwpHints().IsInSplitNode())
+                                    || std::get<0>(startedFields.top()) == rIDMA.getFieldmarkAt(SwPosition(rTextNode, i)));
                                 startedFields.pop();
                             }
                             break;
@@ -1292,7 +1293,8 @@ namespace //local functions originally from docfmt.cxx
                         }
                     }
                 }
-            } while( pRStt <= rRg.Start() && ++nRedlPos < rDoc.getIDocumentRedlineAccess().GetRedlineTable().size());
+            } while (*pRStt <= *rRg.End()
+                     && ++nRedlPos < rDoc.getIDocumentRedlineAccess().GetRedlineTable().size());
         }
         if (!xExtra && bExistingFormatRedlineAtRange)
         {
@@ -2185,7 +2187,7 @@ void DocumentContentOperationsManager::DeleteDummyChar(
 
 void DocumentContentOperationsManager::DeleteRange( SwPaM & rPam )
 {
-    // Seek all redlines that are in that PaM to be deleted..
+    // Seek all redlines that are in that PaM to be deleted.
     SwRedlineTable::size_type nRedlStart = m_rDoc.getIDocumentRedlineAccess().GetRedlinePos(
         rPam.Start()->GetNode(), RedlineType::Any);
     SwRedlineTable::size_type nRedlEnd = m_rDoc.getIDocumentRedlineAccess().GetRedlineEndPos(
@@ -4603,6 +4605,14 @@ bool DocumentContentOperationsManager::DeleteRangeImplImpl(SwPaM & rPam, SwDelet
 
     if (!rPam.HasMark()
         || (*pStart == *pEnd && !IsFlySelectedByCursor(m_rDoc, *pStart, *pEnd)))
+    {
+        return false;
+    }
+
+    // A delete stays within one cell of a table, the same rule that a cursor selection follows
+    const SwStartNode* pStartBox = pStart->GetNode().FindTableBoxStartNode();
+    const SwStartNode* pEndBox = pEnd->GetNode().FindTableBoxStartNode();
+    if (pStartBox != pEndBox)
     {
         return false;
     }

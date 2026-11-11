@@ -36,6 +36,41 @@
 #include <quartz/utils.h>
 #include <sallayout.hxx>
 
+static bool checkFontTypeSupported(CTFontDescriptorRef pFD, CFStringRef pFamilyName)
+{
+    int nFormat = kCTFontFormatUnrecognized;
+    CFNumberRef pFormat = static_cast<CFNumberRef>(CTFontDescriptorCopyAttribute(pFD, kCTFontFormatAttribute));
+    if (pFormat)
+    {
+        CFNumberGetValue(pFormat, kCFNumberIntType, &nFormat);
+        CFRelease(pFormat);
+    }
+
+    if (nFormat == kCTFontFormatPostScript)
+    {
+        // Some fonts detected as PostScript are actually OpenType with PostScript/CFF
+        // outlines, which are OK. Allow fonts with a CFF table.
+        CTFontRef pFont = CTFontCreateWithFontDescriptor(pFD, 0.0, nullptr);
+        if (pFont)
+        {
+            CFDataRef pTable = CTFontCopyTable(pFont, kCTFontTableCFF, kCTFontTableOptionNoOptions);
+            if (pTable)
+            {
+                nFormat = kCTFontFormatOpenTypePostScript;
+                CFRelease(pTable);
+            }
+        }
+        CFRelease(pFont);
+    }
+
+    if (nFormat == kCTFontFormatUnrecognized || nFormat == kCTFontFormatPostScript || nFormat == kCTFontFormatBitmap)
+    {
+        SAL_INFO("vcl.fonts", "Ignoring font with unsupported format " << nFormat << ": " << GetOUString(pFamilyName));
+        return false;
+    }
+
+    return true;
+}
 
 FontAttributes DevFontFromCTFontDescriptor( CTFontDescriptorRef pFD, bool* bFontEnabled )
 {
@@ -80,22 +115,14 @@ FontAttributes DevFontFromCTFontDescriptor( CTFontDescriptorRef pFD, bool* bFont
         *bFontEnabled = bEnabled;
     }
 
-    // get font attributes
-    CFDictionaryRef pAttrDict = static_cast<CFDictionaryRef>(CTFontDescriptorCopyAttribute( pFD, kCTFontTraitsAttribute ));
-
     if (bFontEnabled && *bFontEnabled)
     {
         // Ignore font formats not supported.
-        int nFormat;
-        CFNumberRef pFormat = static_cast<CFNumberRef>(CTFontDescriptorCopyAttribute(pFD, kCTFontFormatAttribute));
-        CFNumberGetValue(pFormat, kCFNumberIntType, &nFormat);
-        if (nFormat == kCTFontFormatUnrecognized || nFormat == kCTFontFormatPostScript || nFormat == kCTFontFormatBitmap)
-        {
-            SAL_INFO("vcl.fonts", "Ignoring font with unsupported format: " << rDFA.GetFamilyName());
-            *bFontEnabled = false;
-        }
-        CFRelease(pFormat);
+        *bFontEnabled = checkFontTypeSupported(pFD, pFamilyName);
     }
+
+    // get font attributes
+    CFDictionaryRef pAttrDict = static_cast<CFDictionaryRef>(CTFontDescriptorCopyAttribute( pFD, kCTFontTraitsAttribute ));
 
     // get symbolic trait
     // TODO: use other traits such as MonoSpace/Condensed/Expanded or Vertical too
@@ -332,6 +359,35 @@ bool SystemFontList::Init()
     const int nFontCount = CFArrayGetCount( mpCTFontArray );
     const CFRange aFullRange = CFRangeMake( 0, nFontCount );
     CFArrayApplyFunction( mpCTFontArray, aFullRange, fontEnumCallBack, this );
+
+    // tdf#91400 tdf#173342: The system UI font is deliberately hidden from
+    // the list of available fonts returned by CoreText; its family name starts
+    // with a dot (".AppleSystemUIFont"), which is the convention macOS uses to
+    // mark a font as private and unselectable. Add it explicitly so that it can
+    // be used as the default UI font (see the UI_SANS entry in VCL.xcu), while
+    // keeping it out of the font selection lists (see the filtering added to
+    // FontList::ImplInsertFonts()).
+    const CTFontUIFontType aUIFontTypes[] = { kCTFontUIFontSystem, kCTFontUIFontEmphasizedSystem };
+    for (CTFontUIFontType eUIFontType : aUIFontTypes)
+    {
+        CTFontRef pUIFont = CTFontCreateUIFontForLanguage(eUIFontType, 0, nullptr);
+        if (!pUIFont)
+            continue;
+
+        CTFontDescriptorRef pUIFontDesc = CTFontCopyFontDescriptor(pUIFont);
+        CFRelease(pUIFont);
+        if (!pUIFontDesc)
+            continue;
+
+        // Pass a null bFontEnabled so that the private system font is not
+        // rejected by checkFontTypeSupported().
+        FontAttributes rDFA = DevFontFromCTFontDescriptor(pUIFontDesc, nullptr);
+        rDFA.SetFamilyName(".AppleSystemUIFont");
+
+        rtl::Reference<CoreTextFontFace> pFontData = new CoreTextFontFace(rDFA, pUIFontDesc);
+        AddFont(pFontData.get());
+        CFRelease(pUIFontDesc);
+    }
 
     return true;
 }

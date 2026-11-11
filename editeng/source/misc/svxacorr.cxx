@@ -121,7 +121,11 @@ static bool NonFieldWordDelim( const sal_Unicode c )
 
 static bool IsWordDelim( const sal_Unicode c )
 {
-    return c == 0x1 || NonFieldWordDelim(c);
+    // tdf#154463 - 0x01 ... 0x08 are the characters put into the text to
+    // anchor a text attribute or to delimit a fieldmark: CH_TXTATR_BREAKWORD,
+    // CH_TXT_ATR_FIELDSEP, CH_TXT_ATR_INPUTFIELDSTART/END, CH_TXT_ATR_FORMELEMENT
+    // and CH_TXT_ATR_FIELDSTART/END (see sw/inc/hintids.hxx).
+    return (0x01 <= c && c <= 0x08) || NonFieldWordDelim(c);
 }
 
 
@@ -1351,29 +1355,22 @@ void SvxAutoCorrect::InsertQuote( SvxAutoCorrDoc& rDoc, sal_Int32 nInsPos,
     else
         cRet = GetQuote( cInsChar, bSttQuote, eLang );
 
-    OUString sChg( cInsChar );
+    // Put the final typographic quote in place with a single edit instead of
+    // inserting the typed character and then replacing it with the typographic
+    // one. With the two-edit form, undoing the autocorrect first turned the
+    // quote back into a straight quote and only a second undo removed it, so a
+    // stray straight quote was left behind. A single edit means one undo
+    // removes the whole quote.
+    OUString sChg( cRet );
     if( bIns )
         rDoc.Insert( nInsPos, sChg );
     else
         rDoc.Replace( nInsPos, sChg );
 
-    sChg = OUString(cRet);
-
     if( eType == ACQuotes::NonBreakingSpace )
-    {
-        if( rDoc.Insert( bSttQuote ? nInsPos+1 : nInsPos, OUStringChar(cNonBreakingSpace) ))
-        {
-            if( !bSttQuote )
-                ++nInsPos;
-        }
-    }
+        rDoc.Insert(bSttQuote ? nInsPos + 1 : nInsPos, OUStringChar(cNonBreakingSpace));
     else if( eType == ACQuotes::DoubleAngleQuote && cInsChar != '\"' )
-    {
-        rDoc.Delete( nInsPos-1, nInsPos);
-        --nInsPos;
-    }
-
-    rDoc.Replace( nInsPos, sChg );
+        rDoc.Delete(nInsPos - 1, nInsPos);
 
     // i' -> I' in English (last step for the Undo)
     if( eType == ACQuotes::CapitalizeIAm )
@@ -3256,7 +3253,7 @@ SvxAutocorrWordList::WordMatches(const SvxAutocorrWord *pFnd,
             rStt = nCalcStt;
             if (!left_wildcard)
             {
-                // fdo#33899 avoid "1/2", "1/3".. to be replaced by fractions in dates, eg. 1/2/14
+                // fdo#33899 avoid "1/2", "1/3"... to be replaced by fractions in dates, e.g. 1/2/14
                 if (static_cast<sal_Int32>(rTxt.size()) > nEndPos && rTxt[nEndPos] == '/' && rChk.indexOf('/') != -1)
                 {
                     return std::nullopt;

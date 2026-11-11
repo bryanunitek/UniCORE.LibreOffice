@@ -398,6 +398,7 @@ public:
 
     void        SetAnonymousDBData(std::unique_ptr<ScDBData> pDBData);
     ScDBData*   GetAnonymousDBData() { return pDBDataNoName.get();}
+    const ScDBData* GetAnonymousDBData() const { return pDBDataNoName.get(); }
 
     const OUString& GetCodeName() const { return aCodeName; }
     void        SetCodeName( const OUString& rNewName ) { aCodeName = rNewName; }
@@ -1326,7 +1327,6 @@ private:
     void FillFormula(
         const ScFormulaCell* pSrcCell, SCCOL nDestCol, SCROW nDestRow, bool bLast );
     void        UpdateInsertTabAbs(SCTAB nNewPos);
-    void        AdjustRelativeTabRefs(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode);
     bool        GetNextSpellingCell(SCCOL& rCol, SCROW& rRow, bool bInSel,
                                     const ScMarkData& rMark) const;
     bool        GetNextMarkedCell( SCCOL& rCol, SCROW& rRow, const ScMarkData& rMark ) const;
@@ -1381,7 +1381,7 @@ private:
      * Transpose clipboard patterns
      * @param nCombinedStartRow start row of the combined range;
      * used for transposed multi range selection with row direction;
-     * for other cases than multi range row selection this it equal to nRow1
+     * for other cases than multi range row selection this is equal to nRow1
      * @param nRowDestOffset adjustment of destination row position;
      * used for transposed multi range row selections, otherwise 0
      */
@@ -1393,7 +1393,7 @@ private:
      * Transpose clipboard notes
      * @param nCombinedStartRow start row of the combined range;
      * used for transposed multi range selection with row direction;
-     * for other cases than multi range row selection this it equal to nRow1
+     * for other cases than multi range row selection this is equal to nRow1
      * @param nRowDestOffset adjustment of destination row position;
      * used for transposed multi range row selections, otherwise 0
      */
@@ -1436,7 +1436,7 @@ private:
         explicit VisibleDataCellIterator(const ScDocument& rDoc, ScFlatBoolRowSegments& rRowSegs, ScColumn& rColumn);
 
         /**
-         * Set the start row position.  In case there is not visible data cell
+         * Set the start row position.  In case there is no visible data cell
          * at the specified row position, it will move to the position of the
          * first visible data cell below that point.
          *
@@ -1477,6 +1477,20 @@ private:
 
     // Applies a function to the selected ranges in a given column.
     template <ColumnDataApply ApplyDataFunc> void Apply(const ScMarkData&, SCCOL, ApplyDataFunc);
+
+    // Whether the function, applied to the given rows of a column not created yet, gives them
+    // attributes other than those of the default column data.
+    template <ColumnDataApply ApplyDataFunc>
+    bool ChangesDefaultColData(SCROW nStartRow, SCROW nEndRow, ApplyDataFunc);
+
+    // Whether the function, applied to the selected ranges of a given column not created yet, gives
+    // them attributes other than those of the default column data.
+    template <ColumnDataApply ApplyDataFunc>
+    bool ChangesDefaultColData(const ScMarkData&, SCCOL, ApplyDataFunc);
+
+    // The last column to apply the function to, for columns up to nEndCol and the given rows.
+    template <ColumnDataApply ApplyDataFunc>
+    SCCOL LastChangedCol(SCCOL nEndCol, SCROW nStartRow, SCROW nEndRow, ApplyDataFunc);
 };
 
 template <ColumnDataApply ApplyDataFunc>
@@ -1489,17 +1503,23 @@ void ScTable::ApplyWithAllocation(const ScMarkData& rMark, ApplyDataFunc apply)
     {
         // For the same unallocated columns until the end we can change just the default.
         lastChangeCol = rMark.GetStartOfEqualColumns(GetDoc().MaxCol(), aCol.size()) - 1;
-        // Allocate needed different columns before changing the default.
-        if (lastChangeCol >= 0)
-            CreateColumnIfNotExists(lastChangeCol);
+        if (ChangesDefaultColData(rMark, GetDoc().MaxCol(), apply))
+        {
+            // Allocate needed different columns before changing the default.
+            if (lastChangeCol >= 0)
+                CreateColumnIfNotExists(lastChangeCol);
 
-        Apply(rMark, GetDoc().MaxCol(), apply);
+            Apply(rMark, GetDoc().MaxCol(), apply);
+        }
     }
     else // need to allocate all columns affected
-    {
         lastChangeCol = rMark.GetArea().aEnd.Col();
+
+    // An unallocated column that the function leaves as it is stays unallocated.
+    while (lastChangeCol >= aCol.size() && !ChangesDefaultColData(rMark, lastChangeCol, apply))
+        --lastChangeCol;
+    if (lastChangeCol >= 0)
         CreateColumnIfNotExists(lastChangeCol);
-    }
 
     // The loop should go not to lastChangeCol, but over all columns, to apply to already allocated
     // in the "StartOfEqualColumns" range
@@ -1524,6 +1544,41 @@ void ScTable::Apply(const ScMarkData& rMark, SCCOL nCol, ApplyDataFunc apply)
         if (aRange.aStart.Col() <= nCol && nCol <= aRange.aEnd.Col())
             apply(GetColumnData(nCol), aRange.aStart.Row(), aRange.aEnd.Row());
     }
+}
+
+template <ColumnDataApply ApplyDataFunc>
+bool ScTable::ChangesDefaultColData(SCROW nStartRow, SCROW nEndRow, ApplyDataFunc apply)
+{
+    ScColumnData aTrial;
+    aTrial.InitAttrArray(new ScAttrArray(-1, nTab, rDocument, &aDefaultColData.AttrArray()));
+    apply(aTrial, nStartRow, nEndRow);
+    return !aTrial.AttrArray().IsAllEqual(aDefaultColData.AttrArray(), nStartRow, nEndRow);
+}
+
+template <ColumnDataApply ApplyDataFunc>
+bool ScTable::ChangesDefaultColData(const ScMarkData& rMark, SCCOL nCol, ApplyDataFunc apply)
+{
+    if (rMark.IsMultiMarked())
+    {
+        ScMultiSelIter aMultiIter(rMark.GetMultiSelData(), nCol);
+        SCROW nTop, nBottom;
+        while (aMultiIter.Next(nTop, nBottom))
+            if (ChangesDefaultColData(nTop, nBottom, apply))
+                return true;
+        return false;
+    }
+    const ScRange& aRange = rMark.GetMarkArea();
+    return rMark.IsMarked() && aRange.aStart.Col() <= nCol && nCol <= aRange.aEnd.Col()
+           && ChangesDefaultColData(aRange.aStart.Row(), aRange.aEnd.Row(), apply);
+}
+
+template <ColumnDataApply ApplyDataFunc>
+SCCOL ScTable::LastChangedCol(SCCOL nEndCol, SCROW nStartRow, SCROW nEndRow, ApplyDataFunc apply)
+{
+    // Unallocated columns that the function leaves as they are stay unallocated.
+    if (nEndCol >= aCol.size() && !ChangesDefaultColData(nStartRow, nEndRow, apply))
+        return aCol.size() - 1;
+    return nEndCol;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

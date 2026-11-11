@@ -154,7 +154,8 @@ public:
 
     void            SetProperty(sal_uInt16 nWID, sal_uInt8 nMemberId, const uno::Any& rVal);
     const uno::Any* GetProperty(sal_uInt16 nWID, sal_uInt8 nMemberId);
-    bool FillBaseProperties(SfxItemSet& rToSet, const SfxItemSet &rFromSet, bool& rSizeFound);
+    bool FillBaseProperties(SfxItemSet& rToSet, const SfxItemSet &rFromSet, bool& rSizeFound,
+                            OUString const& rReferer);
 
     virtual bool AnyToItemSet( SwDoc& rDoc, SfxItemSet& rFrameSet, SfxItemSet& rSet, bool& rSizeFound) = 0;
 };
@@ -175,7 +176,8 @@ const uno::Any* BaseFrameProperties_Impl::GetProperty(sal_uInt16 nWID, sal_uInt8
     return pAny;
 }
 
-bool BaseFrameProperties_Impl::FillBaseProperties(SfxItemSet& rToSet, const SfxItemSet& rFromSet, bool& rSizeFound)
+bool BaseFrameProperties_Impl::FillBaseProperties(SfxItemSet& rToSet, const SfxItemSet& rFromSet,
+                                                  bool& rSizeFound, OUString const& rReferer)
 {
     // assert when the target SfxItemSet has no parent. It *should* have the pDfltFrameFormat
     // from SwDoc set as parent (or similar) to have the necessary XFILL_NONE in the ItemSet
@@ -338,7 +340,7 @@ bool BaseFrameProperties_Impl::FillBaseProperties(SfxItemSet& rToSet, const SfxI
             bRet &= aBrush.PutValue(*pGrTransparency, MID_GRAPHIC_TRANSPARENCY);
         }
 
-        setSvxBrushItemAsFillAttributesToTargetSet(aBrush, rToSet);
+        setSvxBrushItemAsFillAttributesToTargetSet(aBrush, rToSet, rReferer);
     }
 
     if(bXFillStyleItemUsed)
@@ -371,7 +373,7 @@ bool BaseFrameProperties_Impl::FillBaseProperties(SfxItemSet& rToSet, const SfxI
                 aBrush->PutValue(*pCol, MID_BACK_COLOR);
             else
                 aBrush->PutValue(*pRGBCol, MID_BACK_COLOR_R_G_B);
-            setSvxBrushItemAsFillAttributesToTargetSet(*aBrush, rToSet);
+            setSvxBrushItemAsFillAttributesToTargetSet(*aBrush, rToSet, rReferer);
         }
 
         if(pXFillGradientItem || pXFillGradientNameItem)
@@ -481,7 +483,7 @@ bool BaseFrameProperties_Impl::FillBaseProperties(SfxItemSet& rToSet, const SfxI
             if (aXFillStyleItem.GetValue() == drawing::FillStyle_SOLID)
             {
                 aBrush->PutValue(*pColTrans, MID_BACK_COLOR_TRANSPARENCY);
-                setSvxBrushItemAsFillAttributesToTargetSet(*aBrush, rToSet);
+                setSvxBrushItemAsFillAttributesToTargetSet(*aBrush, rToSet, rReferer);
             }
         }
 
@@ -638,14 +640,17 @@ bool BaseFrameProperties_Impl::FillBaseProperties(SfxItemSet& rToSet, const SfxI
     {
         const uno::Any* pHori = GetProperty(RES_HORI_ORIENT, MID_HORIORIENT_ORIENT);
         const uno::Any* pHoriP = GetProperty(RES_HORI_ORIENT, MID_HORIORIENT_POSITION|CONVERT_TWIPS);
+        const uno::Any* pHoriPEMU = GetProperty(RES_HORI_ORIENT, MID_HORIORIENT_POSITION_EMU);
         const uno::Any* pHoriR = GetProperty(RES_HORI_ORIENT, MID_HORIORIENT_RELATION);
         const uno::Any* pPageT = GetProperty(RES_HORI_ORIENT, MID_HORIORIENT_PAGETOGGLE);
-        if(pHori||pHoriP||pHoriR||pPageT)
+        if(pHori||pHoriP||pHoriPEMU||pHoriR||pPageT)
         {
             SwFormatHoriOrient aOrient ( rFromSet.Get ( RES_HORI_ORIENT ) );
             if(pHori )
                 bRet &= aOrient.PutValue(*pHori, MID_HORIORIENT_ORIENT);
-            if(pHoriP)
+            if(pHoriPEMU)
+                bRet &= aOrient.PutValue(*pHoriPEMU, MID_HORIORIENT_POSITION_EMU);
+            else if(pHoriP)
                 bRet &= aOrient.PutValue(*pHoriP, MID_HORIORIENT_POSITION | CONVERT_TWIPS);
             if(pHoriR)
                 bRet &= aOrient.PutValue(*pHoriR, MID_HORIORIENT_RELATION);
@@ -658,13 +663,16 @@ bool BaseFrameProperties_Impl::FillBaseProperties(SfxItemSet& rToSet, const SfxI
     {
         const uno::Any* pVert = GetProperty(RES_VERT_ORIENT, MID_VERTORIENT_ORIENT);
         const uno::Any* pVertP = GetProperty(RES_VERT_ORIENT, MID_VERTORIENT_POSITION|CONVERT_TWIPS);
+        const uno::Any* pVertPEMU = GetProperty(RES_VERT_ORIENT, MID_VERTORIENT_POSITION_EMU);
         const uno::Any* pVertR = GetProperty(RES_VERT_ORIENT, MID_VERTORIENT_RELATION);
-        if(pVert||pVertP||pVertR)
+        if(pVert||pVertP||pVertPEMU||pVertR)
         {
             SwFormatVertOrient aOrient ( rFromSet.Get ( RES_VERT_ORIENT ) );
             if(pVert )
                 bRet &= aOrient.PutValue(*pVert, MID_VERTORIENT_ORIENT);
-            if(pVertP)
+            if(pVertPEMU)
+                bRet &= aOrient.PutValue(*pVertPEMU, MID_VERTORIENT_POSITION_EMU);
+            else if(pVertP)
                 bRet &= aOrient.PutValue(*pVertP, MID_VERTORIENT_POSITION | CONVERT_TWIPS);
             if(pVertR)
                 bRet &= aOrient.PutValue(*pVertR, MID_VERTORIENT_RELATION);
@@ -965,13 +973,13 @@ bool SwFrameProperties_Impl::AnyToItemSet(SwDoc& rDoc, SfxItemSet& rSet, SfxItem
     {
         rtl::Reference< SwDocStyleSheet > xStyle( new SwDocStyleSheet( *pStyle ) );
         const ::SfxItemSet *pItemSet = &xStyle->GetItemSet();
-        bRet = FillBaseProperties( rSet, *pItemSet, rSizeFound );
+        bRet = FillBaseProperties( rSet, *pItemSet, rSizeFound, rDoc.GetLinkReferer() );
         FillCol(rSet, *pItemSet);
     }
     else
     {
         const ::SfxItemSet *pItemSet = &rDoc.getIDocumentStylePoolAccess().GetFrameFormatFromPool( SwPoolFormatId::FRM_FRAME )->GetAttrSet();
-        bRet = FillBaseProperties( rSet, *pItemSet, rSizeFound );
+        bRet = FillBaseProperties( rSet, *pItemSet, rSizeFound, rDoc.GetLinkReferer() );
         FillCol(rSet, *pItemSet);
     }
     if (const uno::Any* pEdit = GetProperty(RES_EDIT_IN_READONLY, 0))
@@ -1048,13 +1056,13 @@ bool SwGraphicProperties_Impl::AnyToItemSet(
     {
         rtl::Reference< SwDocStyleSheet > xStyle( new SwDocStyleSheet(*pStyle) );
         const ::SfxItemSet *pItemSet = &xStyle->GetItemSet();
-        bRet = FillBaseProperties(rFrameSet, *pItemSet, rSizeFound);
+        bRet = FillBaseProperties(rFrameSet, *pItemSet, rSizeFound, rDoc.GetLinkReferer());
         bRet &= FillMirror(rGrSet, *pItemSet);
     }
     else
     {
         const ::SfxItemSet *pItemSet = &rDoc.getIDocumentStylePoolAccess().GetFrameFormatFromPool( SwPoolFormatId::FRM_GRAPHIC )->GetAttrSet();
-        bRet = FillBaseProperties(rFrameSet, *pItemSet, rSizeFound);
+        bRet = FillBaseProperties(rFrameSet, *pItemSet, rSizeFound, rDoc.GetLinkReferer());
         bRet &= FillMirror(rGrSet, *pItemSet);
     }
 
@@ -1724,7 +1732,8 @@ void SwXFrame::setPropertyValue(const OUString& rPropertyName, const ::uno::Any&
 
                 if(*aChangedBrushItem != *aOriginalBrushItem)
                 {
-                    setSvxBrushItemAsFillAttributesToTargetSet(*aChangedBrushItem, aSet);
+                    setSvxBrushItemAsFillAttributesToTargetSet(*aChangedBrushItem, aSet,
+                                                               pFormat->GetDoc().GetLinkReferer());
                     pFormat->GetDoc().SetFlyFrameAttr( *pFormat, aSet );
                 }
 
@@ -2219,11 +2228,9 @@ uno::Any SwXFrame::getPropertyValue(const OUString& rPropertyName)
             if ( pTmpFrame )
             {
                 OSL_ENSURE( pTmpFrame->isFrameAreaDefinitionValid(), "frame not valid" );
-                const SwRect &rRect = pTmpFrame->getFrameArea();
-                Size aMM100Size = o3tl::convert(
-                        Size( rRect.Width(), rRect.Height() ),
-                        o3tl::Length::twip, o3tl::Length::mm100 );
-                aAny <<= awt::Size( aMM100Size.Width(), aMM100Size.Height() );
+                const SwRect& rRect = pTmpFrame->getFrameArea();
+                aAny <<= awt::Size(rRect.getWidth().as_hmm<sal_Int32>(),
+                                   rRect.getHeight().as_hmm<sal_Int32>());
             }
         }
         else if(pEntry->nWID == FN_UNO_PARENT_TEXT)

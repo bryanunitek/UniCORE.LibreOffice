@@ -33,6 +33,15 @@ namespace com::sun::star {
     namespace i18n { struct Boundary; }
 }
 
+//portion attributes
+enum class PortionAttribute {
+    Zero = 0,
+    Special =  1,
+    Readonly = 2,
+    Gray =     4,
+    Term =     128
+};
+
 /**
  * collect text portion data from the layout through SwPortionHandler interface
  */
@@ -64,7 +73,7 @@ class SwAccessiblePortionData : public SwPortionHandler
     AccessiblePositions m_aAccessiblePositions; /// portion breaks in m_sAccessibleString
     AccessiblePositions m_aFieldPosition;
 
-    std::vector<sal_uInt8> m_aPortionAttrs;   /// additional portion attributes
+    std::vector<PortionAttribute> m_aPortionAttrs;   /// additional portion attributes
 
     AccessiblePositions m_aSentences; /// positions of sentence breaks
 
@@ -77,7 +86,7 @@ class SwAccessiblePortionData : public SwPortionHandler
                       size_t nPos );
 
     /// Access to portion attributes
-    bool IsPortionAttrSet( size_t nPortionNo, sal_uInt8 nAttr ) const;
+    bool IsPortionAttrSet( size_t nPortionNo, PortionAttribute nAttr ) const;
     bool IsSpecialPortion( size_t nPortionNo ) const;
     bool IsGrayPortionType( PortionType nType ) const;
 
@@ -111,7 +120,7 @@ public:
 
     const SwViewOption* GetViewOptions() const { return m_pViewOptions; }
 
-    /// get the start & end positions of the sentence
+    /// get the start & end positions of the line
     void GetLineBoundary( css::i18n::Boundary& rBound,
                           sal_Int32 nPos ) const;
 

@@ -43,9 +43,9 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
 ScAccessiblePreviewTable::ScAccessiblePreviewTable(
-    const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-    ScPreviewShell* pViewShell, sal_Int32 nIndex)
-    : ImplInheritanceHelper(rxParent, AccessibleRole::TABLE)
+    const rtl::Reference<comphelper::OAccessible>& rpParent, ScPreviewShell* pViewShell,
+    sal_Int32 nIndex)
+    : ImplInheritanceHelper(rpParent, AccessibleRole::TABLE)
     , mpViewShell(pViewShell)
     , mnIndex(nIndex)
 {
@@ -261,7 +261,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePreviewTable::getAccessibleCe
 
     FillTableInfo();
 
-    uno::Reference<XAccessible> xRet;
+    rtl::Reference<comphelper::OAccessible> pRet;
     if ( mpTableInfo && nColumn >= 0 && nRow >= 0 && nColumn < mpTableInfo->GetCols() && nRow < mpTableInfo->GetRows() )
     {
         //  index iterates horizontally
@@ -277,21 +277,21 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePreviewTable::getAccessibleCe
             const bool bRotatedRowHeader = rColInfo.bIsHeader;
             rtl::Reference<ScAccessiblePreviewHeaderCell> pHeaderCell(new ScAccessiblePreviewHeaderCell(this, mpViewShell, aCellPos,
                                         bRotatedColHeader, bRotatedRowHeader, nNewIndex));
-            xRet = pHeaderCell.get();
+            pRet = pHeaderCell.get();
             pHeaderCell->Init();
         }
         else
         {
             rtl::Reference<ScAccessiblePreviewCell> pCell(new ScAccessiblePreviewCell( this, mpViewShell, aCellPos, nNewIndex ));
-            xRet = pCell.get();
+            pRet = pCell.get();
             pCell->Init();
         }
     }
 
-    if ( !xRet.is() )
+    if (!pRet.is())
         throw lang::IndexOutOfBoundsException();
 
-    return xRet;
+    return pRet;
 }
 
 uno::Reference< XAccessible > SAL_CALL ScAccessiblePreviewTable::getAccessibleCaption()

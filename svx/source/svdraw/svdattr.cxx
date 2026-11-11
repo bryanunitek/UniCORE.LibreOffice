@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
 #include <com/sun/star/drawing/TextFitToSizeType.hpp>
 #include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
@@ -31,12 +34,14 @@
 
 #include <docmodel/theme/FormatScheme.hxx>
 
+#include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/lineitem.hxx>
 #include <editeng/xmlcnitm.hxx>
 #include <editeng/writingmodeitem.hxx>
 #include <editeng/charrotateitem.hxx>
+#include <o3tl/any.hxx>
 #include <osl/diagnose.h>
 #include <i18nutil/unicode.hxx>
 #include <tools/bigint.hxx>
@@ -58,7 +63,6 @@
 #include <svx/xlntrit.hxx>
 #include <svx/xfltrit.hxx>
 #include <svx/xgrscit.hxx>
-#include <svx/xflasit.hxx>
 #include <svx/xflbmtit.hxx>
 #include <svx/xflbmpit.hxx>
 #include <svx/xflbmsxy.hxx>
@@ -70,7 +74,6 @@
 #include <svx/xfillit0.hxx>
 #include <svx/xfilluseslidebackgrounditem.hxx>
 #include <svx/xtextit0.hxx>
-#include <svx/xlnasit.hxx>
 #include <svx/xlndsit.hxx>
 #include <svx/xlnwtit.hxx>
 #include <svx/xlnclit.hxx>
@@ -99,6 +102,7 @@
 #include <svx/sdgcpitm.hxx>
 #include <svx/sdtfchim.hxx>
 #include <svx/sdasitm.hxx>
+#include <sdgclitm.hxx>
 #include <sdgcoitm.hxx>
 #include <svx/sdggaitm.hxx>
 #include <sdginitm.hxx>
@@ -181,7 +185,6 @@ static ItemInfoPackage& getItemInfoPackageSdr()
             { XATTR_LINETRANSPARENCE, new XLineTransparenceItem, SID_ATTR_LINE_TRANSPARENCE, SFX_ITEMINFOFLAG_NONE },
             { XATTR_LINEJOINT, new XLineJointItem, SID_ATTR_LINE_JOINT, SFX_ITEMINFOFLAG_NONE },
             { XATTR_LINECAP, new XLineCapItem, SID_ATTR_LINE_CAP, SFX_ITEMINFOFLAG_NONE },
-            { XATTRSET_LINE, nullptr, 0, SFX_ITEMINFOFLAG_NONE },
             { XATTR_FILLSTYLE, new XFillStyleItem, SID_ATTR_FILL_STYLE, SFX_ITEMINFOFLAG_NONE },
             { XATTR_FILLCOLOR, new XFillColorItem   (OUString(), COL_DEFAULT_SHAPE_FILLING), SID_ATTR_FILL_COLOR, SFX_ITEMINFOFLAG_SUPPORT_SURROGATE },
             { XATTR_FILLGRADIENT, new XFillGradientItem(basegfx::BGradient()), SID_ATTR_FILL_GRADIENT, SFX_ITEMINFOFLAG_SUPPORT_SURROGATE },
@@ -203,7 +206,6 @@ static ItemInfoPackage& getItemInfoPackageSdr()
             { XATTR_FILLBMP_POSOFFSETY, new XFillBmpPosOffsetYItem, 0, SFX_ITEMINFOFLAG_NONE },
             { XATTR_FILLBACKGROUND, new XFillBackgroundItem, 0, SFX_ITEMINFOFLAG_NONE },
             { XATTR_FILLUSESLIDEBACKGROUND, new XFillUseSlideBackgroundItem, SID_ATTR_FILL_USE_SLIDE_BACKGROUND, SFX_ITEMINFOFLAG_NONE },
-            { XATTRSET_FILL, nullptr, 0, SFX_ITEMINFOFLAG_NONE },
             { XATTR_FORMTXTSTYLE, new XFormTextStyleItem, SID_FORMTEXT_STYLE, SFX_ITEMINFOFLAG_NONE },
             { XATTR_FORMTXTADJUST, new XFormTextAdjustItem, SID_FORMTEXT_ADJUST, SFX_ITEMINFOFLAG_NONE },
             { XATTR_FORMTXTDISTANCE, new XFormTextDistanceItem, SID_FORMTEXT_DISTANCE, SFX_ITEMINFOFLAG_NONE },
@@ -354,6 +356,7 @@ static ItemInfoPackage& getItemInfoPackageSdr()
             { SDRATTR_GRAFINVERT, new SdrGrafInvertItem, 0, SFX_ITEMINFOFLAG_NONE },
             { SDRATTR_GRAFMODE, new SdrGrafModeItem, 0, SFX_ITEMINFOFLAG_NONE },
             { SDRATTR_GRAFCROP, new SdrGrafCropItem, SID_ATTR_GRAF_CROP, SFX_ITEMINFOFLAG_NONE },
+            { SDRATTR_GRAFCLIPPOLYPOLYGON, new SdrGrafClipPolyPolygonItem, 0, SFX_ITEMINFOFLAG_NONE },
 
             { SDRATTR_3DOBJ_PERCENT_DIAGONAL, new SfxUInt16Item(SDRATTR_3DOBJ_PERCENT_DIAGONAL, 10), 0, SFX_ITEMINFOFLAG_NONE },
             { SDRATTR_3DOBJ_BACKSCALE, new SfxUInt16Item(SDRATTR_3DOBJ_BACKSCALE, 100), 0, SFX_ITEMINFOFLAG_NONE },
@@ -439,7 +442,16 @@ static ItemInfoPackage& getItemInfoPackageSdr()
 
             { SDRATTR_WRITINGMODE2, new SvxFrameDirectionItem(SvxFrameDirection::Horizontal_LR_TB, SDRATTR_WRITINGMODE2), 0, SFX_ITEMINFOFLAG_NONE },
 
-            { SDRATTR_EDGEOOXMLCURVE, new SfxBoolItem(SDRATTR_EDGEOOXMLCURVE, false), 0, SFX_ITEMINFOFLAG_NONE }
+            { SDRATTR_EDGEOOXMLCURVE, new SfxBoolItem(SDRATTR_EDGEOOXMLCURVE, false), 0, SFX_ITEMINFOFLAG_NONE },
+
+            // The defaults of the reflection are those of the reflection element of DrawingML.
+            { SDRATTR_REFLECTION, new SdrOnOffItem(SDRATTR_REFLECTION, false), SID_ATTR_REFLECTION, SFX_ITEMINFOFLAG_NONE },
+            { SDRATTR_REFLECTION_DISTANCE, new SdrMetricItem(SDRATTR_REFLECTION_DISTANCE, 0), SID_ATTR_REFLECTION_DISTANCE, SFX_ITEMINFOFLAG_NONE },
+            { SDRATTR_REFLECTION_BLUR_RADIUS, new SdrMetricItem(SDRATTR_REFLECTION_BLUR_RADIUS, 0), SID_ATTR_REFLECTION_BLUR_RADIUS, SFX_ITEMINFOFLAG_NONE },
+            { SDRATTR_REFLECTION_START_TRANSPARENCY, new SdrPercentItem(SDRATTR_REFLECTION_START_TRANSPARENCY, 0), SID_ATTR_REFLECTION_START_TRANSPARENCY, SFX_ITEMINFOFLAG_NONE },
+            { SDRATTR_REFLECTION_START_POSITION, new SdrPercentItem(SDRATTR_REFLECTION_START_POSITION, 0), SID_ATTR_REFLECTION_START_POSITION, SFX_ITEMINFOFLAG_NONE },
+            { SDRATTR_REFLECTION_END_TRANSPARENCY, new SdrPercentItem(SDRATTR_REFLECTION_END_TRANSPARENCY, 100), SID_ATTR_REFLECTION_END_TRANSPARENCY, SFX_ITEMINFOFLAG_NONE },
+            { SDRATTR_REFLECTION_END_POSITION, new SdrPercentItem(SDRATTR_REFLECTION_END_POSITION, 100), SID_ATTR_REFLECTION_END_POSITION, SFX_ITEMINFOFLAG_NONE }
         }};
 
         virtual const ItemInfoStatic& getItemInfoStatic(size_t nIndex) const override { return maItemInfos[nIndex]; }
@@ -460,19 +472,13 @@ static ItemInfoPackage& getItemInfoPackageSdr()
         }
 
         virtual size_t size() const override { return maItemInfos.size(); }
-        virtual const ItemInfo& getItemInfo(size_t nIndex, SfxItemPool& rPool) override
+        virtual const ItemInfo& getItemInfo(size_t nIndex, SfxItemPool& /*rPool*/) override
         {
             const ItemInfo& rRetval(maItemInfos[nIndex]);
 
             // return immediately if we have the static entry and Item
             if (nullptr != rRetval.getItem())
                 return rRetval;
-
-            if (XATTRSET_LINE == rRetval.getWhich())
-                return *new ItemInfoDynamic(rRetval, new XLineAttrSetItem(SfxItemSet(rPool, WhichRangesContainer(svl::Items<XATTR_LINE_FIRST, XATTR_LINE_LAST>))));
-
-            if (XATTRSET_FILL == rRetval.getWhich())
-                return *new ItemInfoDynamic(rRetval, new XFillAttrSetItem(SfxItemSet(rPool, WhichRangesContainer(svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>))));
 
             if (XATTR_FILLBITMAP == rRetval.getWhich())
                 return *new ItemInfoDynamic(rRetval, new XFillBitmapItem(Graphic()));
@@ -556,7 +562,6 @@ OUString SdrItemPool::GetItemName(sal_uInt16 nWhich)
         case XATTR_LINEENDCENTER    : pResId = SIP_XA_LINEENDCENTER;break;
         case XATTR_LINETRANSPARENCE : pResId = SIP_XA_LINETRANSPARENCE;break;
         case XATTR_LINEJOINT        : pResId = SIP_XA_LINEJOINT;break;
-        case XATTRSET_LINE          : pResId = SIP_XATTRSET_LINE;break;
 
         case XATTR_FILLSTYLE            : pResId = SIP_XA_FILLSTYLE;break;
         case XATTR_FILLCOLOR            : pResId = SIP_XA_FILLCOLOR;break;
@@ -579,8 +584,6 @@ OUString SdrItemPool::GetItemName(sal_uInt16 nWhich)
         case XATTR_FILLBMP_POSOFFSETY   : pResId = SIP_XA_FILLBMP_POSOFFSETY;break;
         case XATTR_FILLBACKGROUND       : pResId = SIP_XA_FILLBACKGROUND;break;
         case XATTR_FILLUSESLIDEBACKGROUND: pResId = SIP_XA_FILLUSESLIDEBACKGROUND;break;
-
-        case XATTRSET_FILL             : pResId = SIP_XATTRSET_FILL;break;
 
         case XATTR_FORMTXTSTYLE     : pResId = SIP_XA_FORMTXTSTYLE;break;
         case XATTR_FORMTXTADJUST    : pResId = SIP_XA_FORMTXTADJUST;break;
@@ -613,6 +616,14 @@ OUString SdrItemPool::GetItemName(sal_uInt16 nWhich)
         case SDRATTR_GLOW_TEXT_TRANSPARENCY : pResId = SIP_SA_GLOW_TEXT_TRANSPARENCY; break;
 
         case SDRATTR_SOFTEDGE_RADIUS   : pResId = SIP_SA_SOFTEDGE_RADIUS; break;
+
+        case SDRATTR_REFLECTION                    : pResId = SIP_SA_REFLECTION; break;
+        case SDRATTR_REFLECTION_DISTANCE           : pResId = SIP_SA_REFLECTION_DISTANCE; break;
+        case SDRATTR_REFLECTION_BLUR_RADIUS        : pResId = SIP_SA_REFLECTION_BLUR_RADIUS; break;
+        case SDRATTR_REFLECTION_START_TRANSPARENCY : pResId = SIP_SA_REFLECTION_START_TRANSPARENCY; break;
+        case SDRATTR_REFLECTION_START_POSITION     : pResId = SIP_SA_REFLECTION_START_POSITION; break;
+        case SDRATTR_REFLECTION_END_TRANSPARENCY   : pResId = SIP_SA_REFLECTION_END_TRANSPARENCY; break;
+        case SDRATTR_REFLECTION_END_POSITION       : pResId = SIP_SA_REFLECTION_END_POSITION; break;
 
         case SDRATTR_CAPTIONTYPE      : pResId = SIP_SA_CAPTIONTYPE;break;
         case SDRATTR_CAPTIONFIXEDANGLE: pResId = SIP_SA_CAPTIONFIXEDANGLE;break;
@@ -923,6 +934,11 @@ void SdrPercentItem::dumpAsXml(xmlTextWriterPtr pWriter) const
     SfxUInt16Item::dumpAsXml(pWriter);
 
     (void)xmlTextWriterEndElement(pWriter);
+}
+
+SfxPoolItem* SdrAngleItem::CreateDefault()
+{
+    return new SdrAngleItem;
 }
 
 SdrAngleItem* SdrAngleItem::Clone(SfxItemPool* /*pPool*/) const
@@ -1411,10 +1427,9 @@ bool SdrTextAniAmountItem::HasMetrics() const
 
 void SdrTextAniAmountItem::ScaleMetrics(double fScale)
 {
-    if (GetValue()>0) {
-        BigInt aVal(GetValue());
-        aVal*=fScale;
-        SetValue(short(aVal));
+    if (GetValue()>0)
+    {
+        SetValue(short(BigInt::Scale(GetValue(), fScale)));
     }
 }
 
@@ -2007,6 +2022,64 @@ bool SdrGrafModeItem::GetPresentation( SfxItemPresentation ePres,
 SdrGrafCropItem* SdrGrafCropItem::Clone( SfxItemPool* /*pPool*/) const
 {
     return new SdrGrafCropItem( *this );
+}
+
+SdrGrafClipPolyPolygonItem::SdrGrafClipPolyPolygonItem()
+    : SfxPoolItem(SDRATTR_GRAFCLIPPOLYPOLYGON)
+{
+}
+
+SdrGrafClipPolyPolygonItem::SdrGrafClipPolyPolygonItem(basegfx::B2DPolyPolygon aPolyPolygon)
+    : SfxPoolItem(SDRATTR_GRAFCLIPPOLYPOLYGON)
+    , maPolyPolygon(std::move(aPolyPolygon))
+{
+}
+
+bool SdrGrafClipPolyPolygonItem::operator==(const SfxPoolItem& rItem) const
+{
+    return SfxPoolItem::operator==(rItem)
+        && static_cast<const SdrGrafClipPolyPolygonItem&>(rItem).maPolyPolygon == maPolyPolygon;
+}
+
+SdrGrafClipPolyPolygonItem* SdrGrafClipPolyPolygonItem::Clone(SfxItemPool* /*pPool*/) const
+{
+    return new SdrGrafClipPolyPolygonItem(*this);
+}
+
+bool SdrGrafClipPolyPolygonItem::QueryValue(uno::Any& rVal, sal_uInt8 /*nMemberId*/) const
+{
+    css::drawing::PolyPolygonBezierCoords aBezier;
+    basegfx::utils::B2DPolyPolygonToUnoPolyPolygonBezierCoords(maPolyPolygon, aBezier);
+    rVal <<= aBezier;
+    return true;
+}
+
+bool SdrGrafClipPolyPolygonItem::PutValue(const uno::Any& rVal, sal_uInt8 /*nMemberId*/)
+{
+    // Only assign once the whole conversion has succeeded, so a rejected value
+    // leaves the current polygon untouched.
+    basegfx::B2DPolyPolygon aPolyPolygon;
+    if (rVal.hasValue())
+    {
+        auto pCoords = o3tl::tryAccess<css::drawing::PolyPolygonBezierCoords>(rVal);
+        if (!pCoords)
+            return false;
+
+        if (pCoords->Coordinates.getLength() > 0)
+            aPolyPolygon = basegfx::utils::UnoPolyPolygonBezierCoordsToB2DPolyPolygon(*pCoords);
+    }
+
+    maPolyPolygon = std::move(aPolyPolygon);
+    return true;
+}
+
+void SdrGrafClipPolyPolygonItem::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SdrGrafClipPolyPolygonItem"));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("whichId"), "%d", Which());
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("polygons"),
+                                      BAD_CAST(OString::number(maPolyPolygon.count()).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
 }
 
 SdrTextAniStartInsideItem::~SdrTextAniStartInsideItem()

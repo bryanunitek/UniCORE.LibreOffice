@@ -23,7 +23,7 @@
 #include <ViewShellBase.hxx>
 #include <DrawController.hxx>
 #include <ResourceId.hxx>
-#include "slideshowimpl.hxx"
+#include <SlideShowController.hxx>
 #include <framework/ConfigurationController.hxx>
 #include <framework/FrameworkHelper.hxx>
 
@@ -34,13 +34,12 @@
 #include <comphelper/diagnose_ex.hxx>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 using ::sd::framework::FrameworkHelper;
 using ::com::sun::star::lang::DisposedException;
 
 namespace sd
 {
-PaneHider::PaneHider(const ViewShell& rViewShell, SlideshowImpl* pSlideShow)
+PaneHider::PaneHider(const ViewShell& rViewShell, SlideShowController* pSlideShow)
 {
     // Hide the left and right pane windows when a slideshow exists and is
     // not full screen.
@@ -63,7 +62,7 @@ PaneHider::PaneHider(const ViewShell& rViewShell, SlideshowImpl* pSlideShow)
                 const std::vector<rtl::Reference<framework::ResourceId>> aResources(
                     mxConfiguration->getResources(nullptr,
                                                   framework::FrameworkHelper::msPaneURLPrefix,
-                                                  AnchorBindingMode_DIRECT));
+                                                  framework::AnchorBindingMode::DIRECT));
                 for (const rtl::Reference<framework::ResourceId>& xPaneId : aResources)
                 {
                     if (xPaneId->getResourceURL() != FrameworkHelper::msCenterPaneURL)

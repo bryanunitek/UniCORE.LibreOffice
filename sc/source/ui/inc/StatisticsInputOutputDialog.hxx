@@ -11,6 +11,7 @@
 #pragma once
 
 #include <address.hxx>
+#include <unotools/resmgr.hxx>
 #include "anyrefdg.hxx"
 #include "viewdata.hxx"
 
@@ -20,9 +21,10 @@
 class ScStatisticsInputOutputDialog : public ScAnyRefDlgController
 {
 public:
-    enum GroupedBy {
-        BY_COLUMN,
-        BY_ROW
+    enum class GroupedBy
+    {
+        ByColumn,
+        ByRow
     };
 
     ScStatisticsInputOutputDialog(

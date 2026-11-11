@@ -26,7 +26,7 @@
 
 namespace comphelper {
 
-    // Class incapsulating UIDs used as e.g. tunnel IDs for css::lang::XUnoTunnel,
+    // Class encapsulating UIDs used as e.g. tunnel IDs for css::lang::XUnoTunnel,
     // or implementation IDs for css::lang::XTypeProvider
     class UnoIdInit
     {
@@ -97,7 +97,7 @@ namespace comphelper {
 
 }
 
-/** the UNO3_GETIMPLEMENTATION_* macros  implement a static helper function
+/** the UNO3_GETIMPLEMENTATION_* macros implement a static helper function
     that gives access to your implementation for a given interface reference,
     if possible.
 

@@ -392,7 +392,7 @@ ScGridWindow::ScGridWindow( vcl::Window* pParent, ScViewData& rData, ScSplitPos 
             aComboButton( GetOutDev() ),
             aCurMousePos( 0,0 ),
             nPaintCount( 0 ),
-            aDrawSelectionPos( 0,0 ),
+            aDrawMouseDownPos( 0,0 ),
             aRFSelectedCorned( NONE ),
             maShowPageBreaksTimer("ScGridWindow maShowPageBreaksTimer"),
             bEEMouse( false ),
@@ -513,10 +513,9 @@ IMPL_LINK( ScGridWindow, PopupSpellingHdl, SpellCallbackInfo&, rInfo, void )
         mrViewData.GetDispatcher().Execute( SID_AUTO_CORRECT_DLG, SfxCallMode::ASYNCHRON );
     else //IGNOREWORD, ADDTODICTIONARY, WORDLANGUAGE, PARALANGUAGE
     {
-        // The spelling status of the word has changed. Close the cell to reset the caches
-        ScInputHandler* pHdl = ScModule::get()->GetInputHdl(mrViewData.GetViewShell());
-        if (pHdl)
-            pHdl->EnterHandler();
+        // The spelling status of the word has changed. Reset the caches and update view
+        mrViewData.GetViewShell()->ResetAutoSpell();
+        Invalidate();
     }
 }
 
@@ -2027,6 +2026,7 @@ void ScGridWindow::HandleMouseButtonDown( const MouseEvent& rMEvt, MouseEventSta
 
     RfCorner rCorner = NONE;
     bool bFound = HitRangeFinder(rMEvt.GetPosPixel(), rCorner, &nRFIndex, &nRFAddX, &nRFAddY);
+    bRFSize = (rCorner != NONE);
     aRFSelectedCorned = rCorner;
 
     if (bFound)
@@ -4070,7 +4070,7 @@ void ScGridWindow::DropScroll( const Point& rMousePos )
 
 static bool lcl_TestScenarioRedliningDrop( const ScDocument* pDoc, const ScRange& aDragRange)
 {
-    //  Test, if a scenario is affected by a drop when turing on RedLining,
+    //  Test, if a scenario is affected by a drop when turning on RedLining,
     bool bReturn = false;
     SCTAB nTab = aDragRange.aStart.Tab();
     SCTAB nTabCount = pDoc->GetTableCount();
@@ -5939,7 +5939,7 @@ bool extractURLInfo( const SvxFieldItem* pFieldItem, OUString* pName, OUString* 
 static void lcl_SetEngineTextKeepingDefaults(const std::shared_ptr<ScFieldEditEngine>& pEngine,
                                              ScDocument& rDoc, ScRefCellValue& rCell, const OUString& rURL)
 {
-    std::unique_ptr<EditTextObject> pTextObj;
+    std::optional<EditTextObject> oTextObj;
     if (rCell.getType() == CELLTYPE_EDIT)
     {
         if (rCell.getEditText())
@@ -5950,7 +5950,7 @@ static void lcl_SetEngineTextKeepingDefaults(const std::shared_ptr<ScFieldEditEn
           // cell ( or other type ? ) with a hyperlink associated with it.
     {
         if (rURL.isEmpty())
-            pTextObj = rCell.getFormula()->CreateURLObject();
+            oTextObj.emplace(rCell.getFormula()->CreateURLObject());
         else
         {
             OUString aRepres = rURL;
@@ -5961,11 +5961,11 @@ static void lcl_SetEngineTextKeepingDefaults(const std::shared_ptr<ScFieldEditEn
             else if (rCell.getType() == CELLTYPE_FORMULA)
                 aRepres = rCell.getFormula()->GetString().getString();
 
-            pTextObj = ScEditUtil::CreateURLObjectFromURL(rDoc, rURL, aRepres);
+            oTextObj.emplace(ScEditUtil::CreateURLObjectFromURL(rDoc, rURL, aRepres));
         }
 
-        if (pTextObj)
-            pEngine->SetTextCurrentDefaults(*pTextObj);
+        if (oTextObj)
+            pEngine->SetTextCurrentDefaults(*oTextObj);
     }
 }
 

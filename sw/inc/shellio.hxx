@@ -206,6 +206,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportDOCX(SvStream &rStream);
 extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportRTF(SvStream &rStream);
 extern "C" SAL_DLLPUBLIC_EXPORT bool TestPDFExportRTF(SvStream &rStream);
 extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportHTML(SvStream &rStream);
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportODT(SvStream &rStream);
 
 /// Stores information about an import into an existing, non-empty document model.
 struct SW_DLLPUBLIC SwPasteInfo
@@ -215,6 +216,8 @@ struct SW_DLLPUBLIC SwPasteInfo
     rtl::Reference<SwXTextRange> m_xInsertPosition;
     std::shared_ptr<SwNodeIndex> m_pSttNdIdx;
     std::shared_ptr<SwNodeIndex> m_pSttNdIdx2;
+    /// If the insert position is at the paragraph end.
+    bool m_bStartAtEndOfPara = false;
 
     SwPasteInfo(SwDoc& rDoc, SwPaM& rPam);
 };
@@ -224,6 +227,7 @@ class SW_DLLPUBLIC Reader
     friend class SwReader;
     friend bool TestImportDOC(SvStream &rStream, const OUString &rFltName);
     friend bool TestImportHTML(SvStream &rStream);
+    friend bool TestImportODT(SvStream &rStream);
     rtl::Reference<SwDoc> mxTemplate;
     OUString m_aTemplateName;
 

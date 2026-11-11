@@ -45,6 +45,7 @@
 #include <fmtfsize.hxx>
 #include <frmatr.hxx>
 #include <charfmt.hxx>
+#include <charformats.hxx>
 #include <docary.hxx>
 #include <osl/diagnose.h>
 
@@ -77,6 +78,8 @@ const sal_uInt16 aItemIds[] =
     RES_BREAK,
     RES_PAGEDESC,
     RES_KEEP,
+    // tdf#121049 - preserve superscript/subscript when pasting HTML with class definition
+    RES_CHRATR_ESCAPEMENT,
 };
 
 void SwCSS1Parser::ChgPageDesc( const SwPageDesc *pPageDesc,
@@ -1603,6 +1606,15 @@ HTMLAttr **SwHTMLParser::GetAttrTabEntry( sal_uInt16 nWhich )
         break;
     case RES_CHRATR_FONT_VARIATIONS:
         ppAttr = &m_xAttrTab->pFontVariations;
+        break;
+    case RES_CHRATR_CJK_FONT_VARIATIONS:
+        ppAttr = &m_xAttrTab->pFontVariationsCJK;
+        break;
+    case RES_CHRATR_CTL_FONT_VARIATIONS:
+        ppAttr = &m_xAttrTab->pFontVariationsCTL;
+        break;
+    case RES_CHRATR_HIDDEN:
+        ppAttr = &m_xAttrTab->pCharHidden;
         break;
     case RES_CHRATR_BOX:
         ppAttr = &m_xAttrTab->pCharBox;

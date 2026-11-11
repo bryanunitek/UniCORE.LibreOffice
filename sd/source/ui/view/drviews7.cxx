@@ -88,6 +88,7 @@
 #include <fuconcs.hxx>
 #include <fuformatpaintbrush.hxx>
 #include <stlsheet.hxx>
+#include <SlideSectionManager.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -922,11 +923,9 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
     if( SfxItemState::DEFAULT == rSet.GetItemState( SID_DELETE_PAGE )
         || SfxItemState::DEFAULT == rSet.GetItemState( SID_DELETE_MASTER_PAGE ) )
     {
-        if (maTabControl->GetPageCount() == 1 ||
-            meEditMode == EditMode::MasterPage     ||
-            mePageKind == PageKind::Notes          ||
-            mePageKind == PageKind::Handout        ||
-            (GetShellType()!=ST_DRAW&&IsLayerModeActive()))
+        if (maTabControl->GetPageCount() == 1 || meEditMode == EditMode::MasterPage
+            || mePageKind == PageKind::Notes || mePageKind == PageKind::Handout
+            || (GetShellType() != ShellType::Draw && IsLayerModeActive()))
         {
             if (rSet.GetItemState(SID_DELETE_PAGE) == SfxItemState::DEFAULT)
                 rSet.DisableItem(SID_DELETE_PAGE);
@@ -1338,7 +1337,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
     rtl::Reference< sd::SlideShow > xSlideshow( SlideShow::GetSlideShow( GetViewShellBase() ) );
     if( (xSlideshow.is() && xSlideshow->isRunning() && !xSlideshow->IsInteractiveSlideshow() // IASS
-        && (xSlideshow->getAnimationMode() != ANIMATIONMODE_PREVIEW) ) || GetDocSh()->IsPreview() )
+        && (xSlideshow->getAnimationMode() != AnimationMode::Preview) ) || GetDocSh()->IsPreview() )
     {
         // Own Slots
         rSet.DisableItem( SID_PRESENTATION );
@@ -1648,6 +1647,25 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
     if (!SdModule::get()->pTransferClip)
         rSet.DisableItem(SID_PASTE_SLIDE);
+
+    if (rSet.GetItemState(SID_REMOVE_SLIDE_SECTION) == SfxItemState::DEFAULT
+        || rSet.GetItemState(SID_REMOVE_SLIDE_SECTION_AND_SLIDES) == SfxItemState::DEFAULT)
+    {
+        bool bDisable = true;
+        SdPage* pPage = GetActualPage();
+        if (pPage && GetDoc())
+        {
+            sal_uInt16 nPageIdx = (pPage->GetPageNum() - 1) / 2;
+            sd::SlideSectionManager& rMgr = GetDoc()->GetSectionManager();
+            if (rMgr.IsSectionStart(nPageIdx))
+                bDisable = false;
+        }
+        if (bDisable)
+        {
+            rSet.DisableItem(SID_REMOVE_SLIDE_SECTION);
+            rSet.DisableItem(SID_REMOVE_SLIDE_SECTION_AND_SLIDES);
+        }
+    }
 
     GetModeSwitchingMenuState (rSet);
 }

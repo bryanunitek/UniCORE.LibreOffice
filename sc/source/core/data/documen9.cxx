@@ -68,6 +68,15 @@ void ScDocument::BeginDrawUndo()
         mpDrawLayer->BeginCalcUndo(false);
 }
 
+sc::DrawUndoGuard::~DrawUndoGuard()
+{
+    if (mpDoc)
+    {
+        if (auto* pLayer = mpDoc->GetDrawLayer())
+            (void)pLayer->GetCalcUndo();
+    }
+}
+
 void ScDocument::TransferDrawPage(const ScDocument& rSrcDoc, SCTAB nSrcPos, SCTAB nDestPos)
 {
     if (mpDrawLayer && rSrcDoc.mpDrawLayer)
@@ -131,8 +140,10 @@ void ScDocument::InitDrawLayer( ScDocShell* pDocShell )
         aName = mpShell->GetTitle();
     mpDrawLayer.reset(new ScDrawLayer( this, aName ));
 
-    sfx2::LinkManager* pMgr = GetDocLinkManager().getLinkManager(bAutoCalc);
-    if (pMgr)
+    // Create the LinkManager up front (not gated on bAutoCalc) so the draw
+    // layer can register fill bitmap links as shapes are imported. Setting it
+    // also installs SdrModel's fill bitmap link tracker.
+    if (sfx2::LinkManager* pMgr = GetDocLinkManager().getLinkManager(true))
         mpDrawLayer->SetLinkManager(pMgr);
 
     // set DrawingLayer's SfxItemPool at Calc's SfxItemPool as
@@ -255,6 +266,23 @@ IMPL_LINK( ScDocument, GetUserDefinedColor, sal_uInt16, nColorIndex, Color* )
     }
     return const_cast<Color*>(&(xColorList->GetColor(nColorIndex)->GetColor()));
 }
+
+IMPL_LINK(ScDocument, GetUserDefinedColorIndex, const Color&, rColor, sal_Int32)
+{
+    rtl::Reference<XColorList> xColorList;
+    if (mpDrawLayer)
+        xColorList = mpDrawLayer->GetColorList();
+    else
+    {
+        ScMutationGuard aGuard(*this, ScMutationGuardFlags::CORE);
+        if (!pColorList.is())
+            pColorList = XColorList::CreateStdColorList();
+        xColorList = pColorList;
+    }
+
+    return xColorList->GetIndexOfColor(rColor);
+}
+
 
 bool ScDocument::DrawGetPrintArea( ScRange& rRange, bool bSetHor, bool bSetVer ) const
 {
@@ -425,7 +453,7 @@ SdrObject* ScDocument::GetObjectAtPoint( SCTAB nTab, const Point& rPos )
                 if ( pObject->GetCurrentBoundRect().Contains(rPos) )
                 {
                     // Intern is of no interest
-                    // Only object form background layer, when no object form another layer is found
+                    // Only object from background layer, when no object from another layer is found
                     SdrLayerID nLayer = pObject->GetLayer();
                     if ( (nLayer != SC_LAYER_INTERN) && (nLayer != SC_LAYER_HIDDEN) )
                     {

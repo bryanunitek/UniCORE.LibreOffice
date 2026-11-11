@@ -1642,24 +1642,6 @@ SfxBoolItem NavigationBar SID_FM_NAVIGATIONBAR
     GroupId = SfxGroupId::Controls;
 ]
 
-SfxBoolItem Translate SID_FM_TRANSLATE
-(SfxStringItem TargetLang SID_ATTR_TARGETLANG_STR)
-[
-    AutoUpdate = FALSE,
-    FastCall = TRUE,
-    ReadOnlyDoc = FALSE,
-    Toggle = FALSE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerSet;
-
-    AccelConfig = FALSE,
-    MenuConfig = FALSE,
-    ToolBoxConfig = FALSE,
-    GroupId = SfxGroupId::Format;
-]
-
-
 SfxBoolItem Combobox SID_INSERT_COMBOBOX
 
 [
@@ -6216,7 +6198,7 @@ SvxOrphansItem Orphan SID_ATTR_PARA_ORPHANS
 
 
 SfxVoidItem OutlineBullet SID_OUTLINE_BULLET
-(SfxStringItem Page FN_PARAM_1)
+(SfxStringItem Page FN_PARAM_1, SfxBoolItem Bullet FN_PARAM_2)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -13353,9 +13335,9 @@ SfxVoidItem ApplyTheme SID_APPLY_THEME
     RecordAbsolute = FALSE,
     RecordPerSet;
 
-    AccelConfig = TRUE,
-    MenuConfig = TRUE,
-    ToolBoxConfig = TRUE,
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
     GroupId = SfxGroupId::Format;
 ]
 
@@ -13480,6 +13462,125 @@ SdrPercentItem GlowTextTransparency SID_ATTR_GLOW_TEXT_TRANSPARENCY
 ]
 
 SdrMetricItem SoftEdgeRadius SID_ATTR_SOFTEDGE_RADIUS
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+SdrOnOffItem ReflectionEffect SID_ATTR_REFLECTION
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+SdrMetricItem ReflectionDistance SID_ATTR_REFLECTION_DISTANCE
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+SdrMetricItem ReflectionBlurRadius SID_ATTR_REFLECTION_BLUR_RADIUS
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+SdrPercentItem ReflectionStartTransparency SID_ATTR_REFLECTION_START_TRANSPARENCY
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+SdrPercentItem ReflectionStartPosition SID_ATTR_REFLECTION_START_POSITION
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+SdrPercentItem ReflectionEndTransparency SID_ATTR_REFLECTION_END_TRANSPARENCY
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+SdrPercentItem ReflectionEndPosition SID_ATTR_REFLECTION_END_POSITION
 
 [
     AutoUpdate = TRUE,

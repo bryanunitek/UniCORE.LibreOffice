@@ -230,7 +230,7 @@ rtl::Reference< DataSource > DataSourceHelper::pressUsedDataIntoRectangularForma
         DataSeriesHelper::getDataSource( aSeriesVector );
     const Sequence< Reference< chart2::data::XLabeledDataSequence > > aDataSequences( xSeriesSource->getDataSequences() );
 
-    //the first x-values is always the next sequence //todo ... other x-values get lost for old format
+    //the first x-values are always the next sequence //todo ... other x-values get lost for old format
     Reference< chart2::data::XLabeledDataSequence > xXValues(
         DataSeriesHelper::getDataSequenceByRole( xSeriesSource, u"values-x"_ustr ) );
     if( xXValues.is() )
@@ -281,9 +281,12 @@ rtl::Reference< DataSource > DataSourceHelper::getUsedData(
     std::vector< uno::Reference< chart2::data::XLabeledDataSequence > > aResult;
 
     rtl::Reference< Diagram > xDiagram =  rModel.getFirstChartDiagram();
-    uno::Reference< chart2::data::XLabeledDataSequence > xCategories( xDiagram->getCategories() );
-    if( xCategories.is() )
-        aResult.push_back( xCategories );
+    if (xDiagram.is())
+    {
+        uno::Reference< chart2::data::XLabeledDataSequence > xCategories( xDiagram->getCategories() );
+        if( xCategories.is() )
+            aResult.push_back( xCategories );
+    }
 
     std::vector< rtl::Reference< DataSeries > > aSeriesVector = rModel.getDataSeries();
     for (auto const& series : aSeriesVector)

@@ -82,8 +82,7 @@ class SW_DLLPUBLIC SwPageFrame final: public SwFootnoteBossFrame
     bool m_bInvalidAutoCmplWrds :1; // Update auto complete word list
     bool m_bInvalidWordCount    :1;
     bool m_bHasGrid             :1; // Grid for Asian layout
-    mutable bool m_bInAtPageFlyFormatting : 1 = false;
-    mutable bool m_bInvalidAtPageFly : 1 = false; // Disambiguate at-page invalidation
+    mutable bool m_bInvalidAtPageFly : 1 = false; // An at-page fly's layout was invalidated
 
     static const sal_Int8 snShadowPxWidth;
 
@@ -219,13 +218,20 @@ public:
     void SetFootnotePage( bool b )                       { m_bFootnotePage = b; }
     void SetEndNotePage( bool b )                   { m_bEndNotePage = b; }
     SwSectionFrame* GetEndNoteSection();
+    /// The frame an endnote section at the end of the document is a lower of.
+    SwLayoutFrame* GetEndNoteSectionUpper();
+    /// Inserts rSection as a direct lower of GetEndNoteSectionUpper(), behind the body text.
+    void InsertEndNoteSection(SwSectionFrame& rSection);
 
     sal_uInt16 GetPhyPageNum() const        { return m_nPhyPageNum;}
     void SetPhyPageNum( sal_uInt16 nNum )   { m_nPhyPageNum = nNum;}
 
     /// Validate, invalidate and query the Page status
     /// Layout/Content and Fly/non-Fly respectively are inspected separately
-    inline void InvalidateFlyLayout() const;
+    // Invalidates the fly layout of the page. If an anchored object is passed and it is
+    // anchored at the page, additionally records that an at-page fly needs another
+    // formatting pass (see IsInvalidAtPageFly / SwLayAction::InternalAction).
+    void InvalidateFlyLayout(const SwAnchoredObject* pAnchoredObj = nullptr) const;
     inline void InvalidateFlyContent() const;
     inline void InvalidateFlyInCnt() const;
     inline void InvalidateLayout() const;
@@ -258,7 +264,6 @@ public:
     bool IsInvalidAutoCompleteWords() const { return m_bInvalidAutoCmplWrds; }
     bool IsInvalidWordCount() const { return m_bInvalidWordCount; }
     bool IsInvalidAtPageFly() const { return m_bInvalidAtPageFly; }
-    void SetInAtPageFlyFormatting(bool val) const { m_bInAtPageFlyFormatting = val; }
 
     /** SwPageFrame::GetDrawBackgroundColor
 
@@ -396,12 +401,6 @@ inline const SwContentFrame *SwPageFrame::FindFirstBodyContent() const
 inline const SwContentFrame *SwPageFrame::FindLastBodyContent() const
 {
     return const_cast<SwPageFrame*>(this)->FindLastBodyContent();
-}
-inline void SwPageFrame::InvalidateFlyLayout() const
-{
-    const_cast<SwPageFrame*>(this)->m_bInvalidFlyLayout = true;
-    if (m_bInAtPageFlyFormatting)
-        m_bInvalidAtPageFly = true;
 }
 inline void SwPageFrame::InvalidateFlyContent() const
 {

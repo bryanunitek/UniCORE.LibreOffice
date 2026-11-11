@@ -225,7 +225,9 @@ void EditView::InvalidateWindow(const tools::Rectangle& rClipRect)
     {
         // classic mode: invalidate and trigger full repaint
         // of the changed area
-        GetWindow()->Invalidate(bNegativeX ? lcl_negateRectX(rClipRect) : rClipRect);
+        vcl::Window* pWin = GetWindow();
+        if (pWin && !pWin->isDisposed())
+            pWin->Invalidate(bNegativeX ? lcl_negateRectX(rClipRect) : rClipRect);
     }
 }
 
@@ -286,14 +288,14 @@ void EditView::SetSelection( const ESelection& rESel )
     if ( !pPortion->IsVisible() )
     {
         pPortion = getEditEngine().GetPrevVisPortion( pPortion );
-        ContentNode* pNode = pPortion ? pPortion->GetNode() : getEditEngine().GetEditDoc().GetObject( 0 );
+        ContentNode* pNode = pPortion ? pPortion->GetNode() : &getEditEngine().GetEditDoc().GetObject( 0 );
         aNewSelection.Min() = EditPaM( pNode, pNode->Len() );
     }
     pPortion = getEditEngine().FindParaPortion( aNewSelection.Max().GetNode() );
     if ( !pPortion->IsVisible() )
     {
         pPortion = getEditEngine().GetPrevVisPortion( pPortion );
-        ContentNode* pNode = pPortion ? pPortion->GetNode() : getEditEngine().GetEditDoc().GetObject( 0 );
+        ContentNode* pNode = pPortion ? pPortion->GetNode() : &getEditEngine().GetEditDoc().GetObject( 0 );
         aNewSelection.Max() = EditPaM( pNode, pNode->Len() );
     }
 
@@ -596,7 +598,7 @@ void EditView::ShowCursor( bool bGotoCursor, bool bForceVisCursor, bool bActivat
 
     if (getImpl().mpViewShell && !bActivate)
     {
-        if (!getImpl().mpOutputWindow)
+        if (!getImpl().mpOutputWindow || getImpl().mpOutputWindow->isDisposed())
             return;
         VclPtr<vcl::Window> pParent = getImpl().mpOutputWindow->GetParentWithLOKNotifier();
         if (pParent && pParent->GetLOKWindowId() != 0)
@@ -614,7 +616,7 @@ void EditView::HideCursor(bool bDeactivate)
 
     if (getImpl().mpViewShell && !bDeactivate)
     {
-        if (!getImpl().mpOutputWindow)
+        if (!getImpl().mpOutputWindow || getImpl().mpOutputWindow->isDisposed())
             return;
         VclPtr<vcl::Window> pParent = getImpl().mpOutputWindow->GetParentWithLOKNotifier();
         if (pParent && pParent->GetLOKWindowId() != 0)
@@ -832,7 +834,7 @@ EVControlBits EditView::GetControlWord() const
     return getImpl().mnControl;
 }
 
-std::unique_ptr<EditTextObject> EditView::CreateTextObject()
+EditTextObject EditView::CreateTextObject()
 {
     return getImpEditEngine().CreateTextObject( getImpl().GetEditSelection() );
 }

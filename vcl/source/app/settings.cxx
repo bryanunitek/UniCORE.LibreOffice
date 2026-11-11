@@ -120,6 +120,7 @@ struct ColorSet
     Color                           maDialogColor;
     Color                           maDialogTextColor;
     Color                           maDisableColor;
+    Color                           maDisableTextColor;
     Color                           maFaceColor;
     Color                           maFieldColor;
     Color                           maFieldTextColor;
@@ -159,10 +160,6 @@ struct ColorSet
     Color                           maToolTextColor;
     Color                           maWindowColor;
     Color                           maWindowTextColor;
-    Color                           maWriterNotebookbarColor;
-    Color                           maCalcNotebookbarColor;
-    Color                           maImpressNotebookbarColor;
-    Color                           maDrawNotebookbarColor;
     Color                           maWorkspaceColor;
     Color                           maActiveTabColor;
     Color                           maInactiveTabColor;
@@ -531,10 +528,6 @@ void ImplStyleData::SetStandardStyles()
     maColors.maLabelTextColor            = COL_BLACK;
     maColors.maWindowColor               = COL_WHITE;
     maColors.maWindowTextColor           = COL_BLACK;
-    maColors.maWriterNotebookbarColor    = Color(0x1a, 0x85, 0xd1); // #1a85d1
-    maColors.maCalcNotebookbarColor      = Color(0x3c, 0xbc, 0x45); // #3cbc45
-    maColors.maImpressNotebookbarColor   = Color(0xe7, 0x57, 0x29); // #e75729
-    maColors.maDrawNotebookbarColor      = Color(0xe5, 0xb4, 0x43); // #e5b443
     maColors.maDialogColor               = COL_LIGHTGRAY;
     maColors.maDialogTextColor           = COL_BLACK;
     maColors.maWorkspaceColor            = Color( 0xDF, 0xDF, 0xDE );
@@ -573,6 +566,7 @@ void ImplStyleData::SetStandardStyles()
     maColors.maTabRolloverTextColor      = COL_BLACK;
     maColors.maTabHighlightTextColor     = COL_BLACK;
     maColors.maDisableColor              = COL_GRAY;
+    maColors.maDisableTextColor          = COL_GRAY;
     maColors.maHelpColor                 = Color( 0xFF, 0xFF, 0xE0 );
     maColors.maHelpTextColor             = COL_BLACK;
     maColors.maLinkColor                 = COL_BLUE;
@@ -956,54 +950,6 @@ StyleSettings::GetWindowTextColor() const
 }
 
 void
-StyleSettings::SetWriterNotebookbarColor( const Color& rColor )
-{
-    mxData->maColors.maWriterNotebookbarColor = rColor;
-}
-
-const Color&
-StyleSettings::GetWriterNotebookbarColor() const
-{
-    return mxData->maColors.maWriterNotebookbarColor;
-}
-
-void
-StyleSettings::SetCalcNotebookbarColor( const Color& rColor )
-{
-    mxData->maColors.maCalcNotebookbarColor = rColor;
-}
-
-const Color&
-StyleSettings::GetCalcNotebookbarColor() const
-{
-    return mxData->maColors.maCalcNotebookbarColor;
-}
-
-void
-StyleSettings::SetImpressNotebookbarColor( const Color& rColor )
-{
-    mxData->maColors.maImpressNotebookbarColor = rColor;
-}
-
-const Color&
-StyleSettings::GetImpressNotebookbarColor() const
-{
-    return mxData->maColors.maImpressNotebookbarColor;
-}
-
-void
-StyleSettings::SetDrawNotebookbarColor( const Color& rColor )
-{
-    mxData->maColors.maDrawNotebookbarColor = rColor;
-}
-
-const Color&
-StyleSettings::GetDrawNotebookbarColor() const
-{
-    return mxData->maColors.maDrawNotebookbarColor;
-}
-
-void
 StyleSettings::SetDialogColor( const Color& rColor )
 {
     mxData->maColors.maDialogColor = rColor;
@@ -1193,6 +1139,18 @@ const Color&
 StyleSettings::GetDisableColor() const
 {
     return mxData->maColors.maDisableColor;
+}
+
+void
+StyleSettings::SetDisableTextColor( const Color& rColor )
+{
+    mxData->maColors.maDisableTextColor = rColor;
+}
+
+const Color&
+StyleSettings::GetDisableTextColor() const
+{
+    return mxData->maColors.maDisableTextColor;
 }
 
 void

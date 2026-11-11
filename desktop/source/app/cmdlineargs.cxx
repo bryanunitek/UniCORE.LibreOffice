@@ -18,6 +18,7 @@
  */
 
 #include <config_features.h>
+#include <config_vclplug.h>
 
 #if HAVE_FEATURE_MACOSX_SANDBOX
 #include <premac.h>
@@ -239,7 +240,13 @@ CommandLineEvent CheckWebQuery(/* in,out */ OUString& arg, CommandLineEvent curE
 
         stream.Close();
 
-        arg = OStringToOUString(aResult, osl_getThreadTextEncoding());
+        OUString aURL = OStringToOUString(aResult, osl_getThreadTextEncoding());
+        // A web query names a web page.
+        INetProtocol eProtocol = INetURLObject(aURL).GetProtocol();
+        if (eProtocol != INetProtocol::Http && eProtocol != INetProtocol::Https)
+            return curEvt;
+
+        arg = aURL;
         return CommandLineEvent::ForceNew;
     }
     catch (...)
@@ -415,10 +422,6 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
             else if ( oArg == "version" )
             {
                 m_version = true;
-            }
-            else if ( oArg.startsWith("splash-pipe=") )
-            {
-                m_splashpipe = true;
             }
 #ifdef MACOSX
             /* #i84053# ignore -psn on Mac
@@ -625,6 +628,11 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
 #endif
                     //ignore additional legacy options that don't do anything anymore
                     oArg != "nocrashreport" &&
+#if ENABLE_QT5 || ENABLE_QT6
+                    // allow style-related command line options natively supported by Qt applications
+                    !oArg.startsWith(u"style=") &&
+                    !oArg.startsWith(u"stylesheet=") &&
+#endif
                     m_unknown.isEmpty())
                 {
                     m_unknown = aArg;
@@ -723,7 +731,6 @@ void CommandLineArgs::InitParamValues()
     m_helpimpress = false;
     m_helpbase = false;
     m_version = false;
-    m_splashpipe = false;
     m_bEmpty = true;
     m_bDocumentArgs  = false;
     m_textcat = false;

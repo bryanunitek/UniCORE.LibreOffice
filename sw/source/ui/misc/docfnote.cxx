@@ -43,14 +43,12 @@ SwFootNoteOptionDlg::SwFootNoteOptionDlg(weld::Window *pParent, SwWrtShell &rS)
     : SfxTabDialogController(pParent, u"modules/swriter/ui/footendnotedialog.ui"_ustr, u"FootEndnoteDialog"_ustr)
     , m_rSh( rS )
 {
-    RemoveResetButton();
-
     GetOKButton().connect_clicked(LINK(this, SwFootNoteOptionDlg, OkHdl));
 
-    AddTabPage(u"footnotes"_ustr, TabResId(RID_TAB_FOOTNOTES.aLabel), SwFootNoteOptionPage::Create,
-               RID_L + RID_TAB_FOOTNOTES.sIconName);
-    AddTabPage(u"endnotes"_ustr, TabResId(RID_TAB_ENDNOTES.aLabel), SwEndNoteOptionPage::Create,
-               RID_L + RID_TAB_ENDNOTES.sIconName);
+    AddTabPage(u"footnotes"_ustr, TabResId(RID_TAB_SWFOOTEND_FOOTNOTES), SwFootNoteOptionPage::Create,
+               RID_L + RID_TAB_FOOTNOTES_IMG);
+    AddTabPage(u"endnotes"_ustr, TabResId(RID_TAB_SWFOOTEND_ENDNOTES), SwEndNoteOptionPage::Create,
+               RID_L + RID_TAB_ENDNOTES_IMG);
 }
 
 void SwFootNoteOptionDlg::PageCreated(const OUString& /*rId*/, SfxTabPage &rPage)
@@ -119,7 +117,7 @@ void SwEndNoteOptionPage::Reset( const SfxItemSet* )
                                           : new SwFootnoteInfo( m_pSh->GetFootnoteInfo() ));
     SfxObjectShell * pDocSh = SfxObjectShell::Current();
 
-    if (dynamic_cast<SwWebDocShell*>( pDocSh) )
+    if (m_xStylesContainer && dynamic_cast<SwWebDocShell*>( pDocSh) )
         m_xStylesContainer->hide();
 
     if ( m_bEndNote )

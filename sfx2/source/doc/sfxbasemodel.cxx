@@ -102,6 +102,7 @@
 #include <svtools/sfxecode.hxx>
 #include <sal/log.hxx>
 #include <framework/configimporter.hxx>
+#include <framework/documentmacrocalls.hxx>
 #include <framework/titlehelper.hxx>
 #include <comphelper/numberedcollection.hxx>
 #include <unotools/ucbhelper.hxx>
@@ -919,6 +920,17 @@ sal_Bool SAL_CALL SfxBaseModel::attachResource( const   OUString&               
             {
                 pObjectShell->SetMacroCallsSeenWhileLoading();
             }
+            css::uno::Sequence<css::beans::PropertyValue> aRemoteContent;
+            if ( rProp.Name == "RemoteContentFound" && (rProp.Value >>= aRemoteContent) && aRemoteContent.hasElements())
+            {
+                pObjectShell->SetPendingLinkUpdateInfobar();
+                for (const auto& rEntry : aRemoteContent)
+                {
+                    css::uno::Reference<css::beans::XPropertySet> xControl;
+                    if (rEntry.Value >>= xControl)
+                        pObjectShell->AddDeferredFormControlImage(xControl, rEntry.Name);
+                }
+            }
         }
         Sequence<beans::PropertyValue> aStrippedArgs(rArgs.getLength());
         beans::PropertyValue* pStripped = aStrippedArgs.getArray();
@@ -927,6 +939,7 @@ sal_Bool SAL_CALL SfxBaseModel::attachResource( const   OUString&               
             if (rProp.Name == "WinExtent"
                 || rProp.Name == "BreakMacroSignature"
                 || rProp.Name == "MacroEventRead"
+                || rProp.Name == "RemoteContentFound"
                 || rProp.Name == "Stream"
                 || rProp.Name == "InputStream"
                 || rProp.Name == "URL"
@@ -1010,7 +1023,7 @@ Sequence< beans::PropertyValue > SAL_CALL SfxBaseModel::getArgs2(const Sequence<
         SfxAllItemSet aSet( m_pData->m_pObjectShell->GetPool() );
 
         // we need to know which properties are supported by the transformer
-        // hopefully it is a temporary solution, I guess nonconvertable properties
+        // hopefully it is a temporary solution, I guess nonconvertible properties
         // should not be supported so then there will be only ItemSet from medium
 
         comphelper::SequenceAsHashMap seqArgsNew = TransformItems(SID_OPENDOC, m_pData->m_pObjectShell->GetMedium()->GetItemSet());
@@ -1672,7 +1685,7 @@ void SAL_CALL SfxBaseModel::storeSelf( const    Sequence< beans::PropertyValue >
         nSlotId = SID_CHECKIN;
         sal_Int32 nLength = aSeqArgs.getLength( );
         aArgs = Sequence< beans::PropertyValue >( nLength - 1 );
-        std::copy_if(aSeqArgs.begin(), aSeqArgs.end(), aArgs.getArray(),
+        std::ranges::copy_if(aSeqArgs, aArgs.getArray(),
             [](const beans::PropertyValue& rProp) { return rProp.Name != "CheckIn"; });
     }
 
@@ -1899,7 +1912,12 @@ void SAL_CALL SfxBaseModel::initNew()
     if( m_pData->m_pObjectShell->GetMedium() )
         throw frame::DoubleInitializationException();
 
-    bool bRes = m_pData->m_pObjectShell->DoInitNew();
+    // An embedded object starts with macros disallowed, the same as one loaded from its own storage.
+    const SfxNewDocumentMacros eMacros
+        = m_pData->m_pObjectShell->GetCreateMode() == SfxObjectCreateMode::EMBEDDED
+              ? SfxNewDocumentMacros::Disallow
+              : SfxNewDocumentMacros::Allow;
+    bool bRes = m_pData->m_pObjectShell->DoInitNew(eMacros);
     ErrCodeMsg nErrCode = m_pData->m_pObjectShell->GetErrorIgnoreWarning() ?
                        m_pData->m_pObjectShell->GetErrorIgnoreWarning() : ERRCODE_IO_CANTCREATE;
     m_pData->m_pObjectShell->ResetError();
@@ -3112,7 +3130,7 @@ void SfxBaseModel::impl_store(  const   OUString&                   sURL        
                 const std::shared_ptr<const SfxFilter>& pFilter = pMedium->GetFilter();
                 if ( pFilter && aFilterName == pFilter->GetFilterName() )
                 {
-                    // #i119366# - If the former file saving with password, do not trying in StoreSelf anyway...
+                    // #i119366# - If the former file was saved with password, do not try StoreSelf anyway...
                     bool bFormerPassword = false;
                     {
                         uno::Sequence< beans::NamedValue > aOldEncryptionData;
@@ -3642,6 +3660,9 @@ static void GetCommandFromSequence( OUString& rCommand, sal_Int32& nIndex, const
     }
 }
 
+// Toolbars stored in OOo 1.x documents name their commands as "slot:N" URLs. N is the numeric id
+// of the command, the SID_ value that the module's .sdi file maps to a ".uno:" name. The numeric
+// form is no longer dispatched, so each one becomes the ".uno:" command of the same id.
 static void ConvertSlotsToCommands( SfxObjectShell const * pDoc, Reference< container::XIndexContainer > const & rToolbarDefinition )
 {
     if ( !pDoc )
@@ -3661,7 +3682,6 @@ static void ConvertSlotsToCommands( SfxObjectShell const * pDoc, Reference< cont
             {
                 const sal_uInt16 nSlot = o3tl::toInt32(aCommand.subView( 5 ));
 
-                // We have to replace the old "slot-Command" with our new ".uno:-Command"
                 const SfxSlot* pSlot = pModule->GetSlotPool()->GetSlot( nSlot );
                 if ( pSlot )
                 {
@@ -3679,6 +3699,12 @@ Reference< ui::XUIConfigurationManager > SAL_CALL SfxBaseModel::getUIConfigurati
     return Reference< ui::XUIConfigurationManager >( getUIConfigurationManager2(), UNO_QUERY_THROW );
 }
 
+void SfxBaseModel::SetUIConfigurationMacroCallsAllowed_Impl( bool bAllowed )
+{
+    if ( m_pData )
+        framework::setDocumentMacroCallsAllowed( m_pData->m_xUIConfigurationManager, bAllowed );
+}
+
 Reference< ui::XUIConfigurationManager2 > SfxBaseModel::getUIConfigurationManager2()
 {
     SfxModelGuard aGuard( *this );
@@ -3687,6 +3713,9 @@ Reference< ui::XUIConfigurationManager2 > SfxBaseModel::getUIConfigurationManage
     {
         Reference< ui::XUIConfigurationManager2 > xNewUIConfMan =
             ui::UIConfigurationManager::create( comphelper::getProcessComponentContext() );
+
+        framework::setDocumentMacroCallsAllowed(
+            xNewUIConfMan, m_pData->m_pObjectShell->Get_Impl()->m_bMacroCallsAllowed );
 
         Reference< embed::XStorage > xConfigStorage;
 

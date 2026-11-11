@@ -30,6 +30,7 @@
 #include <osl/thread.hxx>
 #include <osl/diagnose.h>
 #include <tools/duration.hxx>
+#include <tools/hostfilter.hxx>
 #include <document.hxx>
 #include <attrib.hxx>
 #include <table.hxx>
@@ -79,6 +80,7 @@
 #include <comphelper/flagguard.hxx>
 #include <config_fuzzers.h>
 #include <memory>
+#include <optional>
 
 using namespace com::sun::star;
 
@@ -181,11 +183,11 @@ ScRangeName* ScDocument::GetRangeName(SCTAB nTab) const
     return nullptr;
 }
 
-ScRangeName* ScDocument::GetRangeName() const
+ScRangeName& ScDocument::GetRangeName() const
 {
     if (!pRangeName)
         pRangeName.reset(new ScRangeName);
-    return pRangeName.get();
+    return *pRangeName;
 }
 
 void ScDocument::SetRangeName(SCTAB nTab, std::unique_ptr<ScRangeName> pNew)
@@ -205,7 +207,7 @@ bool ScDocument::IsAddressInRangeName( RangeNameScope eScope, const ScAddress& r
     ScRange aNameRange;
 
     if (eScope == RangeNameScope::GLOBAL)
-        pRangeNames= GetRangeName();
+        pRangeNames= &GetRangeName();
     else
         pRangeNames= GetRangeName(rAddress.Tab());
 
@@ -223,12 +225,10 @@ bool ScDocument::IsAddressInRangeName( RangeNameScope eScope, const ScAddress& r
 
 bool ScDocument::InsertNewRangeName( const OUString& rName, const ScAddress& rPos, const OUString& rExpr )
 {
-    ScRangeName* pGlobalNames = GetRangeName();
-    if (!pGlobalNames)
-        return false;
+    ScRangeName& rGlobalNames = GetRangeName();
 
-    ScRangeData* pName = new ScRangeData(*this, rName, rExpr, rPos, ScRangeData::Type::Name, GetGrammar());
-    return pGlobalNames->insert(pName);
+    std::unique_ptr<ScRangeData> pName(new ScRangeData(*this, rName, rExpr, rPos, ScRangeData::Type::Name, GetGrammar()));
+    return rGlobalNames.insert(std::move(pName));
 }
 
 bool ScDocument::InsertNewRangeName( SCTAB nTab, const OUString& rName, const ScAddress& rPos, const OUString& rExpr )
@@ -237,8 +237,8 @@ bool ScDocument::InsertNewRangeName( SCTAB nTab, const OUString& rName, const Sc
     if (!pLocalNames)
         return false;
 
-    ScRangeData* pName = new ScRangeData(*this, rName, rExpr, rPos, ScRangeData::Type::Name, GetGrammar());
-    return pLocalNames->insert(pName);
+    std::unique_ptr<ScRangeData> pName(new ScRangeData(*this, rName, rExpr, rPos, ScRangeData::Type::Name, GetGrammar()));
+    return pLocalNames->insert(std::move(pName));
 }
 
 const ScRangeData* ScDocument::GetRangeAtBlock( const ScRange& rBlock, OUString& rName, bool* pSheetLocal ) const
@@ -274,7 +274,7 @@ const ScRangeData* ScDocument::GetRangeAtBlock( const ScRange& rBlock, OUString&
 
 ScRangeData* ScDocument::FindRangeNameBySheetAndIndex( SCTAB nTab, sal_uInt16 nIndex ) const
 {
-    const ScRangeName* pRN = (nTab < 0 ? GetRangeName() : GetRangeName(nTab));
+    const ScRangeName* pRN = (nTab < 0 ?& GetRangeName() : GetRangeName(nTab));
     return (pRN ? pRN->findByIndex( nIndex) : nullptr);
 }
 
@@ -611,8 +611,13 @@ bool ScDocument::LinkExternalTab( SCTAB& rTab, const OUString& aDocTab,
     OUString  aFilterName; // Is filled by the Loader
     OUString  aOptions; // Filter options
     sal_uInt32 nLinkCnt = pExtDocOptions ? pExtDocOptions->GetDocSettings().mnLinkCnt : 0;
-    ScDocumentLoader aLoader( aFileName, aFilterName, aOptions, nLinkCnt + 1 );
-    ScDocument* pSrcDoc = aLoader.IsError() ? nullptr : aLoader.GetDocument();
+    // The external document is read only when the user allows link updates, otherwise the sheet
+    // stays empty.
+    std::optional<ScDocumentLoader> oLoader;
+    if (mpShell && mpShell->GetEmbeddedObjectContainer().getUserAllowsLinkUpdate()
+        && !HostFilter::isUrlForbidden(aFileName))
+        oLoader.emplace(aFileName, aFilterName, aOptions, nLinkCnt + 1);
+    ScDocument* pSrcDoc = (oLoader && !oLoader->IsError()) ? oLoader->GetDocument() : nullptr;
 
     if (!InsertTab(SC_TAB_APPEND, aDocTab, true))
     {
@@ -633,7 +638,7 @@ bool ScDocument::LinkExternalTab( SCTAB& rTab, const OUString& aDocTab,
 
     bool bWasThere = HasLink( aFileName, aFilterName, aOptions );
     SetLink( rTab, ScLinkMode::VALUE, aFileName, aFilterName, aOptions, aTabName, nRefreshDelay );
-    if ( !bWasThere ) // Add link only once per source document
+    if ( !bWasThere && mpShell ) // Add link only once per source document
     {
         ScTableLink* pLink = new ScTableLink( *mpShell, aFileName, aFilterName, aOptions, nRefreshDelay );
         pLink->SetInCreate( true );
@@ -1249,78 +1254,38 @@ void ScDocument::GetSearchAndReplaceStart( const SvxSearchItem& rSearchItem,
     {
         if ( rSearchItem.GetRowDirection() )
         {
-            if ( rSearchItem.GetPattern() )
-            {
+            rRow = MaxRow();
+            if (!bReplace || rSearchItem.GetPattern())
+                rCol = MaxCol() + 1;
+            else // bReplace
                 rCol = MaxCol();
-                rRow = MaxRow()+1;
-            }
-            else if ( bReplace )
-            {
-                rCol = MaxCol();
-                rRow = MaxRow();
-            }
-            else
-            {
-                rCol = MaxCol()+1;
-                rRow = MaxRow();
-            }
         }
         else
         {
-            if ( rSearchItem.GetPattern() )
-            {
-                rCol = MaxCol()+1;
+            rCol = MaxCol();
+            if (!bReplace  || rSearchItem.GetPattern())
+                rRow = MaxRow() + 1;
+            else // bReplace
                 rRow = MaxRow();
-            }
-            else if ( bReplace )
-            {
-                rCol = MaxCol();
-                rRow = MaxRow();
-            }
-            else
-            {
-                rCol = MaxCol();
-                rRow = MaxRow()+1;
-            }
         }
     }
     else
     {
         if ( rSearchItem.GetRowDirection() )
         {
-            if ( rSearchItem.GetPattern() )
-            {
-                rCol = 0;
-                rRow = SCROW(-1);
-            }
-            else if ( bReplace )
-            {
-                rCol = 0;
-                rRow = 0;
-            }
-            else
-            {
+            rRow = 0;
+            if (!bReplace || rSearchItem.GetPattern())
                 rCol = SCCOL(-1);
-                rRow = 0;
-            }
+            else // bReplace
+                rCol = 0;
         }
         else
         {
-            if ( rSearchItem.GetPattern() )
-            {
-                rCol = SCCOL(-1);
-                rRow = 0;
-            }
-            else if ( bReplace )
-            {
-                rCol = 0;
-                rRow = 0;
-            }
-            else
-            {
-                rCol = 0;
+            rCol = 0;
+            if (!bReplace || rSearchItem.GetPattern())
                 rRow = SCROW(-1);
-            }
+            else // bReplace
+                rRow = 0;
         }
     }
 }
@@ -1591,15 +1556,7 @@ void ScDocument::GetFilterEntries(
     ScDBData* pDBData = pDBCollection->GetDBAtCursor(nCol, nRow, nTab, ScDBDataPortion::AREA);  //!??
     if (!pDBData)
         return;
-    // Do not extend DBArea automatically in case of Table Styles with Total row.
-    // Only extend through rows that actually have cell content (matches Excel):
-    // empty rows that merely carry conditional formatting or a non-default fill
-    // colour must not pull the autofilter range into them.
-    if ((!pDBData->HasTotals() || !pDBData->GetTableStyleInfo())
-        && (pDBData->GetName() == STR_DB_LOCAL_NONAME))
-    {
-        pDBData->ExtendDataArea(*this);
-    }
+    pDBData->ExtendDataArea(*this);
 
     SCTAB nAreaTab;
     SCCOL nStartCol;

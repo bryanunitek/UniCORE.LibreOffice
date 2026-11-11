@@ -20,9 +20,9 @@
 #pragma once
 
 #include <sal/config.h>
+#include "AnchorBindingMode.hxx"
 #include "sddllapi.h"
 #include <com/sun/star/util/URL.hpp>
-#include <com/sun/star/drawing/framework/AnchorBindingMode.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 #include <vector>
@@ -131,8 +131,8 @@ public:
         defined on the URLS.  So when there are two resource ids A1.A2
         (A1 being the anchor of A2) and B1.B2 then A1.A2<B1.B2 when A1<B1 or
         A1==B1 and A2<B2.  Resource ids may have different lengths: A1 <
-        B1.B2 when A1<B1 or A1==B1 (anchors first then resources linked to them.</p>
-        @param xId
+        B1.B2 when A1<B1 or A1==B1 (anchors first then resources linked to them).</p>
+        @param rxResourceId
             The resource id to which the called resource id is compared.
         @return
             Returns 0 when the called resource id is
@@ -159,7 +159,7 @@ public:
     bool
         isBoundTo (
             const rtl::Reference<ResourceId>& rxResourceId,
-            css::drawing::framework::AnchorBindingMode eMode) const;
+            sd::framework::AnchorBindingMode eMode) const;
 
     /** Return whether the anchor of the called resource id object
         represents the same resource as the given anchor URL. This is a
@@ -170,14 +170,14 @@ public:
             The resource URL of the anchor.
         @param eMode
             This mode specifies how the called resource has to be bound to
-            the given anchor in order to have this function return. See the
+            the given anchor in order to have this function return `TRUE`. See the
             description of isBoundTo() for more
             information.
     */
     bool
         isBoundToURL (
             const OUString& rsAnchorURL,
-            css::drawing::framework::AnchorBindingMode eMode) const;
+            sd::framework::AnchorBindingMode eMode) const;
 
 private:
     /** The set of URLs that consist of the resource URL at index 0 and the
@@ -207,7 +207,7 @@ private:
     */
     bool IsBoundToAnchor (
         const OUString* psFirstAnchorURL,
-        css::drawing::framework::AnchorBindingMode eMode) const;
+        sd::framework::AnchorBindingMode eMode) const;
 
     /** Return whether the called ResourceId object is bound to the anchor
         consisting of the URLs in rResourceURLs.
@@ -220,7 +220,7 @@ private:
     */
     bool IsBoundToAnchor (
         const ::std::vector<OUString>& rResourceURLs,
-        css::drawing::framework::AnchorBindingMode eMode) const;
+        sd::framework::AnchorBindingMode eMode) const;
 
     void ParseResourceURL();
 };

@@ -387,7 +387,6 @@
 #include <editeng/outliner.hxx>
 #include <editeng/overflowingtxt.hxx>
 #include <editeng/paperinf.hxx>
-#include <editeng/paragraphdata.hxx>
 #include <editeng/shaditem.hxx>
 #include <editeng/sizeitem.hxx>
 #include <editeng/svxenum.hxx>
@@ -473,8 +472,8 @@
 #include <svtools/toolbarmenu.hxx>
 #include <svtools/unitconv.hxx>
 #include <svtools/valueset.hxx>
+#include <svtools/viewoptions.hxx>
 #include <svx/Palette.hxx>
-#include <svx/SvxColorValueSet.hxx>
 #include <svx/XPropertyEntry.hxx>
 #include <svx/autoformathelper.hxx>
 #include <svx/charmap.hxx>
@@ -538,7 +537,6 @@
 #include <unotools/syslocale.hxx>
 #include <unotools/tempfile.hxx>
 #include <unotools/unotoolsdllapi.h>
-#include <unotools/viewoptions.hxx>
 #include <unotools/weakref.hxx>
 #include <vbahelper/vbadllapi.h>
 #include <vbahelper/vbahelper.hxx>

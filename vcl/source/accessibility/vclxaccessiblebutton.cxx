@@ -86,7 +86,7 @@ void VCLXAccessibleButton::FillAccessibleStateSet( sal_Int64& rStateSet )
     if ( pButton->IsPressed() )
         rStateSet |= AccessibleStateType::PRESSED;
 
-    // IA2 CWS: if the button has a popup menu, it should has the state EXPANDABLE
+    // IA2 CWS: if the button has a popup menu, it should have the state EXPANDABLE
     if( pButton->GetType() == WindowType::MENUBUTTON )
     {
         rStateSet |= AccessibleStateType::EXPANDABLE;
@@ -95,21 +95,6 @@ void VCLXAccessibleButton::FillAccessibleStateSet( sal_Int64& rStateSet )
     {
         rStateSet |= AccessibleStateType::DEFAULT;
     }
-}
-
-
-// XServiceInfo
-
-
-OUString VCLXAccessibleButton::getImplementationName()
-{
-    return u"com.sun.star.comp.toolkit.AccessibleButton"_ustr;
-}
-
-
-Sequence< OUString > VCLXAccessibleButton::getSupportedServiceNames()
-{
-    return { u"com.sun.star.awt.AccessibleButton"_ustr };
 }
 
 // XAccessibleContext

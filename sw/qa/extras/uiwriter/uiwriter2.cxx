@@ -9,9 +9,11 @@
 
 #include <swmodeltestbase.hxx>
 
+#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/style/LineSpacing.hpp>
 #include <com/sun/star/text/TableColumnSeparator.hpp>
 #include <com/sun/star/text/XTextTable.hpp>
+#include <com/sun/star/text/XTextTablesSupplier.hpp>
 #include <com/sun/star/text/XTextViewCursorSupplier.hpp>
 #include <comphelper/propertysequence.hxx>
 #include <officecfg/Office/Writer.hxx>
@@ -2560,6 +2562,49 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest2, testUnfloating)
     }
 }
 
+CPPUNIT_TEST_FIXTURE(SwUiWriterTest2, testTdf170672)
+{
+    createSwDoc("tdf170672.docx");
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+
+    // The reporter starts with the cursor inside the floating table.
+    CPPUNIT_ASSERT(pWrtShell->GotoTable(UIName(u"Table1"_ustr)));
+
+    // Reproduce the reporter's steps: select the document, cut it, then undo.
+    dispatchCommand(mxComponent, u".uno:SelectAll"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:Cut"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:Undo"_ustr, {});
+    Scheduler::ProcessEventsToIdle();
+
+    auto pPage1 = pWrtShell->GetLayout()->Lower()->DynCastPageFrame();
+    CPPUNIT_ASSERT(pPage1);
+    CPPUNIT_ASSERT(pPage1->GetSortedObjs());
+    SwFlyFrame* pPage1FlyFrame = (*pPage1->GetSortedObjs())[0]->DynCastFlyFrame();
+    CPPUNIT_ASSERT(pPage1FlyFrame);
+    auto pPage2 = pPage1->GetNext()->DynCastPageFrame();
+    CPPUNIT_ASSERT(pPage2);
+    CPPUNIT_ASSERT(pPage2->GetSortedObjs());
+    SwFlyFrame* pPage2FlyFrame = (*pPage2->GetSortedObjs())[0]->DynCastFlyFrame();
+    CPPUNIT_ASSERT(pPage2FlyFrame);
+    CPPUNIT_ASSERT(pWrtShell->GotoPage(2, true));
+    SdrObject* pObj = pPage2FlyFrame->GetFormat()->FindRealSdrObject();
+    CPPUNIT_ASSERT(pObj);
+    pWrtShell->SelectObj(Point(), 0, pObj);
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(pPage2FlyFrame->IsShowUnfloatButton(pWrtShell));
+
+    // Update the selection's frame controls, then click the same welded button
+    // that the user clicks in the document window.
+    pPage2FlyFrame->SelectionHasChanged(pWrtShell);
+    pPage2FlyFrame->ActiveUnfloatButton(pWrtShell);
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT_EQUAL(0, getShapes());
+
+    uno::Reference<text::XTextTablesSupplier> xTablesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XNameAccess> xTables = xTablesSupplier->getTextTables();
+    CPPUNIT_ASSERT(xTables->hasByName(u"Table1"_ustr));
+}
+
 CPPUNIT_TEST_FIXTURE(SwUiWriterTest2, testRTLparaStyle_LocaleArabic)
 {
     // New documents, created in RTL locales, were not round-tripping the paragraph style as RTL.
@@ -2908,7 +2953,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest2, testTdf137771)
 
     // This was the content of the next <text> (missing deletion on margin)
     // or only the first character of the deleted character sequence
-    assertXPathContent(pXmlDoc, "/metafile/push/push/push/textarray[9]/text", u" saved.");
+    assertXPathContent(pXmlDoc, "/metafile/push/push/push/textarray[11]/text", u" saved.");
 
     // this would crash due to bad redline range
     for (int i = 0; i < 6; ++i)
@@ -2995,11 +3040,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest2, testTdf142196)
     assertXPath(pXmlDoc, "//line", 3);
 
     // check line color
-    assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/push[1]/push[3]/push[1]/push[1]/linecolor", 1);
+    assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/push[1]/push[4]/push[1]/push[1]/linecolor", 1);
     // tdf#142128 This was NON_PRINTING_CHARACTER_COLOR (#268bd2)
     assertXPath(
         pXmlDoc,
-        "/metafile/push[1]/push[1]/push[1]/push[3]/push[1]/push[1]/linecolor[@color='#268bd2']", 0);
+        "/metafile/push[1]/push[1]/push[1]/push[4]/push[1]/push[1]/linecolor[@color='#268bd2']", 0);
 
     // reject deletion of the image
     IDocumentRedlineAccess& rIDRA(pDoc->getIDocumentRedlineAccess());
@@ -3219,9 +3264,9 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest2, testConditionalHiddenSectionIssue)
     }
 
     // PDF export
-    save(TestFilter::PDF_WRITER);
+    save(TestFilter::PDF);
 
-    auto pPdfDocument = parsePDFExport();
+    auto pPdfDocument = parsePDFExport(pPDFium);
     auto pPdfPage = pPdfDocument->openPage(0);
     CPPUNIT_ASSERT(pPdfPage);
 
@@ -3236,6 +3281,71 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest2, testConditionalHiddenSectionIssue)
             CPPUNIT_ASSERT_EQUAL(true, pNode->GetSection().IsCondHidden());
         }
     }
+}
+
+CPPUNIT_TEST_FIXTURE(SwUiWriterTest2, testUndoTrackedSplitParagraphNumbering)
+{
+    // Insert a paragraph into a numbered bullet list with change tracking is on, and
+    // undo the changes. The resulted numbers must be the same, even for the origin
+    // numbers (displayed as without the tracked changes)
+    createSwDoc("undoBullet.odt");
+    SwDoc* pDoc = getSwDoc();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    CPPUNIT_ASSERT(pWrtShell);
+    SwRootFrame* pLayout = pWrtShell->GetLayout();
+
+    auto findTextNode = [pDoc](std::u16string_view rText) -> SwTextNode* {
+        for (SwNodeOffset i(0); i < pDoc->GetNodes().Count(); ++i)
+        {
+            SwTextNode* pTextNode = pDoc->GetNodes()[i]->GetTextNode();
+            if (pTextNode && pTextNode->GetText() == rText)
+                return pTextNode;
+        }
+        return nullptr;
+    };
+
+    SwTextNode* pCcc = findTextNode(u"ccc");
+    CPPUNIT_ASSERT(pCcc);
+
+    // The changed and the non-changed numbers are the same ("1.2.1")
+    OUString aHidden1 = pCcc->GetNumString(true, MAXLEVEL, pLayout, SwListRedlineType::HIDDEN);
+    OUString aOrig1 = pCcc->GetNumString(true, MAXLEVEL, pLayout, SwListRedlineType::ORIGTEXT);
+    CPPUNIT_ASSERT_EQUAL(aHidden1, aOrig1);
+
+    const SwRedlineTable::size_type nRedlinesBefore
+        = pDoc->getIDocumentRedlineAccess().GetRedlineTable().size();
+
+    // Insert a paragraph at the end of "bbb" as a tracked change.
+    SwTextNode* pBbb = findTextNode(u"bbb");
+    CPPUNIT_ASSERT(pBbb);
+    pWrtShell->GetCursor()->DeleteMark();
+    pWrtShell->GetCursor()->GetPoint()->Assign(*pBbb, pBbb->Len());
+    pWrtShell->SplitNode();
+
+    // The split must have been tracked as an insertion.
+    CPPUNIT_ASSERT_GREATER(nRedlinesBefore,
+                           pDoc->getIDocumentRedlineAccess().GetRedlineTable().size());
+
+    // The changed number increased to "1.3.1".
+    // while the original number (without change)is the same ("1.2.1")
+    OUString aHidden2 = pCcc->GetNumString(true, MAXLEVEL, pLayout, SwListRedlineType::HIDDEN);
+    OUString aOrig2 = pCcc->GetNumString(true, MAXLEVEL, pLayout, SwListRedlineType::ORIGTEXT);
+    CPPUNIT_ASSERT(aHidden2 != aOrig2);
+
+    // Undo this tracked change.
+    pWrtShell->Undo();
+
+    // make sure that we are on the same node.
+    pCcc = findTextNode(u"ccc");
+    CPPUNIT_ASSERT(pCcc);
+
+    OUString aHidden3 = pCcc->GetNumString(true, MAXLEVEL, pLayout, SwListRedlineType::HIDDEN);
+    OUString aOrig3 = pCcc->GetNumString(true, MAXLEVEL, pLayout, SwListRedlineType::ORIGTEXT);
+
+    // Undo must fully restore the numbering state, not just the changed, but the original too.
+    CPPUNIT_ASSERT_EQUAL(aHidden1, aHidden3);
+    CPPUNIT_ASSERT_EQUAL(aOrig1, aOrig3);
+    CPPUNIT_ASSERT_EQUAL(aHidden3, aOrig3);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

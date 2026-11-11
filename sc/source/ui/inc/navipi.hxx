@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <optional>
 #include <vector>
 #include <vcl/idle.hxx>
 #include <svl/lstner.hxx>
@@ -29,7 +30,6 @@
 #include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/TextView.hxx>
 #include <vcl/weld/Toolbar.hxx>
-#include <rangeutl.hxx>
 #include "content.hxx"
 
 class SfxPoolItem;
@@ -37,6 +37,7 @@ class ScTabViewShell;
 class ScViewData;
 class ScNavigatorControllerItem;
 class ScNavigatorSettings;
+class ToolbarUnoDispatcher;
 namespace weld { class ComboBox; }
 
 #define SC_DROPMODE_URL         0
@@ -96,10 +97,12 @@ friend class ScTabViewShell;
 private:
     static constexpr int CTRL_ITEMS = 4;
 
-    SfxBindings&        rBindings;      // must be first member
+    SfxBindings& m_rBindings; // must be first member
 
     std::unique_ptr<weld::SpinButton> m_xEdCol;
     std::unique_ptr<weld::SpinButton> m_xEdRow;
+    std::unique_ptr<weld::Toolbar> m_xSelectDataToolbar;
+    std::unique_ptr<ToolbarUnoDispatcher> m_xSelectDataDispatch;
     std::unique_ptr<weld::Toolbar> m_xTbxCmd1;
     std::unique_ptr<weld::Toolbar> m_xTbxCmd2;
     std::unique_ptr<ScContentTree> m_xLbEntries;
@@ -110,20 +113,18 @@ private:
 
     VclPtr<SfxNavigator> m_xNavigatorDlg;
 
-    Size            aExpandedSize;
-    Idle            aContentIdle;
+    Size m_aExpandedSize;
+    Idle m_aContentIdle;
 
-    OUString        aStrActive;
-    OUString        aStrNotActive;
-    OUString        aStrActiveWin;
+    OUString m_aStrActive;
+    OUString m_aStrNotActive;
+    OUString m_aStrActiveWin;
 
-    std::optional<ScArea> moMarkArea;
-
-    NavListMode     eListMode;
-    sal_uInt16      nDropMode;
-    SCCOL           nCurCol;
-    SCROW           nCurRow;
-    SCTAB           nCurTab;
+    NavListMode m_eListMode;
+    sal_uInt16 m_nDropMode;
+    SCCOL m_nCurCol;
+    SCROW m_nCurRow;
+    SCTAB m_nCurTab;
 
     std::array<std::unique_ptr<ScNavigatorControllerItem>,CTRL_ITEMS> mvBoundItems;
 
@@ -165,10 +166,8 @@ private:
     void    ShowScenarios();
 
     void    SetDropMode(sal_uInt16 nNew);
-    sal_uInt16  GetDropMode() const         { return nDropMode; }
+    sal_uInt16 GetDropMode() const { return m_nDropMode; }
 
-    void    MarkDataArea    ();
-    void    UnmarkDataArea  ();
     void    StartOfDataArea ();
     void    EndOfDataArea   ();
 
@@ -177,7 +176,7 @@ private:
     static void ReleaseFocus();
 
 public:
-    ScNavigatorDlg(SfxBindings* pB, weld::Widget* pParent, SfxNavigator* pNavigatorDlg);
+    ScNavigatorDlg(SfxBindings& rBindings, weld::Widget* pParent, SfxNavigator* pNavigatorDlg);
     virtual weld::Window* GetFrameWeld() const override;
     virtual ~ScNavigatorDlg() override;
 
@@ -188,8 +187,8 @@ public:
 class ScNavigatorWrapper final : public SfxNavigatorWrapper
 {
 public:
-    ScNavigatorWrapper(vcl::Window *pParent, sal_uInt16 nId,
-                       SfxBindings* pBindings, SfxChildWinInfo* pInfo);
+    ScNavigatorWrapper(vcl::Window* pParent, sal_uInt16 nId, SfxBindings& rBindings,
+                       SfxChildWinInfo& rInfo);
     SFX_DECL_CHILDWINDOW(ScNavigatorWrapper);
 };
 
@@ -199,8 +198,8 @@ class ScNavigatorWin : public SfxNavigator
 private:
     std::unique_ptr<ScNavigatorDlg> m_xNavigator;
 public:
-    ScNavigatorWin(SfxBindings* _pBindings, SfxChildWindow* pMgr,
-                   vcl::Window* pParent, SfxChildWinInfo* pInfo);
+    ScNavigatorWin(SfxBindings& rBindings, SfxChildWindow* pMgr, vcl::Window* pParent,
+                   SfxChildWinInfo& rInfo);
     virtual void StateChanged(StateChangedType nStateChange) override;
     virtual void dispose() override
     {

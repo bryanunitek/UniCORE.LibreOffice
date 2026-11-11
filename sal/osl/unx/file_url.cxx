@@ -746,7 +746,7 @@ namespace
 {
     /**
      No separate error code if unicode to text conversion or getcwd fails because for the
-     caller there is no difference why a file could not be found in CDW
+     caller there is no difference why a file could not be found in CWD
     */
     bool find_in_CWD(const OUString& file_path, OUString& result)
     {
@@ -756,8 +756,8 @@ namespace
         if (osl_getProcessWorkingDir(&cwd_url.pData) == osl_Process_E_None)
         {
             OUString cwd;
-            FileBase::getSystemPathFromFileURL(cwd_url, cwd);
-            bfound = osl::searchPath(file_path, cwd, result);
+            if (FileBase::getSystemPathFromFileURL(cwd_url, cwd) == FileBase::E_None)
+                bfound = osl::searchPath(file_path, cwd, result);
         }
         return bfound;
     }

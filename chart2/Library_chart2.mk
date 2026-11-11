@@ -209,6 +209,7 @@ $(eval $(call gb_Library_add_exception_objects,chart2,\
     chart2/source/controller/sidebar/ChartAreaPanel \
     chart2/source/controller/sidebar/ChartColorsPanel \
     chart2/source/controller/sidebar/ChartColorPaletteControl \
+    chart2/source/controller/sidebar/ChartEffectPanel \
     chart2/source/controller/sidebar/ChartAxisPanel \
     chart2/source/controller/sidebar/ChartColorWrapper \
     chart2/source/controller/sidebar/ChartElementsPanel \
@@ -253,7 +254,9 @@ $(eval $(call gb_Library_add_exception_objects,chart2,\
     chart2/source/view/charttypes/BarPositionHelper \
     chart2/source/view/charttypes/BubbleChart \
     chart2/source/view/charttypes/CandleStickChart \
+    chart2/source/view/charttypes/CorrelationCircleChart \
     chart2/source/view/charttypes/CategoryPositionHelper \
+    chart2/source/view/charttypes/FunnelChart \
     chart2/source/view/charttypes/NetChart \
     chart2/source/view/charttypes/PieChart \
     chart2/source/view/charttypes/UnsupportedChart \
@@ -329,6 +332,9 @@ $(eval $(call gb_Library_add_exception_objects,chart2,\
     chart2/source/model/template/ColumnChartType \
     chart2/source/model/template/ColumnLineChartTypeTemplate \
     chart2/source/model/template/ColumnLineDataInterpreter \
+    chart2/source/model/template/CorrelationCircleChartType \
+    chart2/source/model/template/CorrelationCircleChartTypeTemplate \
+    chart2/source/model/template/CorrelationCircleDataInterpreter \
     chart2/source/model/template/DataInterpreter \
     chart2/source/model/template/FilledNetChartType \
     chart2/source/model/template/FunnelChartType \

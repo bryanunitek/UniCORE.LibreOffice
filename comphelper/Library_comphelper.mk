@@ -117,6 +117,7 @@ $(eval $(call gb_Library_add_exception_objects,comphelper,\
     comphelper/source/misc/hash \
     comphelper/source/misc/instancelocker \
     comphelper/source/misc/interaction \
+    comphelper/source/misc/invocationhelper \
     comphelper/source/misc/logging \
     comphelper/source/misc/lok \
     comphelper/source/misc/mimeconfighelper \
@@ -127,6 +128,7 @@ $(eval $(call gb_Library_add_exception_objects,comphelper,\
     comphelper/source/misc/traceevent \
     comphelper/source/misc/random \
     comphelper/source/misc/SelectionMultiplex \
+    comphelper/source/misc/scriptbrowse \
     comphelper/source/misc/sequenceashashmap \
     comphelper/source/misc/sharedmutex \
     comphelper/source/misc/simplefileaccessinteraction \

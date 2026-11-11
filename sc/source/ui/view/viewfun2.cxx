@@ -2,7 +2,7 @@
 /*
  * This file is part of the LibreOffice project.
  *
- * This Source eCode Form is subject to the terms of the Mozilla Public
+ * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
@@ -18,6 +18,9 @@
  */
 
 #include <scitems.hxx>
+#include <drawview.hxx>
+
+#include <algorithm>
 
 #include <sfx2/app.hxx>
 #include <sfx2/request.hxx>
@@ -1083,7 +1086,9 @@ void ScViewFunc::SetPrintRanges( bool bEntireSheet, const OUString* pPrint,
         }
         else    // NULL = use selection (print range is always set), use empty string to delete all ranges
         {
-            if ( GetViewData().GetSimpleArea( aRange ) == SC_MARK_SIMPLE )
+            // tdf#37259 - allow defining print ranges across filtered rows
+            const ScMarkType eMarkType = GetViewData().GetSimpleArea(aRange);
+            if (eMarkType == SC_MARK_SIMPLE || eMarkType == SC_MARK_SIMPLE_FILTERED)
             {
                 rDoc.AddPrintRange( nTab, aRange );
             }
@@ -2021,11 +2026,7 @@ bool ScViewFunc::SearchAndReplace( const SvxSearchItem* pSearchItem,
     DoneBlockMode(true);                // don't delete mark
     InitOwnBlockMode( ScRange( nCol, nRow, nStartTab, nCol, nRow, nEndTab));
 
-    //  If search starts at the beginning don't ask again whether it shall start at the beginning
     bool bFirst = true;
-    if ( nCol == 0 && nRow == 0 && nTab == nStartTab && !pSearchItem->GetBackward()  )
-        bFirst = false;
-
     bool bFound = false;
     while (true)
     {
@@ -2553,11 +2554,11 @@ bool ScViewFunc::DeleteTables(const std::vector<SCTAB>& rTabs, bool bRecord)
         {
             if (isFirstTab)
             {
-                pUndoDoc->InitUndo( rDoc, nTab,nTab, true,true );   // incl. column/fow flags
+                pUndoDoc->InitUndo( rDoc, nTab,nTab, true,true );   // incl. column/row flags
                 isFirstTab = false;
             }
             else
-                pUndoDoc->AddUndoTab( nTab,nTab, true,true );       // incl. column/fow flags
+                pUndoDoc->AddUndoTab( nTab,nTab, true,true );       // incl. column/row flags
 
             rDoc.CopyToDocument(0,0,nTab, rDoc.MaxCol(), rDoc.MaxRow(), nTab, InsertDeleteFlags::ALL,false, *pUndoDoc );
             rDoc.GetName( nTab, aOldName );
@@ -2595,6 +2596,18 @@ bool ScViewFunc::DeleteTables(const std::vector<SCTAB>& rTabs, bool bRecord)
         }
 
         pUndoDoc->AddUndoTab( 0, nCount-1 );            //  all Tabs for references
+
+        // Deleting these tabs rewrites any formula on another sheet that
+        // refers to one of them into a #REF! error. Snapshot that sheet's
+        // formulas too, so ScMoveUndo::UndoRef() has the original formula to
+        // put back on undo instead of leaving the error in place.
+        for (SCTAB nOtherTab = 0; nOtherTab < nCount; ++nOtherTab)
+        {
+            if (std::find(rTabs.begin(), rTabs.end(), nOtherTab) != rTabs.end())
+                continue;
+            rDoc.CopyToDocument(0,0,nOtherTab, rDoc.MaxCol(),rDoc.MaxRow(),nOtherTab,
+                                 InsertDeleteFlags::FORMULA, false, *pUndoDoc );
+        }
 
         rDoc.BeginDrawUndo();                          //  DeleteTab creates a SdrUndoDelPage
 

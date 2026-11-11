@@ -359,6 +359,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/svdraw/svdglue \
     svx/source/svdraw/svdhdl \
     svx/source/svdraw/svdhlpln \
+    svx/source/svdraw/svdimportbase \
     svx/source/svdraw/svditer \
     svx/source/svdraw/svdlayer \
     svx/source/svdraw/svdmark \
@@ -368,7 +369,6 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/svdraw/svdoashp \
     svx/source/svdraw/svdoattr \
     svx/source/svdraw/svdobj \
-    svx/source/svdraw/svdobjplusdata \
     svx/source/svdraw/svdobjuserdatalist \
     svx/source/svdraw/svdocapt \
     svx/source/svdraw/svdocirc \
@@ -435,16 +435,15 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/tbxctrls/fontworkgallery \
     svx/source/tbxctrls/IColorSet \
     svx/source/tbxctrls/linectrl \
+    svx/source/tbxctrls/MenuOrToolMenuButton \
     svx/source/tbxctrls/Palette \
     svx/source/tbxctrls/PaletteManager \
     svx/source/tbxctrls/tbcontrl \
     svx/source/tbxctrls/tbxcolorupdate \
-    svx/source/tbxctrls/SvxColorValueSet \
     svx/source/tbxctrls/StylesPreviewToolBoxControl \
     svx/source/tbxctrls/StylesPreviewWindow \
     svx/source/toolbars/extrusionbar \
     svx/source/toolbars/fontworkbar \
-    svx/source/uitest/sdrobject \
     svx/source/unodraw/gluepts \
     svx/source/unodraw/SvxXTextColumns \
     svx/source/unodraw/tableshape \
@@ -471,6 +470,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/xml/xmlexport \
     svx/source/xml/xmlxtexp \
     svx/source/xml/xmlxtimp \
+    svx/source/xoutdev/fillbitmaplink \
     svx/source/xoutdev/xattr \
     svx/source/xoutdev/xattr2 \
     svx/source/xoutdev/xattrbmp \

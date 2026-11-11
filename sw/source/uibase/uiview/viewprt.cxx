@@ -45,6 +45,7 @@
 #include <edtwin.hxx>
 #include <view.hxx>
 #include <wrtsh.hxx>
+#include <doc.hxx>
 #include <viewopt.hxx>
 #include <prtopt.hxx>
 #include <cfgitems.hxx>
@@ -255,7 +256,7 @@ void SwView::ExecutePrint(SfxRequest& rReq)
                     medium = sh->GetMedium();
                 }
                 pSh->GetLinkManager().UpdateAllLinks(
-                    false, nullptr, medium == nullptr ? OUString() : medium->GetName() );
+                    false, medium == nullptr ? OUString() : medium->GetName() );
             }
             SfxRequest aReq( rReq );
             SfxBoolItem aBool(SID_SELECTION, bPrintSelection);

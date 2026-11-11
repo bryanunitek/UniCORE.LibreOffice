@@ -27,6 +27,7 @@
 #include <comphelper/propertyvalue.hxx>
 #include <map>
 
+using namespace svtools;
 namespace
 {
 struct StringPair
@@ -129,8 +130,7 @@ SvxAppearanceTabPage::SvxAppearanceTabPage(weld::Container* pPage,
     InitThemes();
     InitCustomization();
     InitIcons();
-
-    m_xVerticalToolbars->connect_toggled(LINK(this, SvxAppearanceTabPage, OnTabPosChange));
+    InitDialogs();
 }
 
 void SvxAppearanceTabPage::LoadSchemeList()
@@ -169,8 +169,8 @@ void SvxAppearanceTabPage::ImplDestroy()
     if (m_bRestartRequired)
     {
         pColorConfig->SetupTheme();
-        ::svtools::executeRestartDialog(comphelper::getProcessComponentContext(), GetFrameWeld(),
-                                        svtools::RESTART_REASON_THEME_CHANGE);
+        ::executeRestartDialog(comphelper::getProcessComponentContext(), GetFrameWeld(),
+                               RESTART_REASON_THEME_CHANGE);
     }
 }
 
@@ -186,12 +186,31 @@ std::unique_ptr<SfxTabPage> SvxAppearanceTabPage::Create(weld::Container* pPage,
 OUString SvxAppearanceTabPage::GetAllStrings()
 {
     OUStringBuffer sAllStrings;
-    OUString labels[] = { u"libreofficethemeslb"_ustr, u"optionslb"_ustr, u"appearancelb"_ustr,
-                          u"itemslb"_ustr, u"colorlb"_ustr };
+
+    OUString labels[] = { u"libreofficethemeslb"_ustr, u"customizationslb"_ustr, u"iconslbl"_ustr,
+                          u"lbDialogs"_ustr,           u"lbTabPosition"_ustr,    u"lbToolbar"_ustr,
+                          u"lbSidebar"_ustr,           u"lbNotebookbar"_ustr };
 
     for (const auto& label : labels)
     {
         if (const auto pString = m_xBuilder->weld_label(label))
+            sAllStrings.append(pString->get_label() + " ");
+    }
+
+    OUString checkButton[] = { u"enableapptheming"_ustr, u"useonlywhitedocbackground"_ustr,
+                               u"usebmpforappback"_ustr, u"showindocumentchkbtn"_ustr };
+
+    for (const auto& check : checkButton)
+    {
+        if (const auto pString = m_xBuilder->weld_check_button(check))
+            sAllStrings.append(pString->get_label() + " ");
+    }
+
+    OUString radioButton[] = { u"rbVertical"_ustr, u"rbHorizontal"_ustr };
+
+    for (const auto& radio : radioButton)
+    {
+        if (const auto pString = m_xBuilder->weld_radio_button(radio))
             sAllStrings.append(pString->get_label() + " ");
     }
 
@@ -209,24 +228,14 @@ bool SvxAppearanceTabPage::FillItemSet(SfxItemSet* /* rSet */)
 
 void SvxAppearanceTabPage::Reset(const SfxItemSet* /* rSet */)
 {
+    // hide advanced controls
     auto& aProperties = getAdditionalProperties();
-    auto aIterator = aProperties.find(u"IsWelcomeDialog"_ustr);
+    auto aIterator = aProperties.find(u"HideAdvancedControls"_ustr);
     if (aIterator != aProperties.end())
     {
-        // hide advanced controls
         m_xSizeGrid->set_visible(false);
         m_xCustomizationFrame->set_visible(false);
         m_xDialogFrame->set_visible(false);
-
-        // default to vertical avoiding to check UseVerticalNotebookbar
-        m_xVerticalToolbars->set_active(true);
-    }
-    else
-    {
-        if (officecfg::Office::Common::Misc::UseVerticalNotebookbar::get())
-            m_xVerticalToolbars->set_active(true);
-        else
-            m_xHorizontalToolbars->set_active(true);
     }
 
     // reset scheme list
@@ -581,6 +590,16 @@ void SvxAppearanceTabPage::InitIcons()
         m_xIconsDropDown->append(installIconTheme.GetThemeId(), installIconTheme.GetDisplayName());
 }
 
+void SvxAppearanceTabPage::InitDialogs()
+{
+    if (officecfg::Office::Common::Misc::UseVerticalNotebookbar::get())
+        m_xVerticalToolbars->set_active(true);
+    else
+        m_xHorizontalToolbars->set_active(true);
+
+    m_xVerticalToolbars->connect_toggled(LINK(this, SvxAppearanceTabPage, OnTabPosChange));
+}
+
 IMPL_LINK_NOARG(SvxAppearanceTabPage, OnTabPosChange, weld::Toggleable&, void)
 {
     std::shared_ptr<comphelper::ConfigurationChanges> xChanges(
@@ -797,10 +816,6 @@ void SvxAppearanceTabPage::FillItemsList()
             { SQLCOMMENT, CuiResId(REG_SQLCOMMENT) },
             { WINDOWCOLOR, CuiResId(REG_WINDOWCOLOR) },
             { WINDOWTEXTCOLOR, CuiResId(REG_WINDOWTEXTCOLOR) },
-            { WRITERNOTEBOOKBARCOLOR, CuiResId(REG_WRITERNOTEBOOKBARCOLOR) },
-            { CALCNOTEBOOKBARCOLOR, CuiResId(REG_CALCNOTEBOOKBARCOLOR) },
-            { IMPRESSNOTEBOOKBARCOLOR, CuiResId(REG_IMPRESSNOTEBOOKBARCOLOR) },
-            { DRAWNOTEBOOKBARCOLOR, CuiResId(REG_DRAWNOTEBOOKBARCOLOR) },
             { BASECOLOR, CuiResId(REG_BASECOLOR) },
             { BUTTONCOLOR, CuiResId(REG_BUTTONCOLOR) },
             { BUTTONTEXTCOLOR, CuiResId(REG_BUTTONTEXTCOLOR) },

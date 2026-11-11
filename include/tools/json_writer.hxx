@@ -20,7 +20,7 @@
  *
  * (1) Minimal allocations/re-allocations/copying
  * (2) Small/simple JSON documents
- * (3) ascii property names
+ * (3) ASCII property names
  */
 namespace tools
 {
@@ -52,15 +52,11 @@ public:
     void put(std::u16string_view pPropName, std::u16string_view rPropValue);
 
     void put(std::string_view pPropName, const OUString& rPropValue);
-    // Assumes utf-8 property value encoding
+    // Assumes UTF-8 property value encoding
     void put(std::string_view pPropName, std::string_view rPropValue);
     void put(std::string_view pPropName, const char* pPropVal)
     {
         put(pPropName, std::string_view(pPropVal));
-    }
-    template <size_t N> void put(std::string_view pPropName, const char (&pPropVal)[N])
-    {
-        put(pPropName, std::string_view(pPropVal, N));
     }
 
     template <typename N, std::enable_if_t<std::is_arithmetic_v<N>, int> = 0>

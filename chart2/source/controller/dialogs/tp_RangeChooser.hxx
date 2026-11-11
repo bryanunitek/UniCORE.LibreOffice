@@ -67,10 +67,10 @@ private:
     void setDirty();
 
     DECL_LINK( ChooseRangeHdl, weld::Button&, void );
-    DECL_LINK( ControlChangedHdl, weld::Entry&, void );
+    DECL_LINK(ControlChangedHdl, weld::TextWidget&, void);
     DECL_LINK( ControlChangedCheckBoxHdl, weld::Toggleable&, void );
     DECL_LINK( ControlChangedRadioHdl, weld::Toggleable&, void );
-    DECL_LINK( ControlEditedHdl, weld::Entry&, void );
+    DECL_LINK(ControlEditedHdl, weld::TextWidget&, void);
 
     sal_Int32       m_nChangingControlCalls;
     bool            m_bIsDirty;
@@ -85,6 +85,7 @@ private:
     std::unique_ptr<weld::Label> m_xFT_Caption;
     std::unique_ptr<weld::Entry> m_xED_Range;
     std::unique_ptr<weld::Button> m_xIB_Range;
+    std::unique_ptr<weld::Label> m_xFT_RangeNote;
     std::unique_ptr<weld::RadioButton> m_xRB_Rows;
     std::unique_ptr<weld::RadioButton> m_xRB_Columns;
     std::unique_ptr<weld::CheckButton> m_xCB_FirstRowAsLabel;

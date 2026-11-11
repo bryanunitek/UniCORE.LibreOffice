@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -7,37 +7,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <font/TrueTypeFont.hxx>
+#include <vcl/pdfwriter.hxx>
 #include "commonfuzzer.hxx"
-
-#include <config_features.h>
-#include <osl/detail/component-mapping.h>
-
-const lib_to_factory_mapping* lo_get_factory_map(void)
-{
-    static lib_to_factory_mapping map[] = { { 0, 0 } };
-
-    return map;
-}
-
-const lib_to_constructor_mapping* lo_get_constructor_map(void)
-{
-    static lib_to_constructor_mapping map[] = { { 0, 0 } };
-
-    return map;
-}
-
-extern "C" void* lo_get_custom_widget_func(const char*) { return nullptr; }
 
 extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv)
 {
     TypicalFuzzerInitialize(argc, argv);
+    // The font under test has to be found by name.
+    unsetenv("SAL_NO_FONT_LOOKUP");
     return 0;
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
-    return TestFontParsing(data, size);
+    return TestFontPDFExport(data, size);
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -24,17 +24,18 @@
 #include <unx/gtk/gtkdata.hxx>
 #include <unx/gtk/gtkinst.hxx>
 #include <unx/genprn.h>
-#include <unx/salobj.h>
 #include <unx/gtk/gtkgdi.hxx>
 #include <unx/gtk/gtkframe.hxx>
 #include <unx/gtk/gtkobject.hxx>
 #include <unx/gtk/gtksalmenu.hxx>
+#include <vclpluginapi.h>
 #include <headless/svpvd.hxx>
 #include <headless/svpbmp.hxx>
 #include <utility>
 #include <unotools/localedatawrapper.hxx>
 #include <vcl/builder.hxx>
 #include <vcl/inputtypes.hxx>
+#include <vcl/opengl/OpenGLContext.hxx>
 #include <vcl/specialchars.hxx>
 #include <vcl/sysdata.hxx>
 #include <vcl/transfer.hxx>
@@ -146,6 +147,8 @@
 #include <boost/property_tree/ptree.hpp>
 #include <opengl/zone.hxx>
 
+#include <epoxy/gl.h>
+
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -181,11 +184,12 @@ extern "C"
 
         // for gtk2 it is always built with X support, so this is always called
         // for gtk3 it is normally built with X and Wayland support, if
-        // X is supported GDK_WINDOWING_X11 is defined and this is always
+        // X is supported GDK_WINDOWING_X11 is defined and if we were
+        // configured to support X11, USING_X11 is set to 1, then this is always
         // called, regardless of if we're running under X or Wayland.
         // We can't use (DLSYM_GDK_IS_X11_DISPLAY(pDisplay)) to only do it under
         // X, because we need to do it earlier than we have a display
-#if defined(GDK_WINDOWING_X11)
+#if defined(GDK_WINDOWING_X11) && USING_X11
         /* #i92121# workaround deadlocks in the X11 implementation
         */
         static const char* pNoXInitThreads = getenv( "SAL_NO_XINITTHREADS" );
@@ -491,7 +495,7 @@ namespace
             return bRet;
         }
 #endif
-#if defined(GDK_WINDOWING_X11)
+#if defined(GDK_WINDOWING_X11) && USING_X11
         if (DLSYM_GDK_IS_X11_DISPLAY(pDisplay))
         {
             GPollFD aPollFD;
@@ -563,7 +567,7 @@ std::unique_ptr<GenPspGraphics> GtkInstance::CreatePrintGraphics()
 Platform GtkInstance::GetPlatform() const
 {
     GdkDisplay* pDisplay = GetGtkSalData()->GetGdkDisplay();
-#if defined(GDK_WINDOWING_X11)
+#if defined(GDK_WINDOWING_X11) && USING_X11
     if (DLSYM_GDK_IS_X11_DISPLAY(pDisplay))
         return Platform::Xcb;
 #endif
@@ -2098,7 +2102,7 @@ class GtkInstanceBuilder;
 #if !GTK_CHECK_VERSION(4, 0, 0)
         if (nKeyCode == 0)
         {
-            GdkKeymap* keymap = gdk_keymap_get_default();
+            GdkKeymap* keymap = gdk_keymap_get_for_display(gdk_display_get_default());
             guint8 best_group = GtkSalFrame::GetBestAccelKeyGroup(keymap, group);
             guint updated_keyval = GtkSalFrame::GetKeyValFor(keymap, hardware_keycode, best_group);
             nKeyCode = GtkSalFrame::GetKeyCode(updated_keyval);
@@ -6494,15 +6498,14 @@ public:
         gtk_window_present(m_pWindow);
     }
 
-    virtual void set_window_state(const OUString& rStr) override
+    virtual void set_window_state(const vcl::WindowData& rState) override
     {
-        const vcl::WindowData aData(rStr);
-        const auto nMask = aData.mask();
-        const auto nState = aData.state() & vcl::WindowState::SystemMask;
+        const auto nMask = rState.mask();
+        const auto nState = rState.state() & vcl::WindowState::SystemMask;
 
         if ((nMask & vcl::WindowDataMask::Size) == vcl::WindowDataMask::Size)
         {
-            gtk_window_set_default_size(m_pWindow, aData.width(), aData.height());
+            gtk_window_set_default_size(m_pWindow, rState.width(), rState.height());
         }
         if (nMask & vcl::WindowDataMask::State)
         {
@@ -6515,12 +6518,12 @@ public:
 #if !GTK_CHECK_VERSION(4, 0, 0)
         if (isPositioningAllowed() && ((nMask & vcl::WindowDataMask::Pos) == vcl::WindowDataMask::Pos))
         {
-            gtk_window_move(m_pWindow, aData.x(), aData.y());
+            gtk_window_move(m_pWindow, rState.x(), rState.y());
         }
 #endif
     }
 
-    virtual OUString get_window_state(vcl::WindowDataMask nMask) const override
+    virtual vcl::WindowData get_window_state(vcl::WindowDataMask nMask) const override
     {
         bool bPositioningAllowed = isPositioningAllowed();
 
@@ -6544,7 +6547,7 @@ public:
         if (nMask & vcl::WindowDataMask::Size)
             aData.setSize(get_size());
 
-        return aData.toStr();
+        return aData;
     }
 
     virtual void connect_container_focus_changed(const Link<Container&, void>& rLink) override
@@ -10369,12 +10372,13 @@ GtkPositionType show_menu_older_gtk(GtkWidget* pMenuButton, GtkWindow* pMenu, co
 bool show_menu_newer_gtk(GtkWidget* pComboBox, GtkWindow* pMenu, const GdkRectangle &rAnchor,
                          weld::Placement ePlace, bool bTryShrink)
 {
+#if defined(GDK_WINDOWING_X11) && USING_X11
     // under wayland gdk_window_move_to_rect works great for me, but in my current
     // gtk 3.24 under X it leaves part of long menus outside the work area
     GdkDisplay *pDisplay = gtk_widget_get_display(pComboBox);
     if (DLSYM_GDK_IS_X11_DISPLAY(pDisplay))
         return false;
-
+#endif
     //place the toplevel just below its launcher button
     GtkWidget* pToplevel = widget_get_toplevel(pComboBox);
     gtk_coord x, y;
@@ -10939,7 +10943,7 @@ public:
         }
 
         m_nSignalId = g_signal_connect(GTK_TOGGLE_BUTTON(m_pMenuButton), "toggled", G_CALLBACK(signalMenuButtonToggled), this);
-
+#if defined(GDK_WINDOWING_X11) && USING_X11
         if (!m_pMenuHack)
         {
             //under wayland a Popover will work to "escape" the parent dialog, not
@@ -10958,7 +10962,7 @@ public:
                 g_signal_connect(m_pMenuHack, "button-release-event", G_CALLBACK(signalButtonRelease), this);
             }
         }
-
+#endif
         if (m_pMenuHack)
         {
             GtkWidget* pPlaceHolder = gtk_popover_new(GTK_WIDGET(m_pMenuButton));
@@ -11566,11 +11570,10 @@ private:
             // so that, e.g. with focus initially in writer main document then
             // after clicking the heading menu in the writer navigator focus is
             // left in the main document and not in the toolbar
+            gtk_widget_set_focus_on_click(GTK_WIDGET(pMenuButton), false);
 #if !GTK_CHECK_VERSION(4, 0, 0)
-            gtk_button_set_focus_on_click(GTK_BUTTON(pMenuButton), false);
             g_signal_connect(pMenuButton, "toggled", G_CALLBACK(signalItemToggled), this);
 #else
-            gtk_widget_set_focus_on_click(GTK_WIDGET(pMenuButton), false);
 
             GtkWidget* pToggleButton = gtk_widget_get_first_child(GTK_WIDGET(pMenuButton));
             assert(GTK_IS_TOGGLE_BUTTON(pToggleButton));
@@ -12147,7 +12150,7 @@ public:
         GdkDevice* pDevice = gdk_seat_get_keyboard(pSeat);
         guint nState = gdk_device_get_modifier_state(pDevice);
 #else
-        GdkKeymap* pKeymap = gdk_keymap_get_default();
+        GdkKeymap* pKeymap = gdk_keymap_get_for_display(gdk_display_get_default());
         guint nState = gdk_keymap_get_modifier_state(pKeymap);
 #endif
         return GtkSalFrame::GetKeyModCode(nState);
@@ -12803,6 +12806,7 @@ namespace
         switch (eType)
         {
             case weld::EntryMessageType::Normal:
+            case weld::EntryMessageType::Info:
                 break;
             case weld::EntryMessageType::Warning:
 #if GTK_CHECK_VERSION(4, 0, 0)
@@ -12834,6 +12838,9 @@ namespace
                 break;
             case weld::EntryMessageType::Error:
                 gtk_entry_set_icon_from_icon_name(pEntry, GTK_ENTRY_ICON_SECONDARY, "dialog-error");
+                break;
+            case weld::EntryMessageType::Info:
+                gtk_entry_set_icon_from_icon_name(pEntry, GTK_ENTRY_ICON_SECONDARY, "dialog-information");
                 break;
         }
     }
@@ -13607,13 +13614,6 @@ int get_height_row_separator(GtkTreeView* pTreeView)
     return nVerticalSeparator;
 }
 
-int get_height_rows(GtkTreeView* pTreeView, GList* pColumns, int nRows)
-{
-    gint nMaxRowHeight = get_height_row(pTreeView, pColumns);
-    gint nVerticalSeparator = get_height_row_separator(pTreeView);
-    return (nMaxRowHeight * nRows) + (nVerticalSeparator * nRows) / 2;
-}
-
 #if !GTK_CHECK_VERSION(4, 0, 0)
 int get_height_rows(int nRowHeight, int nSeparatorHeight, int nRows)
 {
@@ -13972,10 +13972,15 @@ private:
                            m_nTextCol, !pText ? nullptr : OUStringToOString(*pText, RTL_TEXTENCODING_UTF8).getStr(),
                            m_nIdCol, !pId ? nullptr : OUStringToOString(*pId, RTL_TEXTENCODING_UTF8).getStr());
 
+        if (!pIconName && !pDevice)
+            return;
+
+        const int nImageCol = m_nExpanderImageCol != -1 ? m_nExpanderImageCol : m_nImageCol;
+
         if (pIconName)
         {
             GdkPixbuf* pixbuf = getPixbuf(*pIconName);
-            m_Setter(m_pTreeModel, &iter, m_nImageCol, pixbuf, -1);
+            m_Setter(m_pTreeModel, &iter, nImageCol, pixbuf, -1);
             if (pixbuf)
                 g_object_unref(pixbuf);
         }
@@ -13994,7 +13999,7 @@ private:
             cairo_paint(cr);
             cairo_destroy(cr);
 
-            m_Setter(m_pTreeModel, &iter, m_nImageCol, target, -1);
+            m_Setter(m_pTreeModel, &iter, nImageCol, target, -1);
             cairo_surface_destroy(target);
         }
     }
@@ -14258,7 +14263,7 @@ private:
             GtkTreeViewColumn* pColumn = GTK_TREE_VIEW_COLUMN(pEntry->data);
             if (pColumn == pClickedColumn)
             {
-                TreeView::signal_column_clicked(nIndex);
+                signal_column_header_clicked(nIndex);
                 break;
             }
             ++nIndex;
@@ -14645,7 +14650,7 @@ public:
                 }
                 else if (GTK_IS_CELL_RENDERER_TOGGLE(pCellRenderer))
                 {
-                    const bool bExpander = nIndex == 0 || (nIndex == 1 && m_nExpanderImageCol == 0);
+                    const bool bExpander = nIndex == 0 && g_list_next(pRenderer) != nullptr;
                     if (bExpander)
                         m_nExpanderToggleCol = nIndex;
                     g_signal_connect(G_OBJECT(pCellRenderer), "toggled", G_CALLBACK(signalCellToggled), this);
@@ -14813,21 +14818,15 @@ public:
                 pEditCellData = pData;
                 break;
             }
-            else if (GTK_IS_CELL_RENDERER_TOGGLE(pCellRenderer))
+            else if (GTK_IS_CELL_RENDERER_TOGGLE(pCellRenderer) && nCellIndex == m_nExpanderToggleCol)
             {
-                if (nCellIndex == m_nExpanderToggleCol)
-                {
-                    pToggle = pCellRenderer;
-                    g_object_ref(pToggle);
-                }
+                pToggle = pCellRenderer;
+                g_object_ref(pToggle);
             }
-            else if (GTK_IS_CELL_RENDERER_PIXBUF(pCellRenderer))
+            else if (GTK_IS_CELL_RENDERER_PIXBUF(pCellRenderer) && nCellIndex == m_nExpanderImageCol)
             {
-                if (nCellIndex == m_nExpanderImageCol)
-                {
-                    pExpander = pCellRenderer;
-                    g_object_ref(pExpander);
-                }
+                pExpander = pCellRenderer;
+                g_object_ref(pExpander);
             }
 
         }
@@ -14845,7 +14844,6 @@ public:
         if (pToggle)
         {
             gtk_tree_view_column_pack_start(pColumn, pToggle, false);
-            gtk_tree_view_column_add_attribute(pColumn, pToggle, "active", m_nExpanderToggleCol);
             gtk_tree_view_column_add_attribute(pColumn, pToggle, "active", m_nExpanderToggleCol);
             gtk_tree_view_column_add_attribute(pColumn, pToggle, "visible", m_aToggleTriStateMap[m_nExpanderToggleCol]);
             g_object_unref(pToggle);
@@ -15126,7 +15124,7 @@ public:
         enable_notify_events();
     }
 
-    virtual int iter_n_children(const weld::TreeIter& rIter) const override
+    virtual int do_iter_n_children(const weld::TreeIter& rIter) const override
     {
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
         return gtk_tree_model_iter_n_children(m_pTreeModel, const_cast<GtkTreeIter*>(&rGtkIter.iter));
@@ -15271,13 +15269,19 @@ public:
         return get_bool(rGtkIter.iter, col) ? TRISTATE_TRUE : TRISTATE_FALSE;
     }
 
-    virtual void set_toggle(const weld::TreeIter& rIter, TriState eState, int col) override
+    virtual void do_set_toggle(const weld::TreeIter& rIter, TriState eState, int col) override
     {
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
         set_toggle(rGtkIter.iter, eState, col);
     }
 
-    virtual void enable_toggle_buttons(weld::ColumnToggleType eType) override
+    virtual void enable_toggle_buttons() override
+    {
+        // ctor already enables expander toggle column based on columns/renderers defined in the .ui file
+    }
+
+    virtual void set_toggle_button_type(weld::ColumnToggleType eType
+                                        = weld::ColumnToggleType::Check) override
     {
         for (GList* pEntry = g_list_first(m_pColumns); pEntry; pEntry = g_list_next(pEntry))
         {
@@ -15754,7 +15758,9 @@ public:
 
     virtual int get_height_rows(int nRows) const override
     {
-        return ::get_height_rows(m_pTreeView, m_pColumns, nRows);
+        gint nMaxRowHeight = get_height_row(m_pTreeView, m_pColumns);
+        gint nVerticalSeparator = get_height_row_separator(m_pTreeView);
+        return (nMaxRowHeight * nRows) + (nVerticalSeparator * nRows) / 2;
     }
 
     virtual Size get_size_request() const override
@@ -17180,7 +17186,7 @@ public:
             m_dValueWhenEmpty = gtk_spin_button_get_value(m_pButton);
     }
 
-    virtual void connect_changed(const Link<weld::Entry&, void>& rLink) override
+    virtual void connect_changed(const Link<weld::TextWidget&, void>& rLink) override
     {
         if (!m_pFormatter) // once a formatter is set, it takes over "changed"
         {
@@ -17216,7 +17222,7 @@ public:
             auto aFocusOutHdl = m_aFocusOutHdl;
             m_aFocusOutHdl = Link<weld::Widget&, void>();
             auto aChangeHdl = m_aChangeHdl;
-            m_aChangeHdl = Link<weld::Entry&, void>();
+            m_aChangeHdl = Link<weld::TextWidget&, void>();
 
             double fValue = gtk_spin_button_get_value(m_pButton);
             double fMin, fMax;
@@ -20086,7 +20092,7 @@ public:
         ::set_entry_message_type(GTK_ENTRY(m_pEntry), eType);
     }
 
-    virtual void set_entry_text(const OUString& rText) override
+    virtual void do_set_entry_text(const OUString& rText) override
     {
         assert(m_pEditable);
         disable_notify_events();
@@ -22038,7 +22044,7 @@ public:
         ::set_entry_message_type(GTK_ENTRY(m_pEntry), eType);
     }
 
-    virtual void set_entry_text(const OUString& rText) override
+    virtual void do_set_entry_text(const OUString& rText) override
     {
         assert(m_pEntry);
         disable_notify_events();
@@ -22925,7 +22931,7 @@ public:
         , m_nSignalId(g_signal_connect(m_pPopover, "closed", G_CALLBACK(signalClosed), this))
         , m_pClosedEvent(nullptr)
     {
-#if !GTK_CHECK_VERSION(4, 0, 0)
+#if !GTK_CHECK_VERSION(4, 0, 0) && defined(GDK_WINDOWING_X11) && USING_X11
         //under wayland a Popover will work to "escape" the parent dialog, not
         //so under X, so come up with this hack to use a raw GtkWindow
         GdkDisplay *pDisplay = gtk_widget_get_display(GTK_WIDGET(m_pPopover));
@@ -22977,7 +22983,7 @@ public:
                 gtk_popover_set_position(m_pPopover, GTK_POS_RIGHT);
         }
 
-#if !GTK_CHECK_VERSION(4, 0, 0)
+#if !GTK_CHECK_VERSION(4, 0, 0) && defined(GDK_WINDOWING_X11) && USING_X11
         //under wayland a Popover will work to "escape" the parent dialog, not
         //so under X, so come up with this hack to use a raw GtkWindow
         GdkDisplay *pDisplay = gtk_widget_get_display(GTK_WIDGET(m_pPopover));
@@ -23016,7 +23022,7 @@ public:
 
     virtual void popdown() override
     {
-#if !GTK_CHECK_VERSION(4, 0, 0)
+#if !GTK_CHECK_VERSION(4, 0, 0) && defined(GDK_WINDOWING_X11) && USING_X11
         //under wayland a Popover will work to "escape" the parent dialog, not
         //so under X, so come up with this hack to use a raw GtkWindow
         GdkDisplay *pDisplay = gtk_widget_get_display(GTK_WIDGET(m_pPopover));
@@ -24298,14 +24304,16 @@ std::unique_ptr<weld::Builder> GtkInstance::CreateInterimBuilder(vcl::Window* pP
     return std::make_unique<GtkInstanceBuilder>(pWindow, rUIRoot, rUIFile, xEmbedWindow.get(), bAllowCycleFocusOut);
 }
 
-weld::MessageDialog* GtkInstance::CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType, VclButtonsType eButtonsType, const OUString &rPrimaryMessage)
+std::unique_ptr<weld::MessageDialog>
+GtkInstance::CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType,
+                                 VclButtonsType eButtonsType, const OUString& rPrimaryMessage)
 {
     GtkInstanceWidget* pParentInstance = dynamic_cast<GtkInstanceWidget*>(pParent);
     GtkWindow* pParentWindow = pParentInstance ? pParentInstance->getWindow() : nullptr;
     GtkMessageDialog* pMessageDialog = GTK_MESSAGE_DIALOG(gtk_message_dialog_new(pParentWindow, GTK_DIALOG_MODAL,
                                                           VclToGtk(eMessageType), VclToGtk(eButtonsType), "%s",
                                                           OUStringToOString(rPrimaryMessage, RTL_TEXTENCODING_UTF8).getStr()));
-    return new GtkInstanceMessageDialog(pMessageDialog, nullptr, true);
+    return std::make_unique<GtkInstanceMessageDialog>(pMessageDialog, nullptr, true);
 }
 
 std::unique_ptr<weld::ColorChooserDialog>

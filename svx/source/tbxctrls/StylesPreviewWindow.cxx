@@ -56,6 +56,7 @@
 #include <editeng/brushitem.hxx>
 
 #include <i18nlangtag/mslangid.hxx>
+#include <unotools/syslocaleoptions.hxx>
 
 #include <svx/xfillit0.hxx>
 #include <svx/xdef.hxx>
@@ -300,16 +301,12 @@ void StyleItemController::DrawEntry(vcl::RenderContext& rRenderContext)
         return;
 
     SfxStyleSheetBasePool* pPool = pShell->GetStyleSheetPool();
-    SfxStyleSheetBase* pStyle = nullptr;
-
     if (!pPool)
         return;
 
-    pStyle = pPool->First(m_eStyleFamily);
-    while (pStyle && pStyle->GetName() != m_aStyleName.commonName
-           && pStyle->GetName() != m_aStyleName.translatedName)
-        pStyle = pPool->Next();
-
+    SfxStyleSheetBase* pStyle = pPool->Find(m_aStyleName.translatedName, m_eStyleFamily);
+    if (!pStyle)
+        pStyle = pPool->Find(m_aStyleName.commonName, m_eStyleFamily);
     if (!pStyle)
         return;
 
@@ -344,6 +341,7 @@ void StyleItemController::DrawEntry(vcl::RenderContext& rRenderContext)
     if (pFontItem && pFontHeightItem)
     {
         Size aFontSize(0, pFontHeightItem->GetHeight());
+        aFontSize /= rRenderContext.GetDPIScaleFactor();
         Size aPixelSize(rRenderContext.LogicToPixel(aFontSize, MapMode(pShell->GetMapUnit())));
 
         SvxFont aFont = GetFontFromItems(pFontItem, aPixelSize, pItemSet);
@@ -375,6 +373,10 @@ void StyleItemController::DrawEntry(vcl::RenderContext& rRenderContext)
 
     if (aFontHighlight != COL_AUTO)
         DrawHighlight(rRenderContext, aFontHighlight);
+
+    LanguageType aLang = SvtSysLocaleOptions().GetRealUILanguageTag().getLanguageType();
+    if (MsLangId::isRightToLeft(aLang))
+        rRenderContext.EnableRTL();
 
     DrawText(rRenderContext);
 
@@ -541,7 +543,7 @@ Bitmap StylesPreviewWindow_Base::GetCachedPreview(const StylePreviewDescriptor& 
     else
     {
         ScopedVclPtrInstance<VirtualDevice> pImg;
-        const Size aSize(100, 30);
+        const Size aSize(100, 24);
         pImg->SetOutputSizePixel(aSize);
 
         StyleItemController aStyleController(rStyle);

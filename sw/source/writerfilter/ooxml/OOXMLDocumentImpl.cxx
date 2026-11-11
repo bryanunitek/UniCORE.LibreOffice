@@ -331,12 +331,26 @@ void OOXMLDocument::resolveCommentsExtendedStream(Stream& rStream)
     resolveFastSubStream(rStream, OOXMLStream::StreamType_t::COMMENTS_EXTENDED);
 }
 
+void OOXMLDocument::resolveCommentsIdsStream(Stream& rStream)
+{
+    resolveFastSubStream(rStream, OOXMLStream::StreamType_t::COMMENTS_IDS);
+}
+
+void OOXMLDocument::resolveCommentsExtensibleStream(Stream& rStream)
+{
+    resolveFastSubStream(rStream, OOXMLStream::StreamType_t::COMMENTS_EXTENSIBLE);
+}
+
 void OOXMLDocument::resolveComment(Stream & rStream,
                                        const sal_Int32 nId)
 {
     if (!mbCommentsExtendedResolved)
     {
         resolveCommentsExtendedStream(rStream);
+        // The durable ids these two streams share are what ties a comment to the moment it was
+        // written, so both have to be read before the first comment.
+        resolveCommentsIdsStream(rStream);
+        resolveCommentsExtensibleStream(rStream);
         mbCommentsExtendedResolved = true;
     }
 
@@ -344,6 +358,38 @@ void OOXMLDocument::resolveComment(Stream & rStream,
         getXNoteStream(OOXMLStream::StreamType_t::COMMENTS, nId);
 
     resolveFastSubStreamWithId(rStream, pStream, NS_ooxml::LN_annotation);
+}
+
+void OOXMLDocument::resolveWebSettingsStream(Stream& /*rStream*/)
+{
+    OOXMLStream::Pointer_t pStream;
+    try
+    {
+        pStream
+            = OOXMLDocumentFactory::createStream(mpStream, OOXMLStream::StreamType_t::WEBSETTINGS);
+    }
+    catch (uno::Exception const&)
+    {
+        // No webSettings relationship
+        return;
+    }
+    if (!pStream)
+        return;
+
+    uno::Reference<io::XInputStream> xInputStream = pStream->getDocumentStream();
+    if (!xInputStream.is())
+        return;
+
+    try
+    {
+        uno::Reference<xml::dom::XDocumentBuilder> xDomBuilder(
+            xml::dom::DocumentBuilder::create(pStream->getContext()));
+        mxWebSettingsDom = xDomBuilder->parse(xInputStream);
+    }
+    catch (uno::Exception const&)
+    {
+        TOOLS_WARN_EXCEPTION("writerfilter", "failed to parse word/webSettings.xml");
+    }
 }
 
 OOXMLPropertySet * OOXMLDocument::getPicturePropSet
@@ -512,6 +558,8 @@ void OOXMLDocument::resolve(Stream & rStream)
 
     // Custom xml's are handled as part of grab bag.
     resolveCustomXmlStream(rStream);
+
+    resolveWebSettingsStream(rStream);
 
     resolveFastSubStream(rStream, OOXMLStream::StreamType_t::FONTTABLE);
     resolveFastSubStream(rStream, OOXMLStream::StreamType_t::STYLES);
@@ -746,12 +794,18 @@ void OOXMLDocument::resolveEmbeddingsStream(const OOXMLStream::Pointer_t& pStrea
     xRelationshipAccess.set(dynamic_cast<OOXMLStreamImpl&>(*pStream).accessDocumentStream(), uno::UNO_QUERY);
     if (xRelationshipAccess.is())
     {
-        static constexpr OUStringLiteral sChartType(u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart");
-        static constexpr OUStringLiteral sChartTypeStrict(u"http://purl.oclc.org/ooxml/officeDocument/relationships/chart");
-        static constexpr OUStringLiteral sFootersType(u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer");
-        static constexpr OUStringLiteral sFootersTypeStrict(u"http://purl.oclc.org/ooxml/officeDocument/relationships/footer");
-        static constexpr OUStringLiteral sHeaderType(u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/header");
-        static constexpr OUStringLiteral sHeaderTypeStrict(u"http://purl.oclc.org/ooxml/officeDocument/relationships/header");
+        static constexpr OUString sChartType(
+            u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"_ustr);
+        static constexpr OUString sChartTypeStrict(
+            u"http://purl.oclc.org/ooxml/officeDocument/relationships/chart"_ustr);
+        static constexpr OUString sFootersType(
+            u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer"_ustr);
+        static constexpr OUString sFootersTypeStrict(
+            u"http://purl.oclc.org/ooxml/officeDocument/relationships/footer"_ustr);
+        static constexpr OUString sHeaderType(
+            u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"_ustr);
+        static constexpr OUString sHeaderTypeStrict(
+            u"http://purl.oclc.org/ooxml/officeDocument/relationships/header"_ustr);
 
         bool bFound = false;
         bool bHeaderFooterFound = false;
@@ -907,6 +961,11 @@ const uno::Reference<xml::dom::XDocument> & OOXMLDocument::getThemeDom() const
 const uno::Sequence<uno::Reference<xml::dom::XDocument> >& OOXMLDocument::getCustomXmlDomList( ) const
 {
     return mxCustomXmlDomList;
+}
+
+const uno::Reference<xml::dom::XDocument>& OOXMLDocument::getWebSettingsDom() const
+{
+    return mxWebSettingsDom;
 }
 
 const uno::Sequence<uno::Reference<xml::dom::XDocument> >& OOXMLDocument::getCustomXmlDomPropsList( ) const

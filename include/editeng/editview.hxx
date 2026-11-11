@@ -276,7 +276,7 @@ public:
 
     // especially for Oliver Specht
     Point           GetWindowPosTopLeft( sal_Int32 nParagraph );
-    SAL_DLLPRIVATE void            MoveParagraphs( Range aParagraphs, sal_Int32 nNewPos );
+    void            MoveParagraphs( Range aParagraphs, sal_Int32 nNewPos );
     SAL_DLLPRIVATE void            MoveParagraphs( tools::Long nDiff );
 
     const SfxItemSet& GetEmptyItemSet() const;
@@ -301,7 +301,7 @@ public:
     void            SetControlWord( EVControlBits nWord );
     EVControlBits   GetControlWord() const;
 
-    std::unique_ptr<EditTextObject> CreateTextObject();
+    EditTextObject CreateTextObject();
     void            InsertText( const EditTextObject& rTextObject );
     void            InsertText( css::uno::Reference< css::datatransfer::XTransferable > const & xDataObj, const OUString& rBaseURL, bool bUseSpecial );
 

@@ -22,8 +22,10 @@
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/document/BrokenPackageRequest.hpp>
+#include <com/sun/star/document/XEmbeddedScripts.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
+#include <com/sun/star/script/XLibraryContainer.hpp>
 #include <com/sun/star/security/CertificateValidity.hpp>
 #include <com/sun/star/security/DocumentDigitalSignatures.hpp>
 #include <com/sun/star/security/XDocumentDigitalSignatures.hpp>
@@ -261,7 +263,7 @@ CPPUNIT_TEST_FIXTURE(SigningTest, testECDSAPDF)
     // a stream.
     loadFromURL(u"private:factory/swriter"_ustr);
 
-    save(TestFilter::PDF_WRITER);
+    save(TestFilter::PDF);
 
     DocumentSignatureManager aManager(m_xContext, DocumentSignatureMode::Content);
     CPPUNIT_ASSERT(aManager.init());
@@ -557,8 +559,9 @@ CPPUNIT_TEST_FIXTURE(SigningTest, testODFTripleX509Data)
     CPPUNIT_ASSERT(pObjectShell);
     SignatureState nActual = pObjectShell->GetDocumentSignatureState();
     // here, libxmlsec will pick the 1st X509Data but signing key is the 2nd
+    // - now using xd:SigningCertificate the signature can be validated.
     CPPUNIT_ASSERT_EQUAL_MESSAGE((OString::number(o3tl::to_underlying(nActual)).getStr()),
-                                 SignatureState::BROKEN, nActual);
+                                 SignatureState::NOTVALIDATED, nActual);
     uno::Sequence<security::DocumentSignatureInformation> const infos(
         pObjectShell->GetDocumentSignatureInformation(false));
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), infos.getLength());
@@ -800,7 +803,7 @@ CPPUNIT_TEST_FIXTURE(SigningTest, testPDFAddVisibleSignature)
     pObjectShell->SignDocumentContentUsingCertificate(aSigningContext);
 
     // Then: count the # of shapes on the signature widget/annotation.
-    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport(pPDFium);
 
     std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(/*nIndex=*/0);
     CPPUNIT_ASSERT_EQUAL(1, pPdfPage->getAnnotationCount());
@@ -1258,6 +1261,40 @@ CPPUNIT_TEST_FIXTURE(SigningTest, testImplicitScriptSign)
                 "/odfds:document-signatures/dsig:Signature[1]/dsig:SignedInfo/"
                 "dsig:Reference[@URI='META-INF/macrosignatures.xml']",
                 1);
+}
+
+CPPUNIT_TEST_FIXTURE(SigningTest, testCool15956)
+{
+    // The Basic library and module order is part of the signed macro streams (Basic/script-lc.xml
+    // and each Basic/<lib>/script-lb.xml). Re-saving a document must keep the insertion order to
+    // keep macro signatures valid.
+    loadFromFile(u"Cool15956.ods");
+    SfxBaseModel* pBaseModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
+    CPPUNIT_ASSERT(pBaseModel);
+    SfxObjectShell* pObjectShell = pBaseModel->GetObjectShell();
+    CPPUNIT_ASSERT(pObjectShell);
+    SignatureState eBefore = pObjectShell->GetScriptingSignatureState();
+    CPPUNIT_ASSERT(eBefore == SignatureState::OK || eBefore == SignatureState::NOTVALIDATED);
+
+    // Load the libraries so that storing regenerates their index and module streams.
+    auto xScripts = mxComponent.queryThrow<document::XEmbeddedScripts>();
+    auto xLibs = xScripts->getBasicLibraries().queryThrow<script::XLibraryContainer>();
+    for (const OUString& rLib : xLibs->getElementNames())
+        xLibs->loadLibrary(rLib);
+
+    // FIXME: Error: element "document-signatures" is missing "version" attribute
+    skipValidation();
+
+    saveAndReload(TestFilter::ODS);
+
+    pBaseModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
+    CPPUNIT_ASSERT(pBaseModel);
+    pObjectShell = pBaseModel->GetObjectShell();
+    CPPUNIT_ASSERT(pObjectShell);
+    SignatureState eAfter = pObjectShell->GetScriptingSignatureState();
+    // Without the NameContainer insertion-order fix the resave reordered the signed
+    // Basic streams and the macro signature was dropped (SignatureState::NOSIGNATURES).
+    CPPUNIT_ASSERT(eAfter == SignatureState::OK || eAfter == SignatureState::NOTVALIDATED);
 }
 
 #if HAVE_FEATURE_GPGVERIFY

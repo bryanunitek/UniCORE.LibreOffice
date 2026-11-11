@@ -13,6 +13,7 @@
 #include <formulacell.hxx>
 #include <tokenarray.hxx>
 #include <compiler.hxx>
+#include <comphelper/hash.hxx>
 #include <comphelper/random.hxx>
 #include <scmatrix.hxx>
 #include <sal/log.hxx>
@@ -28,6 +29,7 @@
 #include "op_spreadsheet.hxx"
 #include "op_addin.hxx"
 
+#include <iomanip>
 #include <limits>
 
 #include <com/sun/star/sheet/FormulaLanguage.hpp>
@@ -60,9 +62,6 @@ const char* const publicFunc =
 #include <map>
 #include <iostream>
 #include <algorithm>
-
-#include <rtl/digest.h>
-
 #include <memory>
 
 using namespace formula;
@@ -2556,12 +2555,11 @@ std::string const & DynamicKernel::GetMD5()
     {
         outputstream md5s;
         // Compute MD5SUM of kernel body to obtain the name
-        sal_uInt8 result[RTL_DIGEST_LENGTH_MD5];
-        rtl_digest_MD5(
-            mFullProgramSrc.c_str(),
-            mFullProgramSrc.length(), result,
-            RTL_DIGEST_LENGTH_MD5);
-        for (sal_uInt8 i : result)
+        ::std::vector<unsigned char> hash{
+            ::comphelper::Hash::calculateHash(mFullProgramSrc.c_str(),
+                    mFullProgramSrc.length(), ::comphelper::HashType::MD5)};
+
+        for (sal_uInt8 i : hash)
         {
             md5s << std::hex << static_cast<int>(i);
         }

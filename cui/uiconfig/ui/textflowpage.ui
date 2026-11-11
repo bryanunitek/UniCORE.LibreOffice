@@ -85,7 +85,12 @@
     <property name="step-increment">1</property>
     <property name="page-increment">10</property>
   </object>
-  <!-- n-columns=2 n-rows=3 -->
+  <object class="GtkAdjustment" id="hyphenadjustmentslider">
+    <property name="upper">100</property>
+    <property name="step-increment">10</property>
+    <property name="page-increment">10</property>
+  </object>
+  <!-- n-columns=2 n-rows=4 -->
   <object class="GtkGrid" id="TextFlowPage">
     <property name="visible">True</property>
     <property name="can-focus">False</property>
@@ -100,7 +105,7 @@
         <property name="label-xalign">0</property>
         <property name="shadow-type">none</property>
         <child>
-          <!-- n-columns=2 n-rows=10 -->
+          <!-- n-columns=2 n-rows=11 -->
           <object class="GtkGrid" id="grid1">
             <property name="visible">True</property>
             <property name="can-focus">False</property>
@@ -406,6 +411,71 @@
                 <property name="width">2</property>
               </packing>
             </child>
+            <child>
+              <!-- n-columns=3 n-rows=1 -->
+              <object class="GtkGrid" id="gridSlider">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="column-spacing">3</property>
+                <child>
+                  <object class="GtkLabel" id="labelBetterSpacing">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes" context="textflowpage|labelBetterSpacing">Better Spacing</property>
+                    <property name="use-underline">True</property>
+                    <property name="mnemonic-widget">hyphenslider</property>
+                    <property name="xalign">0</property>
+                    <attributes>
+                      <attribute name="scale" value="0.9"/>
+                    </attributes>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkScale" id="hyphenslider">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="hexpand">True</property>
+                    <property name="adjustment">hyphenadjustmentslider</property>
+                    <property name="draw-value">False</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="hyphenslider-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="textflowpage|extended_tip|hyphenslider">Set paragraph layout with better spacing or worse spacing, but less hyphenation.</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="labelLessHyphen">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes" context="textflowpage|labelLessHyphen">Fewer Hyphens</property>
+                    <property name="use-underline">True</property>
+                    <property name="mnemonic-widget">hyphenslider</property>
+                    <property name="xalign">0</property>
+                    <attributes>
+                      <attribute name="scale" value="0.9"/>
+                    </attributes>
+                  </object>
+                  <packing>
+                    <property name="left-attach">2</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="left-attach">0</property>
+                <property name="top-attach">10</property>
+                <property name="width">2</property>
+              </packing>
+            </child>
           </object>
         </child>
         <child type="label">
@@ -583,6 +653,27 @@
               </packing>
             </child>
             <child>
+              <object class="GtkCheckButton" id="checkSplitCompoundWord">
+                <property name="label" translatable="yes" context="textflowpage|checkSplitCompound">Split compound word</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">False</property>
+                <property name="use-underline">True</property>
+                <property name="inconsistent">True</property>
+                <property name="draw-indicator">True</property>
+                <child internal-child="accessible">
+                  <object class="AtkObject" id="checkSplitCompoundWord-atkobject">
+                    <property name="AtkObject::accessible-description" translatable="yes" context="textflowpage|extended_tip|checkMoveLine">Select this check box, if you always want to split compound words.</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="left-attach">3</property>
+                <property name="top-attach">2</property>
+              </packing>
+            </child>
+
+            <child>
               <object class="GtkCheckButton" id="checkAcrossSpread">
                 <property name="label" translatable="yes" context="textflowpage|checkAcrossSpread">Spread</property>
                 <property name="visible">True</property>
@@ -602,6 +693,7 @@
                 <property name="top-attach">3</property>
               </packing>
             </child>
+
             <child>
               <object class="GtkLabel" id="labelSpreadEndZone">
                 <property name="visible">True</property>
@@ -631,7 +723,7 @@
             </child>
             <child>
               <object class="GtkCheckButton" id="checkMoveLine">
-                <property name="label" translatable="yes" context="textflowpage|checkMoveLine">Move Line</property>
+                <property name="label" translatable="yes" context="textflowpage|checkMoveLine">Move line</property>
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>
                 <property name="receives-default">False</property>
@@ -673,7 +765,7 @@
       </object>
       <packing>
         <property name="left-attach">0</property>
-        <property name="top-attach">2</property>
+        <property name="top-attach">3</property>
         <property name="width">2</property>
       </packing>
     </child>
@@ -924,7 +1016,7 @@
             </child>
             <child>
               <object class="GtkCheckButton" id="checkSplitPara">
-                <property name="label" translatable="yes" context="textflowpage|checkSplitPara">_Allow to split paragraph</property>
+                <property name="label" translatable="yes" context="textflowpage|checkSplitPara">_Allow splitting paragraph</property>
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>
                 <property name="receives-default">False</property>
@@ -1077,6 +1169,12 @@
         <property name="left-attach">1</property>
         <property name="top-attach">1</property>
       </packing>
+    </child>
+    <child>
+      <placeholder/>
+    </child>
+    <child>
+      <placeholder/>
     </child>
     <child internal-child="accessible">
       <object class="AtkObject" id="TextFlowPage-atkobject">

@@ -177,7 +177,7 @@ public:
 
         if (pCell->IsValue())
         {
-            // Turn this into value cell.
+            // Turn this into a value cell.
             mpDoc->SetValue(aPos, pCell->GetValue());
         }
         else
@@ -1717,6 +1717,57 @@ void ScExternalRefManager::getAllCachedTableNames(sal_uInt16 nFileId, std::vecto
     maRefCache.getAllTableNames(nFileId, rTabNames);
 }
 
+void ScExternalRefManager::shrinkToDataArea( sal_uInt16 nFileId, const OUString& rTabName, ScRange& rRange )
+{
+    SCCOL nCol2 = rRange.aEnd.Col();
+    SCROW nRow2 = rRange.aEnd.Row();
+
+    // A loaded source document knows the real extent, the cache only what
+    // the file happened to store.
+    if (const ScDocument* pSrcDoc = getInMemorySrcDocument(nFileId))
+    {
+        SCTAB nTab;
+        if (!getSrcDocTable(*pSrcDoc, rTabName, nTab, nFileId))
+            return;
+
+        SCCOL nCol1 = rRange.aStart.Col();
+        SCROW nRow1 = rRange.aStart.Row();
+        if (!pSrcDoc->ShrinkToDataArea(nTab, nCol1, nRow1, nCol2, nRow2))
+            return;
+    }
+    else
+    {
+        ScExternalRefCache::TableTypeRef pTab = maRefCache.getCacheTable(nFileId, rTabName, false, nullptr, nullptr);
+        if (!pTab)
+            return;
+
+        // Bounded by the range, or the end could be pulled in front of the
+        // start for a column or row the cache holds no data for at all.
+        std::vector<SCROW> aRows;
+        pTab->getAllRows(aRows, rRange.aStart.Row(), nRow2);
+        if (aRows.empty())
+            return;
+
+        nRow2 = aRows.back();
+
+        SCCOL nMaxCol = -1;
+        for (const SCROW nRow : aRows)
+        {
+            std::vector<SCCOL> aCols;
+            pTab->getAllCols(nRow, aCols, rRange.aStart.Col(), nCol2);
+            if (!aCols.empty())
+                nMaxCol = std::max(nMaxCol, aCols.back());
+        }
+        if (0 <= nMaxCol)
+            nCol2 = nMaxCol;
+    }
+
+    if (nCol2 < rRange.aEnd.Col())
+        rRange.aEnd.SetCol(nCol2);
+    if (nRow2 < rRange.aEnd.Row())
+        rRange.aEnd.SetRow(nRow2);
+}
+
 SCTAB ScExternalRefManager::getCachedTabSpan( sal_uInt16 nFileId, const OUString& rStartTabName, const OUString& rEndTabName ) const
 {
     return maRefCache.getTabSpan( nFileId, rStartTabName, rEndTabName);
@@ -2133,9 +2184,9 @@ namespace {
 
 bool hasRangeName(const ScDocument& rDoc, const OUString& rName)
 {
-    ScRangeName* pExtNames = rDoc.GetRangeName();
+    ScRangeName& rExtNames = rDoc.GetRangeName();
     OUString aUpperName = ScGlobal::getCharClass().uppercase(rName);
-    const ScRangeData* pRangeData = pExtNames->findByUpperName(aUpperName);
+    const ScRangeData* pRangeData = rExtNames.findByUpperName(aUpperName);
     return pRangeData != nullptr;
 }
 
@@ -2354,9 +2405,9 @@ ScExternalRefCache::TokenArrayRef ScExternalRefManager::getDoubleRefTokensFromSr
 ScExternalRefCache::TokenArrayRef ScExternalRefManager::getRangeNameTokensFromSrcDoc(
     sal_uInt16 nFileId, const ScDocument& rSrcDoc, OUString& rName)
 {
-    ScRangeName* pExtNames = rSrcDoc.GetRangeName();
+    ScRangeName& rExtNames = rSrcDoc.GetRangeName();
     OUString aUpperName = ScGlobal::getCharClass().uppercase(rName);
-    const ScRangeData* pRangeData = pExtNames->findByUpperName(aUpperName);
+    const ScRangeData* pRangeData = rExtNames.findByUpperName(aUpperName);
     if (!pRangeData)
         return ScExternalRefCache::TokenArrayRef();
 
@@ -2528,11 +2579,9 @@ SfxObjectShellRef ScExternalRefManager::loadSrcDocument(sal_uInt16 nFileId, OUSt
     if (!isFileLoadable(aFile))
         return nullptr;
 
-    INetURLObject aURLObject(aFile);
-    const OUString sHost = aURLObject.GetHost();
-    if (HostFilter::isForbidden(sHost))
+    if (HostFilter::isUrlForbidden(aFile))
     {
-        SAL_WARN( "sc.ui", "ScExternalRefManager::loadSrcDocument: blocked access to external file: \"" << aFile << "\"");
+        SAL_WARN( "sc.ui", "ScExternalRefManager::loadSrcDocument: blocked url: \"" << aFile << "\"");
         return nullptr;
     }
 
@@ -3067,14 +3116,13 @@ void ScExternalRefManager::breakLink(sal_uInt16 nFileId)
     // Remove all named ranges that reference this document.
 
     // Global named ranges.
-    ScRangeName* pRanges = mrDoc.GetRangeName();
-    if (pRanges)
-        removeRangeNamesBySrcDoc(*pRanges, nFileId);
+    ScRangeName& rRanges = mrDoc.GetRangeName();
+    removeRangeNamesBySrcDoc(rRanges, nFileId);
 
     // Sheet-local named ranges.
     for (SCTAB i = 0, n = mrDoc.GetTableCount(); i < n; ++i)
     {
-        pRanges = mrDoc.GetRangeName(i);
+        ScRangeName* pRanges = mrDoc.GetRangeName(i);
         if (pRanges)
             removeRangeNamesBySrcDoc(*pRanges, nFileId);
     }

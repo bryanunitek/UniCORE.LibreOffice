@@ -113,6 +113,9 @@ bool WW8Glossary::MakeEntries(SwDoc *pD, SwTextBlocks &rBlocks,
         sal_uInt16 nGlosEntry = 0;
         SwContentNode* pCNd = nullptr;
         do {
+            if (nGlosEntry >= rExtra.size() || nGlosEntry >= rStrings.size())
+                break;
+
             SwPaM aPam( aStart );
             {
                 SwPosition& rPos = *aPam.GetPoint();
@@ -144,7 +147,7 @@ bool WW8Glossary::MakeEntries(SwDoc *pD, SwTextBlocks &rBlocks,
             // sttbfglsystyle list that this entry belongs to. Unused at the
             // moment
             const ww::bytes &rData = rExtra[nGlosEntry];
-            sal_uInt16 n = SVBT16ToUInt16( &(rData[2]) );
+            sal_uInt16 n = rData.size() >= 4 ? SVBT16ToUInt16( &(rData[2]) ) : sal_uInt16(0xFFFF);
             if(n != 0xFFFF)
             {
                 rBlocks.ClearDoc();
@@ -208,7 +211,7 @@ bool WW8Glossary::Load( SwTextBlocks &rBlocks, bool bSaveRelFile )
         if ( 0 != m_nStrings )
         {
             SfxObjectShellLock xDocSh(new SwDocShell(SfxObjectCreateMode::INTERNAL));
-            if (xDocSh->DoInitNew())
+            if (xDocSh->DoInitNew(SfxNewDocumentMacros::Disallow))
             {
                 SwDoc *pD =  static_cast<SwDocShell*>((&xDocSh))->GetDoc();
 

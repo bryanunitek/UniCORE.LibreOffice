@@ -22,6 +22,7 @@
 #include <unotbl.hxx>
 #include <PostItMgr.hxx>
 #include <AnnotationWin.hxx>
+#include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/awt/FontUnderline.hpp>
 
 #include <svx/hdft.hxx>
@@ -31,6 +32,7 @@
 
 #include <i18nutil/searchopt.hxx>
 #include <txtftn.hxx>
+#include <dbmgr.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <IDocumentRedlineAccess.hxx>
@@ -405,6 +407,30 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTextSearch)
                          pCursor->GetPointNode().GetTextNode()->GetText());
 }
 
+CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTextSearchNoResults)
+{
+    // Check searching for a string with no matches. This should check tdf#173585
+
+    // Create a new empty Writer document
+    createSwDoc();
+
+    // Search for “Hello” in italics
+    uno::Reference<util::XSearchable> xSearch(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<util::XPropertyReplace> xSearchDescriptor(xSearch->createSearchDescriptor(),
+                                                             uno::UNO_QUERY_THROW);
+
+    xSearchDescriptor->setSearchString(u"Hello"_ustr);
+
+    uno::Sequence<beans::PropertyValue> aAttributes(comphelper::InitPropertySequence(
+        { { "CharPosture", uno::Any(css::awt::FontSlant_ITALIC) } }));
+    xSearchDescriptor->setSearchAttributes(aAttributes);
+
+    uno::Reference<css::container::XIndexAccess> xIndex = xSearch->findAll(xSearchDescriptor);
+
+    // There should be no matches
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), xIndex->getCount());
+}
+
 CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf131431)
 {
     // the goal of this test is to check if replaceAll does not go into an infinite loop
@@ -414,9 +440,9 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf131431)
 
     // setup search for any underline text
     uno::Sequence<beans::PropertyValue> aSearchAttribute(comphelper::InitPropertySequence(
-        { { "CharUnderline", uno::Any(sal_Int32(css::awt::FontUnderline::NONE)) } }));
+        { { "CharUnderline", uno::Any(sal_Int32(css::awt::FontUnderline::SINGLE)) } }));
 
-    // setup replace with green highlight color
+    // setup replace to also apply green highlight color
     uno::Sequence<beans::PropertyValue> aReplaceAttribute(
         comphelper::InitPropertySequence({ { "CharBackColor", uno::Any(sal_Int32(0x00FF00)) } }));
 
@@ -446,10 +472,37 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf131431)
     completed = true;
     TimeoutThread.join();
 
-    // ideally should be 9, but due to some bugs it reports more
-    // CPPUNIT_ASSERT_EQUAL(sal_Int32(9), nReplaceCount);
-    CPPUNIT_ASSERT_GREATEREQUAL(sal_Int32(8), nReplaceCount);
-    CPPUNIT_ASSERT_LESSEQUAL(sal_Int32(14), nReplaceCount);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(9), nReplaceCount);
+
+    // a simple 'search' should also report the same number
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(9), xReplace->findAll(xReplaceDes)->getCount());
+}
+
+CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf164402_FindWhiteColor)
+{
+    // the goal of this test is to check if white color text is found by the search function
+    // load document with some text in different colors, including white
+    createSwDoc("tdf164402_FindWhiteColor.odt");
+
+    // setup search for a white text
+    uno::Sequence<beans::PropertyValue> aSearchAttribute(
+        comphelper::InitPropertySequence({ { "CharColor", uno::Any(sal_Int32(0xFFFFFF)) } }));
+
+    uno::Reference<util::XReplaceable> xReplace(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<util::XReplaceDescriptor> xReplaceDes = xReplace->createReplaceDescriptor();
+    uno::Reference<util::XPropertyReplace> xPropReplace(xReplaceDes, uno::UNO_QUERY_THROW);
+    xPropReplace->setSearchAttributes(aSearchAttribute);
+
+    // a simple search should report one occurrence in the document
+    uno::Reference<css::container::XIndexAccess> xIndex = xReplace->findAll(xReplaceDes);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xIndex->getCount());
+
+    uno::Reference<text::XTextRange> xMatch(xIndex->getByIndex(0), uno::UNO_QUERY_THROW);
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: white
+    // - Actual  : Black white black
+    CPPUNIT_ASSERT_EQUAL(u"white"_ustr, xMatch->getString());
 }
 
 CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf147583_backwardSearch)
@@ -486,6 +539,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf147583_backwardSearch)
     xIndex.set(xSearch->findAll(xSearchDes), uno::UNO_SET_THROW);
     // should be one for every non-empty paragraph
     CPPUNIT_ASSERT_EQUAL(sal_Int32(14), xIndex->getCount());
+
+    // tdf#135538
+    // Search for the beginning of the paragraph
+    xSearchDes->setSearchString(u"^"_ustr); // the start of the paragraph
+    CPPUNIT_ASSERT_EQUAL(nParas, xSearch->findAll(xSearchDes)->getCount());
 }
 
 CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf69282)
@@ -2246,14 +2304,23 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testEmbeddedDataSource)
         = sdb::DatabaseContext::create(xComponentContext);
     CPPUNIT_ASSERT(!xDatabaseContext->hasByName(u"calc-data-source"_ustr));
 
-    // Load: should have a component and a data source, too.
+    // The document reaches its embedded data source by its own name for it.
+    auto getEmbeddedDataSource = [this, &xDatabaseContext]() {
+        SwDBManager* pDBManager = getSwDoc()->GetDBManager();
+        return uno::Reference<sdbc::XDataSource>(
+            xDatabaseContext->getByName(
+                pDBManager->ResolveDataSourceName(u"calc-data-source"_ustr)),
+            uno::UNO_QUERY);
+    };
+
+    // Load: should have a component and a data source, too, which is private to the document and
+    // not among the registered data sources.
     // Path with "#" must not cause issues
     createSwDoc("hash%23path/embedded-data-source.odt");
-    CPPUNIT_ASSERT(xDatabaseContext->hasByName(u"calc-data-source"_ustr));
+    CPPUNIT_ASSERT(!xDatabaseContext->hasByName(u"calc-data-source"_ustr));
 
     // Data source has a table named Sheet1.
-    uno::Reference<sdbc::XDataSource> xDataSource(
-        xDatabaseContext->getByName(u"calc-data-source"_ustr), uno::UNO_QUERY);
+    uno::Reference<sdbc::XDataSource> xDataSource = getEmbeddedDataSource();
     CPPUNIT_ASSERT(xDataSource.is());
     auto xConnection = xDataSource->getConnection(u""_ustr, u""_ustr);
     uno::Reference<container::XNameAccess> xTables
@@ -2263,12 +2330,12 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testEmbeddedDataSource)
     CPPUNIT_ASSERT(xTables->hasByName(u"Sheet1"_ustr));
     xConnection->close();
 
-    // Reload: should still have a component and a data source, too.
+    // Reload: should still have a component and a data source, too, still not registered.
     saveAndReload(TestFilter::ODT);
-    CPPUNIT_ASSERT(xDatabaseContext->hasByName(u"calc-data-source"_ustr));
+    CPPUNIT_ASSERT(!xDatabaseContext->hasByName(u"calc-data-source"_ustr));
 
     // Data source has a table named Sheet1 after saving to a different directory.
-    xDataSource.set(xDatabaseContext->getByName(u"calc-data-source"_ustr), uno::UNO_QUERY);
+    xDataSource = getEmbeddedDataSource();
     CPPUNIT_ASSERT(xDataSource.is());
     xConnection = xDataSource->getConnection(u""_ustr, u""_ustr);
     xTables = css::uno::Reference<css::sdbcx::XTablesSupplier>(xConnection, uno::UNO_QUERY_THROW)
@@ -2780,13 +2847,21 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf77014)
         {
             auto const& rPortionItem = aHandler.get(0);
             CPPUNIT_ASSERT_EQUAL(u"text"_ustr, rPortionItem.msItemType);
-            CPPUNIT_ASSERT_EQUAL(sal_Int32(91), rPortionItem.mnLength);
+            CPPUNIT_ASSERT_EQUAL(sal_Int32(90), rPortionItem.mnLength);
             CPPUNIT_ASSERT_EQUAL(PortionType::Text, rPortionItem.mnTextType);
+        }
+
+        // Trailing whitespace portion
+        {
+            auto const& rPortionItem = aHandler.get(1);
+            CPPUNIT_ASSERT_EQUAL(u"text"_ustr, rPortionItem.msItemType);
+            CPPUNIT_ASSERT_EQUAL(sal_Int32(1), rPortionItem.mnLength);
+            CPPUNIT_ASSERT_EQUAL(PortionType::Hole, rPortionItem.mnTextType);
         }
 
         // NEW LINE
         {
-            auto const& rPortionItem = aHandler.get(1);
+            auto const& rPortionItem = aHandler.get(2);
             CPPUNIT_ASSERT_EQUAL(u"line_break"_ustr, rPortionItem.msItemType);
         }
 
@@ -2794,7 +2869,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf77014)
         // which is 16 chars + 2 hidden chars (start & end input field) = 18 chars
         // If this is correct then the input field is in one piece
         {
-            auto const& rPortionItem = aHandler.get(2);
+            auto const& rPortionItem = aHandler.get(3);
             CPPUNIT_ASSERT_EQUAL(u"text"_ustr, rPortionItem.msItemType);
             CPPUNIT_ASSERT_EQUAL(sal_Int32(18), rPortionItem.mnLength);
             CPPUNIT_ASSERT_EQUAL(PortionType::InputField, rPortionItem.mnTextType);
@@ -2802,7 +2877,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf77014)
 
         // Text "."
         {
-            auto const& rPortionItem = aHandler.get(3);
+            auto const& rPortionItem = aHandler.get(4);
             CPPUNIT_ASSERT_EQUAL(u"text"_ustr, rPortionItem.msItemType);
             CPPUNIT_ASSERT_EQUAL(sal_Int32(1), rPortionItem.mnLength);
             CPPUNIT_ASSERT_EQUAL(PortionType::Text, rPortionItem.mnTextType);
@@ -2810,12 +2885,12 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf77014)
 
         // NEW LINE
         {
-            auto const& rPortionItem = aHandler.get(4);
+            auto const& rPortionItem = aHandler.get(5);
             CPPUNIT_ASSERT_EQUAL(u"line_break"_ustr, rPortionItem.msItemType);
         }
 
         {
-            auto const& rPortionItem = aHandler.get(5);
+            auto const& rPortionItem = aHandler.get(6);
             CPPUNIT_ASSERT_EQUAL(u"finish"_ustr, rPortionItem.msItemType);
         }
     }
@@ -3004,7 +3079,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf149089)
 
 CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf106137_UnicodeEscapeInReplacement)
 {
-    // unicode values in replacement strings should expand to Unicode character when regular expressions is selected as a option
+    // unicode values in replacement strings should expand to a Unicode character when regular expressions is selected as an option
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
     SwCursorShell* pShell(pDoc->GetEditShell());
@@ -3036,7 +3111,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf106137_UnicodeEscapeInReplacement_B
     SwPaM* pCursor = pShell->GetCursor();
     IDocumentContentOperations& rIDCO(pDoc->getIDocumentContentOperations());
 
-    // Insert text that contains a actual escaped unicode string
+    // Insert text that contains an actual escaped unicode string
     rIDCO.InsertString(*pCursor, u"find \\u0042"_ustr);
 
     uno::Reference<util::XReplaceable> xReplace(mxComponent, uno::UNO_QUERY);

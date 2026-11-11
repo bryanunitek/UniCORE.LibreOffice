@@ -282,7 +282,7 @@ ErrCode SbxValue::ScanNumIntnl( const OUString& rSrc, double& nVal, bool bSingle
     return nRetError;
 }
 
-// The number is prepared unformattedly with the given number of
+// The number is prepared without formatting with the given number of
 // NK-positions. A leading minus is added if applicable.
 // This routine is public because it's also used by the Put-functions
 // in the class SbxImpSTRING.
@@ -401,7 +401,7 @@ void BasicFormatNum(double d, const OUString& rFmt, OUString& rRes)
         sal_Unicode c1000 = rData.getNumThousandSep()[0];
         const OUString& aCurrencyStrg = rData.getCurrSymbol();
 
-        // initialize the Basic-formater help object:
+        // initialize the Basic-formatter help object:
         // get resources for predefined output
         // of the Format()-command, e. g. for "On/Off"
         OUString aOnStrg = BasResId(STR_BASICKEY_FORMAT_ON);

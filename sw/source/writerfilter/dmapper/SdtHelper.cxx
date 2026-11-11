@@ -28,11 +28,10 @@
 #include <officecfg/Office/Writer.hxx>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/text/XTextFieldsSupplier.hpp>
-#include <com/sun/star/document/XOOXMLDocumentPropertiesImporter.hpp>
 #include <ooxml/OOXMLDocument.hxx>
 #include <com/sun/star/xml/xpath/XPathAPI.hpp>
+#include <databindingnamespaces.hxx>
 #include <com/sun/star/xml/xpath/XPathException.hpp>
-#include <com/sun/star/xml/dom/DocumentBuilder.hpp>
 #include <unotxdoc.hxx>
 #include <unobookmark.hxx>
 #include <unocontentcontrol.hxx>
@@ -94,128 +93,7 @@ SdtHelper::SdtHelper(DomainMapper_Impl& rDM_Impl,
     , m_bHasUnusedText(false)
     , m_bHasElements(false)
     , m_bOutsideAParagraph(false)
-    , m_bPropertiesXMLsLoaded(false)
 {
-}
-
-SdtHelper::~SdtHelper() = default;
-
-void SdtHelper::loadPropertiesXMLs()
-{
-    // Initialize properties xml storage (m_xPropertiesXMLs)
-    uno::Reference<uno::XInterface> xTemp
-        = m_xComponentContext->getServiceManager()->createInstanceWithContext(
-            u"com.sun.star.document.OOXMLDocumentPropertiesImporter"_ustr, m_xComponentContext);
-    uno::Reference<document::XOOXMLDocumentPropertiesImporter> xImporter(xTemp, uno::UNO_QUERY);
-    if (!xImporter.is())
-        return;
-
-    uno::Reference<xml::dom::XDocumentBuilder> xDomBuilder(
-        xml::dom::DocumentBuilder::create(m_xComponentContext));
-    if (!xDomBuilder.is())
-        return;
-
-    // Load core properties
-    try
-    {
-        auto xCorePropsStream = xImporter->getCorePropertiesStream(m_rDM_Impl.m_xDocumentStorage);
-        m_xPropertiesXMLs.insert(
-            { u"{6C3C8BC8-F283-45AE-878A-BAB7291924A1}"_ustr, // hardcoded id for core props
-              xDomBuilder->parse(xCorePropsStream) });
-    }
-    catch (const uno::Exception&)
-    {
-        SAL_WARN("writerfilter",
-                 "SdtHelper::loadPropertiesXMLs: failed loading core properties XML");
-    }
-
-    // Load extended properties
-    try
-    {
-        auto xExtPropsStream
-            = xImporter->getExtendedPropertiesStream(m_rDM_Impl.m_xDocumentStorage);
-        m_xPropertiesXMLs.insert(
-            { u"{6668398D-A668-4E3E-A5EB-62B293D839F1}"_ustr, // hardcoded id for extended props
-              xDomBuilder->parse(xExtPropsStream) });
-    }
-    catch (const uno::Exception&)
-    {
-        SAL_WARN("writerfilter",
-                 "SdtHelper::loadPropertiesXMLs: failed loading extended properties XML");
-    }
-
-    // TODO: some other property items?
-
-    // Add custom XMLs
-    uno::Sequence<uno::Reference<xml::dom::XDocument>> aCustomXmls
-        = m_rDM_Impl.getDocumentReference()->getCustomXmlDomList();
-    uno::Sequence<uno::Reference<xml::dom::XDocument>> aCustomXmlProps
-        = m_rDM_Impl.getDocumentReference()->getCustomXmlDomPropsList();
-    if (aCustomXmls.getLength())
-    {
-        uno::Reference<XXPathAPI> xXpathAPI = XPathAPI::create(m_xComponentContext);
-        xXpathAPI->registerNS(
-            u"ds"_ustr, u"http://schemas.openxmlformats.org/officeDocument/2006/customXml"_ustr);
-        sal_Int32 nItem = 0;
-        // Hereby we assume that items from getCustomXmlDomList() and getCustomXmlDomPropsList()
-        // are matching each other:
-        // item1.xml -> itemProps1.xml, item2.xml -> itemProps2.xml
-        // This does works practically, but is it true in general?
-        for (const auto& xDoc : aCustomXmls)
-        {
-            // Retrieve storeid from properties xml
-            OUString aStoreId;
-            uno::Reference<XXPathObject> xResult = xXpathAPI->eval(
-                aCustomXmlProps[nItem], u"string(/ds:datastoreItem/@ds:itemID)"_ustr);
-
-            if (xResult.is() && xResult->getString().getLength())
-            {
-                aStoreId = xResult->getString();
-            }
-            else
-            {
-                SAL_WARN("writerfilter",
-                         "SdtHelper::loadPropertiesXMLs: can't fetch storeid for custom doc!");
-            }
-
-            m_xPropertiesXMLs.insert({ aStoreId, xDoc });
-            nItem++;
-        }
-    }
-
-    m_bPropertiesXMLsLoaded = true;
-}
-
-static void lcl_registerNamespaces(std::u16string_view sNamespaceString,
-                                   const uno::Reference<XXPathAPI>& xXPathAPI)
-{
-    // Split namespaces and register it in XPathAPI
-    auto aNamespaces = string::split(sNamespaceString, ' ');
-    for (const auto& sNamespace : aNamespaces)
-    {
-        // Here we have just one namespace in format "xmlns:ns0='http://someurl'"
-        auto aNamespace = string::split(sNamespace, '=');
-        if (aNamespace.size() < 2)
-        {
-            SAL_WARN("writerfilter",
-                     "SdtHelper::getValueFromDataBinding: invalid namespace: " << sNamespace);
-            continue;
-        }
-
-        auto aNamespaceId = string::split(aNamespace[0], ':');
-        if (aNamespaceId.size() < 2)
-        {
-            SAL_WARN("writerfilter",
-                     "SdtHelper::getValueFromDataBinding: invalid namespace: " << aNamespace[0]);
-            continue;
-        }
-
-        OUString sNamespaceURL = aNamespace[1];
-        sNamespaceURL = string::strip(sNamespaceURL, ' ');
-        sNamespaceURL = string::strip(sNamespaceURL, '\'');
-
-        xXPathAPI->registerNS(aNamespaceId[1], sNamespaceURL);
-    }
 }
 
 std::optional<OUString> SdtHelper::getValueFromDataBinding()
@@ -224,17 +102,13 @@ std::optional<OUString> SdtHelper::getValueFromDataBinding()
     if (m_sDataBindingXPath.isEmpty())
         return {};
 
-    // Load properties XMLs
-    if (!m_bPropertiesXMLsLoaded)
-        loadPropertiesXMLs();
-
     uno::Reference<XXPathAPI> xXpathAPI = XPathAPI::create(m_xComponentContext);
 
-    lcl_registerNamespaces(m_sDataBindingPrefixMapping, xXpathAPI);
+    sw::RegisterDataBindingNamespaces(m_sDataBindingPrefixMapping, xXpathAPI);
 
     // Find storage by store id and eval xpath there
-    const auto aSourceIt = m_xPropertiesXMLs.find(m_sDataBindingStoreItemID);
-    if (aSourceIt != m_xPropertiesXMLs.end())
+    const auto aSourceIt = m_rDM_Impl.GetPropertiesXMLs().find(m_sDataBindingStoreItemID);
+    if (aSourceIt != m_rDM_Impl.GetPropertiesXMLs().end())
     {
         try
         {
@@ -255,7 +129,7 @@ std::optional<OUString> SdtHelper::getValueFromDataBinding()
     }
 
     // Nothing found? Try to iterate storages and eval xpath
-    for (const auto& aSource : m_xPropertiesXMLs)
+    for (const auto& aSource : m_rDM_Impl.GetPropertiesXMLs())
     {
         try
         {

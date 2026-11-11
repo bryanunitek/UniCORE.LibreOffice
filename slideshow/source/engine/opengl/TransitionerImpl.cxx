@@ -34,7 +34,6 @@
 #include <com/sun/star/rendering/IntegerBitmapLayout.hpp>
 #include <com/sun/star/rendering/ColorComponentTag.hpp>
 #include <com/sun/star/rendering/ColorSpaceType.hpp>
-#include <com/sun/star/rendering/RenderingIntent.hpp>
 #include <com/sun/star/util/Endianness.hpp>
 #include <com/sun/star/animations/TransitionType.hpp>
 #undef IN
@@ -306,18 +305,9 @@ bool OGLTransitionerImpl::initWindowFromSlideShowView( const Reference< presenta
 
     /// take the XSlideShowView and extract the parent window from it. see viewmediashape.cxx
     uno::Reference< rendering::XCanvas > xCanvas(mxView->getCanvas(), uno::UNO_QUERY_THROW);
-    uno::Sequence< uno::Any > aDeviceParams;
-    ::canvastools::getDeviceInfo( xCanvas, aDeviceParams );
-
-    OUString aImplName;
-    aDeviceParams[ 0 ] >>= aImplName;
-
-    sal_Int64 aVal = 0;
-    aDeviceParams[1] >>= aVal;
+    const OutputDevice* pDevice = canvastools::getDeviceInfo(xCanvas);
 
     mpContext = OpenGLContext::Create();
-
-    OutputDevice* pDevice = reinterpret_cast<OutputDevice*>(aVal);
     vcl::Window* pWindow = pDevice ? pDevice->GetOwnerWindow() : nullptr;
 
     if( !mpContext->init( pWindow) ) {
@@ -486,14 +476,6 @@ private:
     virtual uno::Sequence< sal_Int8 > SAL_CALL getComponentTags(  ) override
     {
         return maComponentTags;
-    }
-    virtual sal_Int8 SAL_CALL getRenderingIntent(  ) override
-    {
-        return rendering::RenderingIntent::PERCEPTUAL;
-    }
-    virtual uno::Sequence< beans::PropertyValue > SAL_CALL getProperties(  ) override
-    {
-        return uno::Sequence< beans::PropertyValue >();
     }
     virtual uno::Sequence< double > SAL_CALL convertColorSpace( const uno::Sequence< double >& deviceColor,
                                                                 const uno::Reference< rendering::XColorSpace >& targetColorSpace ) override
@@ -829,7 +811,7 @@ void OGLTransitionerImpl::impl_createTexture(
 
         if (epoxy_has_gl_extension("GL_EXT_texture_filter_anisotropic"))
         {
-            //anistropic filtering (to make texturing not suck when looking at polygons from oblique angles)
+            //anisotropic filtering (to make texturing not suck when looking at polygons from oblique angles)
             GLfloat largest_supported_anisotropy;
             glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &largest_supported_anisotropy);
             glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, largest_supported_anisotropy);
@@ -844,7 +826,7 @@ void OGLTransitionerImpl::impl_createTexture(
 
             if (epoxy_has_gl_extension("GL_EXT_texture_filter_anisotropic"))
             {
-                //anistropic filtering (to make texturing not suck when looking at polygons from oblique angles)
+                //anisotropic filtering (to make texturing not suck when looking at polygons from oblique angles)
                 GLfloat largest_supported_anisotropy;
                 glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &largest_supported_anisotropy );
                 glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, largest_supported_anisotropy );

@@ -153,6 +153,7 @@ $(eval $(call gb_Helper_register_executables_for_install,OOO,brand, \
 	$(call gb_Helper_optional,FUZZERS,qpwfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,slkfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,fodtfuzzer) \
+	$(call gb_Helper_optional,FUZZERS,odtfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,fodt2pdffuzzer) \
 	$(call gb_Helper_optional,FUZZERS,fods2xlsfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,fodsfuzzer) \
@@ -359,12 +360,10 @@ ifneq ($(ENABLE_WASM_STRIP_CANVAS),TRUE)
 $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
 	canvastools \
 	$(if $(ENABLE_CAIRO_CANVAS),cairocanvas) \
-	canvasfactory \
 	cppcanvas \
 	$(if $(filter WNT,$(OS)),directx9canvas) \
 	$(if $(ENABLE_OPENGL_CANVAS),oglcanvas) \
 	$(if $(filter WNT,$(OS)),gdipluscanvas) \
-	simplecanvas \
 	vclcanvas \
 ))
 endif
@@ -475,7 +474,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
 	singleprov \
 	slideshow \
 	sot \
-	$(if $(or $(DISABLE_GUI),$(ENABLE_WASM_STRIP_SPLASH)),,spl) \
 	storagefd \
 	$(call gb_Helper_optional,SCRIPTING,stringresource) \
 	svgio \
@@ -849,7 +847,7 @@ $(eval $(call gb_Helper_register_jars,NONE,\
 ))
 endif
 
-# 'test_unittest' is only package delivering to workdir.
+# 'test_unittest' is the only package delivering to workdir.
 # Other packages could be potentially autoinstalled.
 $(eval $(call gb_Helper_register_packages, \
 	test_unittest \
@@ -921,6 +919,9 @@ $(eval $(call gb_Helper_register_packages_for_install,sdk,\
 		odk_javadoc \
 		odk_uno_loader_classes \
 	) \
+	$(if $(ENABLE_DOTNET), \
+		odk_dotnet \
+	) \
 	odk_scripts \
 ))
 
@@ -985,7 +986,7 @@ $(eval $(call gb_Helper_register_packages_for_install,ooo,\
 	$(call gb_Helper_optional,DESKTOP,\
 		$(if $(filter-out WNT,$(OS)),$(if $(ENABLE_MACOSX_SANDBOX),,shell_senddoc))) \
 	$(call gb_Helper_optional,DESKTOP,$(if $(filter-out EMSCRIPTEN MACOSX WNT,$(OS)),svx_gengal)) \
-	$(if $(USING_X11),vcl_fontunxppds) \
+	$(if $(USING_UNIX_DESKTOP),vcl_fontunxppds) \
 	$(if $(filter $(OS),MACOSX),vcl_osxres) \
 	xmloff_dtd \
 	xmlscript_dtd \
@@ -1051,7 +1052,7 @@ $(eval $(call gb_Helper_register_packages_for_install,ooo,\
 
 $(eval $(call gb_Helper_register_packages_for_install,ooo_fonts,\
 	extras_fonts \
-	$(if $(USING_X11)$(DISABLE_GUI)$(filter FONTCONFIG,$(BUILD_TYPE))$(filter ANDROID EMSCRIPTEN,$(OS)), \
+	$(if $(USE_HEADLESS_CODE)$(USING_UNIX_DESKTOP)$(DISABLE_GUI)$(filter FONTCONFIG,$(BUILD_TYPE))$(filter ANDROID EMSCRIPTEN,$(OS)), \
 		postprocess_fontconfig) \
 	$(call gb_Helper_optional,MORE_FONTS,\
 		fonts_alef \
@@ -1079,14 +1080,6 @@ $(eval $(call gb_Helper_register_packages_for_install,ooo_fonts,\
 		fonts_noto_serif_hebrew \
 		fonts_noto_serif_lao \
 		fonts_reem \
-		fonts_scheherazade \
-		$(if $(WITH_DOCREPAIR_FONTS),fonts_agdasima,) \
-		$(if $(WITH_DOCREPAIR_FONTS),fonts_bacasime_antique,) \
-		$(if $(WITH_DOCREPAIR_FONTS),fonts_belanosima,) \
-		$(if $(WITH_DOCREPAIR_FONTS),fonts_caprasimo,) \
-		$(if $(WITH_DOCREPAIR_FONTS),fonts_lugrasimo,) \
-		$(if $(WITH_DOCREPAIR_FONTS),fonts_lumanosimo,) \
-		$(if $(WITH_DOCREPAIR_FONTS),fonts_lunasima,) \
 	) \
 ))
 
@@ -1132,7 +1125,7 @@ $(eval $(call gb_Helper_register_packages_for_install,brand,\
 	) \
 ))
 
-ifeq ($(USING_X11), TRUE)
+ifeq ($(USING_UNIX_DESKTOP), TRUE)
 $(eval $(call gb_Helper_register_packages_for_install,base_brand,\
 	desktop_sbase_sh \
 ))
@@ -1156,7 +1149,7 @@ $(eval $(call gb_Helper_register_packages_for_install,math_brand,\
 $(eval $(call gb_Helper_register_packages_for_install,writer_brand,\
 	desktop_swriter_sh \
 ))
-endif # USING_X11=TRUE
+endif # USING_UNIX_DESKTOP=TRUE
 
 $(eval $(call gb_Helper_register_packages_for_install,onlineupdate,\
 	$(if $(ENABLE_ONLINE_UPDATE),$(if $(filter LINUX SOLARIS,$(OS)),setup_native_scripts)) \
@@ -1214,7 +1207,6 @@ $(eval $(call gb_Helper_register_mos,\
 	$(call gb_Helper_optional,SCRIPTING,sb) \
 	sc \
 	sca \
-	scc \
 	sd \
 	sdext \
 	sfx \

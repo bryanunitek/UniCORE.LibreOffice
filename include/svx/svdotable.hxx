@@ -93,6 +93,8 @@ class SVXCORE_DLLPUBLIC SdrTableObj final : public ::SdrTextObj
     // protected destructor
     virtual ~SdrTableObj() override;
 
+    virtual rtl::Reference<SdrObject> implCloneSdrObject(SdrModel& rTargetModel) const override;
+
 public:
     SdrTableObj(SdrModel& rSdrModel);
     // Copy constructor
@@ -151,6 +153,8 @@ public:
 
     const SfxItemSet& GetActiveCellItemSet() const;
 
+    virtual std::optional<Color> GetActiveTextBackgroundColor(const SdrText* pSdrText) const override;
+
      void setTableStyle( const css::uno::Reference< css::container::XIndexAccess >& xAutoFormatStyle );
      const css::uno::Reference< css::container::XIndexAccess >& getTableStyle() const;
 
@@ -201,7 +205,6 @@ public:
     virtual bool AdjustTextFrameWidthAndHeight() override;
     virtual OUString TakeObjNameSingul() const override;
     virtual OUString TakeObjNamePlural() const override;
-    virtual rtl::Reference<SdrObject> CloneSdrObject(SdrModel& rTargetModel) const override;
     virtual void RecalcSnapRect() override;
     virtual const tools::Rectangle& GetSnapRect() const override;
     virtual void NbcSetSnapRect(const tools::Rectangle& rRect) override;

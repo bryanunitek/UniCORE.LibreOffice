@@ -16,6 +16,7 @@ $(eval $(call gb_CppunitTest_use_api,drawinglayer_processors,\
 
 $(eval $(call gb_CppunitTest_use_libraries,drawinglayer_processors, \
 	basegfx \
+	comphelper \
 	$(if $(ENABLE_WASM_STRIP_CANVAS),,cppcanvas) \
 	cppu \
 	cppuhelper \
@@ -28,6 +29,7 @@ $(eval $(call gb_CppunitTest_use_libraries,drawinglayer_processors, \
 	tl \
 	unotest \
 	svt \
+	utl \
 ))
 
 $(eval $(call gb_CppunitTest_use_externals,drawinglayer_processors,\
@@ -35,6 +37,9 @@ $(eval $(call gb_CppunitTest_use_externals,drawinglayer_processors,\
 ))
 
 $(eval $(call gb_CppunitTest_add_exception_objects,drawinglayer_processors, \
+	drawinglayer/qa/unit/strokeattribute \
+	drawinglayer/qa/unit/GlowPrimitive2dTest \
+	drawinglayer/qa/unit/ReflectionPrimitive2dTest \
 	drawinglayer/qa/unit/vclmetafileprocessor2d \
 	drawinglayer/qa/unit/vclpixelprocessor2d \
 ))
@@ -45,11 +50,11 @@ $(eval $(call gb_CppunitTest_use_vcl,drawinglayer_processors))
 
 $(eval $(call gb_CppunitTest_use_components,drawinglayer_processors,\
     canvas/source/vcl/vclcanvas \
-    canvas/source/factory/canvasfactory \
     configmgr/source/configmgr \
     i18npool/util/i18npool \
     ucb/source/core/ucb1 \
     ucb/source/ucp/file/ucpfile1 \
+    framework/util/fwk \
 ))
 
 $(eval $(call gb_CppunitTest_use_configuration,drawinglayer_processors))

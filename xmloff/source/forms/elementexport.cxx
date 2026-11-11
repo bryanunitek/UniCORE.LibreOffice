@@ -131,7 +131,7 @@ namespace xmloff
 
     void OElementExport::exportSubTags()
     {
-        // the properties which where not exported 'til now
+        // the properties which were not exported 'til now
         exportRemainingProperties();
 
         // the script:events sub tags
@@ -386,7 +386,7 @@ namespace xmloff
             }
             break;
             case COMBOBOX:
-            {   // a combox box description has sub elements: the items
+            {   // a combobox box description has sub elements: the items
                 DBG_CHECK_PROPERTY( PROPERTY_STRING_ITEM_LIST, Sequence< OUString > );
 
                 // don't export the list entries if the are not provided by the user, but obtained implicitly

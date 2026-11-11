@@ -63,6 +63,9 @@
 {
     (void)pNotification;
 
+    NSArray *emptyArray = @[];
+    [NSApp registerServicesMenuSendTypes:emptyArray returnTypes:NSImage.imageTypes];
+
     NSEvent* pEvent = [NSEvent otherEventWithType: NSEventTypeApplicationDefined
                                location: NSZeroPoint
                                modifierFlags: 0
@@ -227,7 +230,7 @@
     {
         const ApplicationEvent* pAppEvent = new ApplicationEvent(ApplicationEvent::Type::Open, std::move(aFile));
         AquaSalInstance::aAppEventList.push_back( pAppEvent );
-        AquaSalInstance *pInst = GetSalData()->mpInstance;
+        AquaSalInstance* pInst = GetAquaSalInstance();
         if( pInst )
             pInst->TriggerUserEventProcessing();
     }
@@ -258,7 +261,7 @@
         // [app replyToOpenOrPrint: NSApplicationDelegateReplySuccess];
         const ApplicationEvent* pAppEvent = new ApplicationEvent(ApplicationEvent::Type::Open, std::move(aFileList));
         AquaSalInstance::aAppEventList.push_back( pAppEvent );
-        AquaSalInstance *pInst = GetSalData()->mpInstance;
+        AquaSalInstance* pInst = GetAquaSalInstance();
         if( pInst )
             pInst->TriggerUserEventProcessing();
     }
@@ -270,7 +273,7 @@
     std::vector<OUString> aFile { GetOUString(pFile) };
     const ApplicationEvent* pAppEvent = new ApplicationEvent(ApplicationEvent::Type::Print, std::move(aFile));
     AquaSalInstance::aAppEventList.push_back( pAppEvent );
-    AquaSalInstance *pInst = GetSalData()->mpInstance;
+    AquaSalInstance* pInst = GetAquaSalInstance();
     if( pInst )
         pInst->TriggerUserEventProcessing();
     return YES;
@@ -292,7 +295,7 @@
     }
     const ApplicationEvent* pAppEvent = new ApplicationEvent(ApplicationEvent::Type::Print, std::move(aFileList));
     AquaSalInstance::aAppEventList.push_back( pAppEvent );
-    AquaSalInstance *pInst = GetSalData()->mpInstance;
+    AquaSalInstance* pInst = GetAquaSalInstance();
     if( pInst )
         pInst->TriggerUserEventProcessing();
     // we have no back channel here, we have to assume success
@@ -315,7 +318,7 @@
     {
         SolarMutexGuard aGuard;
 
-        AquaSalInstance *pInst = GetSalData()->mpInstance;
+        AquaSalInstance* pInst = GetAquaSalInstance();
         SalFrame *pAnyFrame = pInst->anyFrame();
         if( pAnyFrame )
         {
@@ -356,7 +359,7 @@
     // Related: tdf#156855 delay SalEvent::SettingsChanged event
     // -[SalFrameView viewDidChangeEffectiveAppearance] needs to delay
     // so be safe and do the same here.
-    GetSalData()->mpInstance->delayedSettingsChanged( true );
+    GetAquaSalInstance()->delayedSettingsChanged(true);
 }
 
 -(void)screenParametersChanged: (NSNotification*) pNotification
@@ -364,7 +367,7 @@
     (void)pNotification;
     SolarMutexGuard aGuard;
 
-    for( auto pSalFrame : GetSalData()->mpInstance->getFrames() )
+    for (auto pSalFrame : GetAquaSalInstance()->getFrames())
     {
         AquaSalFrame *pFrame = static_cast<AquaSalFrame*>( pSalFrame );
         pFrame->screenParametersChanged();
@@ -374,13 +377,13 @@
 -(void)scrollbarVariantChanged: (NSNotification*) pNotification
 {
     (void)pNotification;
-    GetSalData()->mpInstance->delayedSettingsChanged( true );
+    GetAquaSalInstance()->delayedSettingsChanged(true);
 }
 
 -(void)scrollbarSettingsChanged: (NSNotification*) pNotification
 {
     (void)pNotification;
-    GetSalData()->mpInstance->delayedSettingsChanged( false );
+    GetAquaSalInstance()->delayedSettingsChanged(false);
 }
 
 -(void)addFallbackMenuItem: (NSMenuItem*)pNewItem

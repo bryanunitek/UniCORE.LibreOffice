@@ -462,8 +462,7 @@ void implStepRenameUCB( const OUString& aSource, const OUString& aDest )
         OUString aSourceFullPath = getFullPath( aSource );
         if( !xSFI->exists( aSourceFullPath ) )
         {
-            StarBASIC::Error( ERRCODE_BASIC_FILE_NOT_FOUND );
-            return;
+            return StarBASIC::Error( ERRCODE_BASIC_FILE_NOT_FOUND );
         }
 
         OUString aDestFullPath = getFullPath( aDest );
@@ -541,8 +540,7 @@ void SbRtl_Kill(StarBASIC *, SbxArray & rPar, bool)
             OUString aFullPath = getFullPath( aFileSpec );
             if( !xSFI->exists( aFullPath ) || xSFI->isFolder( aFullPath ) )
             {
-                StarBASIC::Error( ERRCODE_BASIC_FILE_NOT_FOUND );
-                return;
+                return StarBASIC::Error( ERRCODE_BASIC_FILE_NOT_FOUND );
             }
             try
             {
@@ -951,7 +949,7 @@ void SbRtl_Int(StarBASIC *, SbxArray & rPar, bool)
 
 void SbRtl_Fix(StarBASIC *, SbxArray & rPar, bool)
 {
-    if (rPar.Count() < 2)
+    if (rPar.Count() != 2)
         return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
 
     SbxVariableRef pArg = rPar.Get(1);
@@ -1273,7 +1271,7 @@ void SbRtl_RTrim(StarBASIC *, SbxArray & rPar, bool)
 
 void SbRtl_Sgn(StarBASIC *, SbxArray & rPar, bool)
 {
-    if (rPar.Count() < 2)
+    if (rPar.Count() != 2)
         return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
 
     double aDouble = rPar.Get(1)->GetDouble();
@@ -1942,19 +1940,16 @@ void SbRtl_TimeValue(StarBASIC *, SbxArray & rPar, bool)
     bool bSuccess = pFormatter->IsNumberFormat(rPar.Get(1)->GetOUString(),
                                                nIndex, fResult );
     SvNumFormatType nType = pFormatter->GetType(nIndex);
-    if(bSuccess && (nType==SvNumFormatType::TIME||nType==SvNumFormatType::DATETIME))
+    if (!bSuccess || (nType != SvNumFormatType::TIME && nType != SvNumFormatType::DATETIME))
     {
-        if ( nType == SvNumFormatType::DATETIME )
-        {
-            // cut days
-            fResult = fmod( fResult, 1 );
-        }
-        rPar.Get(0)->PutDate(fResult);
+        return StarBASIC::Error( ERRCODE_BASIC_CONVERSION );
     }
-    else
+    if ( nType == SvNumFormatType::DATETIME )
     {
-        StarBASIC::Error( ERRCODE_BASIC_CONVERSION );
+        // cut days
+        fResult = fmod( fResult, 1 );
     }
+    rPar.Get(0)->PutDate(fResult);
 }
 
 void SbRtl_Day(StarBASIC *, SbxArray & rPar, bool)
@@ -2372,36 +2367,28 @@ static bool implCheckWildcard(std::u16string_view rName, SbiRTLData const& rRTLD
     return bMatch;
 }
 
-
 static bool isRootDir( std::u16string_view aDirURLStr )
 {
     INetURLObject aDirURLObj( aDirURLStr );
-    bool bRoot = false;
 
     // Check if it's a root directory
     sal_Int32 nCount = aDirURLObj.getSegmentCount();
 
     // No segment means Unix root directory "file:///"
-    if( nCount == 0 )
-    {
-        bRoot = true;
-    }
+    if (nCount == 0)
+        return true;
+
+    // More than one segment can never be root
+    if (nCount != 1)
+        return false;
+
     // Exactly one segment needs further checking, because it
     // can be Unix "file:///foo/" -> no root
     // or Windows  "file:///c:/"  -> root
-    else if( nCount == 1 )
-    {
-        OUString aSeg1 = aDirURLObj.getName( 0, true,
-                                             INetURLObject::DecodeMechanism::WithCharset );
-        if( aSeg1[1] == ':' )
-        {
-            bRoot = true;
-        }
-    }
-    // More than one segments can never be root
-    // so bRoot remains false
+    OUString aSeg1 = aDirURLObj.getName( 0, true,
+                                         INetURLObject::DecodeMechanism::WithCharset );
 
-    return bRoot;
+    return aSeg1.getLength() > 1 && aSeg1[1] == ':';
 }
 
 void SbRtl_Dir(StarBASIC *, SbxArray & rPar, bool)
@@ -2686,18 +2673,16 @@ void SbRtl_GetAttr(StarBASIC *, SbxArray & rPar, bool)
         OUString aPath;
         FileBase::getSystemPathFromFileURL( aPathURL, aPath );
         DWORD nRealFlags = GetFileAttributesW (o3tl::toW(aPath.getStr()));
-        if (nRealFlags != 0xffffffff)
-        {
-            if (nRealFlags == FILE_ATTRIBUTE_NORMAL)
-            {
-                nRealFlags = 0;
-            }
-            nFlags = static_cast<sal_Int16>(nRealFlags);
-        }
-        else
+        if (nRealFlags == 0xffffffff)
         {
             StarBASIC::Error( ERRCODE_BASIC_FILE_NOT_FOUND );
+            return;
         }
+        if (nRealFlags == FILE_ATTRIBUTE_NORMAL)
+        {
+            nRealFlags = 0;
+        }
+        nFlags = static_cast<sal_Int16>(nRealFlags);
         rPar.Get(0)->PutInteger(nFlags);
 
         return;
@@ -3601,12 +3586,10 @@ void SbRtl_DDEInitiate(StarBASIC *, SbxArray & rPar, bool)
     ErrCode nDdeErr = pDDE->Initiate( aApp, aTopic, nChannel );
     if( nDdeErr )
     {
-        StarBASIC::Error( nDdeErr );
+        return StarBASIC::Error( nDdeErr );
     }
-    else
-    {
-        rPar.Get(0)->PutInteger(static_cast<sal_Int16>(nChannel));
-    }
+
+    rPar.Get(0)->PutInteger(static_cast<sal_Int16>(nChannel));
 }
 
 void SbRtl_DDETerminate(StarBASIC *, SbxArray & rPar, bool)
@@ -3615,8 +3598,7 @@ void SbRtl_DDETerminate(StarBASIC *, SbxArray & rPar, bool)
     int nArgs = static_cast<int>(rPar.Count());
     if ( nArgs != 2 )
     {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
-        return;
+        return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
     }
     size_t nChannel = rPar.Get(1)->GetInteger();
     SbiDdeControl* pDDE = GetSbData()->pInst->GetDdeControl();
@@ -4213,28 +4195,23 @@ void SbRtl_DumpAllObjects(StarBASIC * pBasic, SbxArray & rPar, bool)
 {
     const sal_uInt32 nArgCount = rPar.Count();
     if( nArgCount < 2 || nArgCount > 3 )
+        return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+
+    if( !pBasic )
+        return StarBASIC::Error( ERRCODE_BASIC_INTERNAL_ERROR );
+
+    SbxObject* p = pBasic;
+    while( p->GetParent() )
     {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+        p = p->GetParent();
     }
-    else if( !pBasic )
+    SvFileStream aStrm(rPar.Get(1)->GetOUString(),
+                        StreamMode::WRITE | StreamMode::TRUNC );
+    p->Dump(aStrm, rPar.Get(2)->GetBool());
+    aStrm.Close();
+    if( aStrm.GetError() != ERRCODE_NONE )
     {
-        StarBASIC::Error( ERRCODE_BASIC_INTERNAL_ERROR );
-    }
-    else
-    {
-        SbxObject* p = pBasic;
-        while( p->GetParent() )
-        {
-            p = p->GetParent();
-        }
-        SvFileStream aStrm(rPar.Get(1)->GetOUString(),
-                            StreamMode::WRITE | StreamMode::TRUNC );
-        p->Dump(aStrm, rPar.Get(2)->GetBool());
-        aStrm.Close();
-        if( aStrm.GetError() != ERRCODE_NONE )
-        {
-            StarBASIC::Error( ERRCODE_BASIC_IO_ERROR );
-        }
+        StarBASIC::Error( ERRCODE_BASIC_IO_ERROR );
     }
 }
 

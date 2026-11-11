@@ -73,6 +73,7 @@
 #include <sfx2/progress.hxx>
 #include <editeng/editstat.hxx>
 #include <unotools/pathoptions.hxx>
+#include <unotools/ucbhelper.hxx>
 
 #include "pptanimations.hxx"
 #include "pptinanimations.hxx"
@@ -233,7 +234,7 @@ bool ImplSdPPTImport::Import()
     SdrOutliner& rOutl = mrDoc.GetDrawOutliner();
     EEControlBits nControlWord = rOutl.GetEditEngine().GetControlWord();
     nControlWord |=  EEControlBits::ULSPACESUMMATION;
-    const_cast<EditEngine&>(rOutl.GetEditEngine()).SetControlWord( nControlWord );
+    rOutl.GetEditEngine().SetControlWord( nControlWord );
 
     SdrLayerAdmin& rAdmin = mrDoc.GetLayerAdmin();
     mnBackgroundObjectsLayerID = rAdmin.GetLayerID( sUNO_LayerName_background_objects );
@@ -1828,7 +1829,8 @@ void ImplSdPPTImport::ImportPageEffect( SdPage* pPage, const bool bNewAnimations
                                 {   // slide with sound effect
                                     pPage->SetSound( true );
                                     OUString aSoundFile( ReadSound( nSoundRef ) );
-                                    pPage->SetSoundFile( aSoundFile );
+                                    // Embedded in the .ppt, not a link: allow it.
+                                    pPage->SetSoundFile( aSoundFile, /*bAllowed*/true );
                                 }
                                 if ( nBuildFlags & ( 1 << 6 ) )     // Loop until next sound
                                     pPage->SetLoopSound( true );
@@ -1897,6 +1899,52 @@ void ImplSdPPTImport::ImportPageEffect( SdPage* pPage, const bool bNewAnimations
 }
 
 // import of sounds
+
+namespace
+{
+// The user gallery folder also holds the files of the gallery themes.
+bool isGalleryThemeExtension(std::u16string_view rExtension)
+{
+    return o3tl::equalsIgnoreAsciiCase(rExtension, u"thm")
+           || o3tl::equalsIgnoreAsciiCase(rExtension, u"sdg")
+           || o3tl::equalsIgnoreAsciiCase(rExtension, u"sdv")
+           || o3tl::equalsIgnoreAsciiCase(rExtension, u"str");
+}
+
+bool galleryEntryExists(const INetURLObject& rURL)
+{
+    const OUString aURL = rURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
+    return utl::UCBContentHelper::IsDocument(aURL) || utl::UCBContentHelper::IsFolder(aURL);
+}
+
+// rName is kept unless that name is taken or has a theme extension. Then a number is added to the
+// base name, and a theme extension becomes wav.
+INetURLObject getUnusedGalleryURL(const INetURLObject& rFolder, std::u16string_view rName)
+{
+    INetURLObject aURL(rFolder);
+    aURL.Append(rName);
+    OUString aExtension
+        = aURL.getExtension(INetURLObject::LAST_SEGMENT, true, INetURLObject::DecodeMechanism::NONE);
+    const bool bThemeExtension = isGalleryThemeExtension(aExtension);
+    if (!bThemeExtension && !galleryEntryExists(aURL))
+        return aURL;
+
+    const OUString aBase
+        = aURL.getBase(INetURLObject::LAST_SEGMENT, true, INetURLObject::DecodeMechanism::NONE);
+    if (bThemeExtension)
+        aExtension = u"wav"_ustr;
+    for (sal_Int32 nSuffix = 1;; ++nSuffix)
+    {
+        OUString aName = aBase + "-" + OUString::number(nSuffix);
+        if (!aExtension.isEmpty())
+            aName += "." + aExtension;
+        aURL = rFolder;
+        aURL.Append(aName);
+        if (!galleryEntryExists(aURL))
+            return aURL;
+    }
+}
+}
 
 // Not only the sounds are imported as string, they are also inserted to
 // the gallery if they are not already there.
@@ -1974,9 +2022,9 @@ OUString ImplSdPPTImport::ReadSound(sal_uInt32 nSoundRef) const
                                 aGalleryDir = SvtPathOptions().GetGalleryPath();
                             // Use last token delimited by ';'. copy(lastIndexOf+1) works whether
                             // string is empty or not and whether ';' is there or not.
-                            INetURLObject aGalleryUserSound( aGalleryDir.subView(aGalleryDir.lastIndexOf(';')+1) );
-
-                            aGalleryUserSound.Append( aRetval );
+                            const INetURLObject aGalleryUserSound = getUnusedGalleryURL(
+                                INetURLObject(aGalleryDir.subView(aGalleryDir.lastIndexOf(';') + 1)),
+                                aRetval);
                             const auto nRemainingSize = rStCtrl.remainingSize();
                             sal_uInt32 nSoundDataLen = aSoundDataRecHd.nRecLen;
                             if (nSoundDataLen > nRemainingSize)
@@ -2090,8 +2138,11 @@ void ImplSdPPTImport::FillSdAnimationInfo(SdAnimationInfo* pInfo, const PptInter
     // set local information into pInfo
     if( rIAtom.nSoundRef )
     {
+        // Embedded in the .ppt, not a link: allow it. Set the action before the
+        // bookmark so the URL is stored as a click-action sound.
+        pInfo->meClickAction = css::presentation::ClickAction_SOUND;
+        pInfo->mbClickSoundAllowed = true;
         pInfo->SetBookmark( ReadSound( rIAtom.nSoundRef ) );   // path to sound file in MS DOS notation
-        pInfo->meClickAction = css::presentation::ClickAction_SOUND;           // RunProgramAction
     }
 
     switch ( rIAtom.nAction )

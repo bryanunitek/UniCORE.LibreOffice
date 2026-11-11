@@ -17,6 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <unordered_set>
+
 #include <comphelper/anytostring.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequence.hxx>
@@ -59,10 +63,15 @@
 #include <oox/ppt/presentationfragmenthandler.hxx>
 #include <oox/ppt/slidefragmenthandler.hxx>
 #include <oox/ppt/layoutfragmenthandler.hxx>
+#include <oox/ppt/moderncommentsfragmenthandler.hxx>
 #include <oox/ppt/pptimport.hxx>
 #include <oox/token/namespaces.hxx>
+#include <oox/token/relationship.hxx>
 #include <oox/token/tokens.hxx>
 #include <sax/fastattribs.hxx>
+#include <sax/tools/converter.hxx>
+#include <svx/annotation/Annotation.hxx>
+#include <o3tl/safeint.hxx>
 
 #include <com/sun/star/office/XAnnotation.hpp>
 #include <com/sun/star/office/XAnnotationAccess.hpp>
@@ -108,6 +117,123 @@ sal_Int32 getPredefinedClrTokens(PredefinedClrSchemeId eID)
         return XML_TOKEN_INVALID;
     return iterator->second;
 }
+
+/** Reads a slide master's <p:sldLayoutIdLst> */
+class SldLayoutIdListFragmentHandler final : public FragmentHandler2
+{
+public:
+    SldLayoutIdListFragmentHandler(XmlFilterBase& rFilter, const OUString& rFragmentPath,
+                                   std::vector<OUString>& rRelIds)
+        : FragmentHandler2(rFilter, rFragmentPath)
+        , mrRelIds(rRelIds)
+    {
+    }
+
+    ContextHandlerRef onCreateContext(sal_Int32 nElement, const AttributeList& rAttribs) override
+    {
+        switch (nElement)
+        {
+            case PPT_TOKEN(sldMaster):
+            case PPT_TOKEN(sldLayoutIdLst):
+                return this;
+            case PPT_TOKEN(sldLayoutId):
+                mrRelIds.push_back(rAttribs.getStringDefaulted(R_TOKEN(id)));
+                break;
+        }
+        return nullptr;
+    }
+
+private:
+    std::vector<OUString>& mrRelIds;
+};
+
+/** The layouts of a slide master, in the order the master lists them.
+
+    The relations carry no order at all: a relationship id is opaque, and a producer may assign any
+    id to any part. */
+std::vector<OUString> getLayoutFragmentPaths(XmlFilterBase& rFilter,
+                                             const OUString& rMasterFragmentPath,
+                                             const Relations& rMasterRelations)
+{
+    std::vector<OUString> aRelIds;
+    rFilter.importFragment(
+        new SldLayoutIdListFragmentHandler(rFilter, rMasterFragmentPath, aRelIds));
+
+    std::vector<OUString> aPaths;
+    std::unordered_set<OUString> aNamedRelIds;
+    for (const OUString& rRelId : aRelIds)
+    {
+        OUString aPath = rMasterRelations.getFragmentPathFromRelId(rRelId);
+        if (aPath.isEmpty())
+            continue;
+
+        aPaths.push_back(aPath);
+        aNamedRelIds.insert(rRelId);
+    }
+
+    // A layout the list does not name still gets its master page, as it did before the list was
+    // consulted at all.
+    for (const auto& [rRelId, rRelation] : rMasterRelations)
+    {
+        if (!rRelation.maType.endsWith("relationships/slideLayout")
+            || aNamedRelIds.contains(rRelId))
+            continue;
+
+        aPaths.push_back(rMasterRelations.getFragmentPathFromRelation(rRelation));
+    }
+
+    return aPaths;
+}
+
+/** Turns the threaded comments of one slide into annotations on that slide.
+
+    Each entry becomes one annotation, and a reply is linked to the root it
+    hangs off. The time an entry carries is stored as the file has it.
+ */
+void lcl_insertModernComments(const std::vector<ModernComment>& rComments,
+                              const ModernCommentAuthorList& rAuthors,
+                              const uno::Reference<drawing::XDrawPage>& xSlide)
+{
+    uno::Reference<office::XAnnotationAccess> xAnnotationAccess(xSlide, uno::UNO_QUERY);
+    if (!xAnnotationAccess.is())
+        return;
+
+    std::vector<rtl::Reference<sdr::annotation::Annotation>> aInserted;
+    aInserted.reserve(rComments.size());
+    for (auto const& rComment : rComments)
+    {
+        uno::Reference<office::XAnnotation> xAnnotation(
+            xAnnotationAccess->createAndInsertAnnotation());
+        xAnnotation->setAuthor(rAuthors.getName(rComment.maAuthorId));
+        xAnnotation->setInitials(rAuthors.getInitials(rComment.maAuthorId));
+        util::DateTime aDateTime;
+        if (::sax::Converter::parseDateTime(aDateTime, rComment.maCreated))
+        {
+            // The value is a moment in UTC, so it goes in both slots: as the moment, and as the
+            // wall clock, which is the best the entry can offer for one since the file records
+            // no zone for its author.
+            xAnnotation->setDateTime(aDateTime);
+            xAnnotation->setDateTimeUTC(aDateTime);
+        }
+        uno::Reference<text::XText> xText(xAnnotation->getTextRange());
+        xText->setString(rComment.maText);
+
+        rtl::Reference<sdr::annotation::Annotation> xInserted(
+            dynamic_cast<sdr::annotation::Annotation*>(xAnnotation.get()));
+        if (xInserted.is())
+        {
+            // Every one of these comments can be replied to and resolved.
+            xInserted->SetThreaded(true);
+            if (rComment.mnParentIndex >= 0
+                && o3tl::make_unsigned(rComment.mnParentIndex) < aInserted.size()
+                && aInserted[rComment.mnParentIndex].is())
+            {
+                xInserted->SetParentId(aInserted[rComment.mnParentIndex]->GetId());
+            }
+        }
+        aInserted.push_back(xInserted);
+    }
+}
 } // end anonymous ns
 
 PresentationFragmentHandler::PresentationFragmentHandler(XmlFilterBase& rFilter, const OUString& rFragmentPath)
@@ -133,19 +259,9 @@ void PresentationFragmentHandler::importSlideNames(const XmlFilterBase& rFilter,
     sal_Int32 nMaxPages = rSlidePersist.size();
     for (sal_Int32 nPage = 0; nPage < nMaxPages; nPage++)
     {
-        auto aShapeMap = rSlidePersist[nPage]->getShapeMap();
-        auto aIter = std::find_if(aShapeMap.begin(), aShapeMap.end(),
-                                  [](const std::pair<OUString, ShapePtr>& element) {
-                                      auto pShapePtr = element.second;
-                                      return (pShapePtr
-                                              && (pShapePtr->getSubType() == XML_title
-                                                  || pShapePtr->getSubType() == XML_ctrTitle));
-                                  });
-        if (aIter != aShapeMap.end())
+        OUString aTitleText = rSlidePersist[nPage]->getTitleText();
+        if (!aTitleText.isEmpty())
         {
-            OUString aTitleText;
-            Reference<text::XTextRange> xText(aIter->second->getXShape(), UNO_QUERY_THROW);
-            aTitleText = xText->getString();
             // just a magic value but we don't want to drop out slide names which are too long
             if (aTitleText.getLength() > 63)
                 aTitleText = aTitleText.copy(0, 63);
@@ -223,20 +339,15 @@ void PresentationFragmentHandler::importMasterSlide(const Reference<frame::XMode
                                                     PowerPointImport& rFilter,
                                                     const OUString& rMasterFragmentPath)
 {
-    OUString aLayoutFragmentPath;
     SlidePersistPtr pMasterPersistPtr;
     Reference< drawing::XDrawPage > xMasterPage;
     Reference< drawing::XMasterPagesSupplier > xMPS( xModel, uno::UNO_QUERY_THROW );
     Reference< drawing::XDrawPages > xMasterPages( xMPS->getMasterPages(), uno::UNO_SET_THROW );
     RelationsRef xMasterRelations = rFilter.importRelations( rMasterFragmentPath );
 
-    for (const auto& rEntry : *xMasterRelations)
+    for (const OUString& aLayoutFragmentPath :
+         getLayoutFragmentPaths(rFilter, rMasterFragmentPath, *xMasterRelations))
     {
-        if (!rEntry.second.maType.endsWith("relationships/slideLayout"))
-            continue;
-
-        aLayoutFragmentPath = xMasterRelations->getFragmentPathFromRelation(rEntry.second);
-
         sal_Int32 nIndex;
         if( rFilter.getMasterPages().empty() )
         {
@@ -291,9 +402,17 @@ void PresentationFragmentHandler::importMasterSlide(const Reference<frame::XMode
         /* Save the master's clrMap before importing the layouts. A layout's
         clrMapOvr/overrideClrMapping element replaces the shared master persist's
         clrMap with the layout-local override */
-        saveColorMapToGrabBag(pMasterPersistPtr->getClrMap());
+        oox::drawingml::ClrMapPtr pMasterClrMap = pMasterPersistPtr->getClrMap();
+        saveColorMapToGrabBag(pMasterClrMap);
 
         rFilter.importFragment( new LayoutFragmentHandler( rFilter, aLayoutFragmentPath, pMasterPersistPtr ) );
+
+        // Check if layout had a color map override (clrMap changed during layout import)
+        if (pMasterPersistPtr->getClrMap() != pMasterClrMap && pMasterPersistPtr->getClrMap())
+        {
+            saveLayoutColorMapToGrabBag(pMasterPersistPtr->getClrMap(), nIndex);
+        }
+
         pMasterPersistPtr->createBackground( rFilter );
         pMasterPersistPtr->createXShapes( rFilter );
 
@@ -492,6 +611,59 @@ void PresentationFragmentHandler::saveSections()
     }
 }
 
+void PresentationFragmentHandler::saveLayoutColorMapToGrabBag(
+    const oox::drawingml::ClrMapPtr& pClrMapPtr,
+    sal_Int32 nMasterIndex)
+{
+    if (!pClrMapPtr)
+        return;
+
+    try
+    {
+        uno::Reference<beans::XPropertySet> xDocProps(getFilter().getModel(), uno::UNO_QUERY);
+        if (xDocProps.is())
+        {
+            uno::Reference<beans::XPropertySetInfo> xPropsInfo = xDocProps->getPropertySetInfo();
+
+            static constexpr OUString aGrabBagPropName = u"InteropGrabBag"_ustr;
+            if (xPropsInfo.is() && xPropsInfo->hasPropertyByName(aGrabBagPropName))
+            {
+                static constexpr auto constTokenArray = std::to_array<sal_Int32>({
+                        XML_bg1,     XML_tx1,     XML_bg2,     XML_tx2,
+                        XML_accent1, XML_accent2, XML_accent3, XML_accent4,
+                        XML_accent5, XML_accent6, XML_hlink,   XML_folHlink
+                });
+
+                comphelper::SequenceAsHashMap aGrabBag(
+                    xDocProps->getPropertyValue(aGrabBagPropName));
+
+                std::vector<beans::PropertyValue> aClrMapList;
+                size_t nColorMapSize = constTokenArray.size();
+                aClrMapList.reserve(nColorMapSize);
+                for (size_t i = 0; i < nColorMapSize; ++i)
+                {
+                    sal_Int32 nToken = constTokenArray[i];
+                    pClrMapPtr->getColorMap(nToken);
+                    aClrMapList.push_back(
+                        comphelper::makePropertyValue(OUString::number(i), nToken));
+                }
+
+                // Build key: "OOXLayoutClrMapOvr_<masterIndex>"
+                OUString sKey = "OOXLayoutClrMapOvr_" + OUString::number(nMasterIndex);
+
+                aGrabBag[sKey] <<= comphelper::containerToSequence(aClrMapList);
+
+                xDocProps->setPropertyValue(aGrabBagPropName,
+                                            uno::Any(aGrabBag.getAsConstPropertyValueList()));
+            }
+        }
+    }
+    catch (const uno::Exception&)
+    {
+        SAL_WARN("oox", "oox::ppt::PresentationFragmentHandler::saveLayoutColorMapToGrabBag, Failed to save grab bag");
+    }
+}
+
 void PresentationFragmentHandler::importMasterSlides()
 {
     OUString aMasterFragmentPath;
@@ -571,6 +743,7 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, sal_Int32 nPage
             importSlide( xSlideFragmentHandler, pSlidePersistPtr );
             pSlidePersistPtr->createBackground( rFilter );
             pSlidePersistPtr->createXShapes( rFilter );
+            pSlidePersistPtr->releaseShapes();
 
             if(bImportNotesPage) {
 
@@ -592,6 +765,7 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, sal_Int32 nPage
                             importSlide( xNotesFragmentHandler, pNotesPersistPtr );
                             pNotesPersistPtr->createBackground( rFilter );
                             pNotesPersistPtr->createXShapes( rFilter );
+                            pNotesPersistPtr->releaseShapes();
                         }
                     }
                 }
@@ -672,6 +846,29 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, sal_Int32 nPage
                         xText->setString( aComment.get_text());
                     } catch( css::lang::IllegalArgumentException& ) {}
                 }
+            }
+
+            OUString aModernCommentPath = xSlideFragmentHandler->getFragmentPathFromFirstType(
+                getRelationship(Relationship::MODERNCOMMENTS));
+            if (!aModernCommentPath.isEmpty())
+            {
+                if (!mbModernCommentAuthorsRead)
+                {
+                    mbModernCommentAuthorsRead = true;
+                    OUString aAuthorsPath = getFragmentPathFromFirstType(
+                        getRelationship(Relationship::MODERNCOMMENTAUTHORS));
+                    if (!aAuthorsPath.isEmpty())
+                    {
+                        getFilter().importFragment(new ModernCommentAuthorsFragmentHandler(
+                            getFilter(), aAuthorsPath, maModernAuthorList));
+                    }
+                }
+
+                rtl::Reference<ModernCommentsFragmentHandler> xModernCommentsHandler(
+                    new ModernCommentsFragmentHandler(getFilter(), aModernCommentPath));
+                getFilter().importFragment(xModernCommentsHandler);
+                lcl_insertModernComments(xModernCommentsHandler->getComments(), maModernAuthorList,
+                                         xSlide);
             }
         }
     }
@@ -816,7 +1013,7 @@ void PresentationFragmentHandler::finalizeImport()
         SectionData aSection;
         aSection.maName = rAttribs.getStringDefaulted( XML_name );
         aSection.maId = rAttribs.getStringDefaulted( XML_id );
-        maSectionList.push_back( aSection );
+        maSectionList.push_back( std::move(aSection) );
         return this;
     }
     case P14_TOKEN( sldIdLst ):

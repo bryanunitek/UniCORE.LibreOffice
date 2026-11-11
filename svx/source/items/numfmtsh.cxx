@@ -153,7 +153,7 @@ SvxNumberFormatShell::SvxNumberFormatShell(SvNumberFormatter* pNumFormatter, sal
 SvxNumberFormatShell::~SvxNumberFormatShell()
 {
     /*
-     * At this point, depending on whether the added user-defined were
+     * At this point, depending on whether the added user-defined formats were
      * validated (ValidateNewEntries()), the add list is removed from
      * the number formatter again.
      *
@@ -485,7 +485,7 @@ void SvxNumberFormatShell::GetInitSettings(sal_uInt16& nCatLbPos, LanguageType& 
                                            std::vector<OUString>& rFmtEntries,
                                            OUString& rPrevString, const Color*& rpPrevColor)
 {
-    // precondition: number formater found
+    // precondition: number formatter found
     DBG_ASSERT(pFormatter != nullptr, "Number formatter not found!");
 
     short nSelPos = SELPOS_NONE;

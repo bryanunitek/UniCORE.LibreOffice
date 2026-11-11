@@ -46,6 +46,7 @@ endif
 
 $(eval $(call gb_Module_add_check_targets,pyuno, \
     PythonTest_pyuno_pytests_testimports \
+    $(if $(SYSTEM_PYTHON),,CppunitTest_pyuno_pythonhome) \
 ))
 
 endif # !SYSTEM_PYTHON
@@ -54,6 +55,7 @@ $(eval $(call gb_Module_add_subsequentcheck_targets,pyuno, \
     PythonTest_pyuno_pytests_testcollections \
     PythonTest_pyuno_pytests_insertremovecells \
     $(if $(ENABLE_EMBINDTEST_UNO),PythonTest_pyuno_pytests_embindtest) \
+    PythonTest_pyuno_pytests_testofficehelper \
 ))
 
 endif # DISABLE_PYTHON

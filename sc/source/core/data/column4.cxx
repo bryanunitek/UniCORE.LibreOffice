@@ -312,7 +312,7 @@ void ScColumn::CopyOneCellFromClip( sc::CopyFromClipContext& rCxt, SCROW nRow1, 
                 std::vector<EditTextObject*> aStrs;
                 aStrs.reserve(nDestSize);
                 for (size_t i = 0; i < nDestSize; ++i)
-                    aStrs.push_back(rSrcCell.getEditText()->Clone().release());
+                    aStrs.push_back(new EditTextObject(*rSrcCell.getEditText()));
 
                 pBlockPos->miCellPos =
                     maCells.set(pBlockPos->miCellPos, nRow1, aStrs.begin(), aStrs.end());
@@ -505,8 +505,8 @@ public:
             case sc::FormulaResultValue::String:
                 if (aRes.mbMultiLine)
                 {
-                    std::unique_ptr<EditTextObject> pObj(mrDoc.CreateSharedStringTextObject(aRes.maString));
-                    maResValues.setValue(nRow, std::move(pObj));
+                    EditTextObject aObj(mrDoc.CreateSharedStringTextObject(aRes.maString));
+                    maResValues.setValue(nRow, std::make_unique<EditTextObject>(std::move(aObj)));
                 }
                 else
                 {
@@ -1496,7 +1496,7 @@ public:
                 continue;
             }
 
-            // If This is the last group in the range, see if the group
+            // If this is the last group in the range, see if the group
             // extends beyond the range, in which case have the excess
             // formula cells stop listening.
             size_t nEndGroupPos = (pp - ppBeg) + pFC->GetSharedLength();
@@ -1827,6 +1827,16 @@ static bool lcl_InterpretSpan(sc::formula_block::const_iterator& rSpanIter, SCRO
 
             if (!bGroupInterpreted)
             {
+                // Interpret can return with the span's first cell still dirty, when a cycle left
+                // it for the unthreaded pass, so check it the way the cells after it are checked.
+                if (pCellStart->NeedsInterpret())
+                {
+                    SAL_WARN("sc.core.formulagroup", "Internal error, cell " << pCellStart->aPos
+                        << " was left uncalculated, not allowing threading");
+                    bAllowThreading = false;
+                    return bAnyDirty;
+                }
+
                 // Evaluate from second cell in non-grouped style (no point in trying group-interpret again).
                 ++itSpanStart;
                 for (SCROW nIdx = nSpanStart+1; nIdx <= nSpanEnd; ++nIdx, ++itSpanStart)

@@ -60,6 +60,7 @@ sw::DocumentSettingManager::DocumentSettingManager(SwDoc &rDoc)
     mbAddFlyOffsets(false),
     mbAddVerticalFlyOffsets(false),
     mbUseHiResolutionVirtualDevice(true),
+    mbOldLineSpacing(false),
     mbMathBaselineAlignment(false), // default for *old* documents is 'off'
     mbStylesNoDefault(false),
     mEmbedFonts(false),
@@ -79,6 +80,7 @@ sw::DocumentSettingManager::DocumentSettingManager(SwDoc &rDoc)
     mbTabRelativeToIndent(true),
     mbProtectForm(false), // i#78591#
     mbMsWordCompTrailingBlanks(false), // tdf#104349 tdf#104668
+    mbMsWordCompMinTextWrapGap(false),
     mbMsWordCompMinLineHeightByFly(false),
     mbInvertBorderSpacing (false),
     mbCollapseEmptyCellPara(true),
@@ -131,7 +133,6 @@ sw::DocumentSettingManager::DocumentSettingManager(SwDoc &rDoc)
         mbTabCompat                         = !aOptions.get(u"UseOurTabStopFormat"_ustr);
         mbUseVirtualDevice                  = true;
         mbAddExternalLeading                = !aOptions.get(u"NoExternalLeading"_ustr);
-        mbOldLineSpacing                    = aOptions.get(u"UseLineSpacing"_ustr);
         mbAddParaSpacingToTableCells        = aOptions.get(u"AddTableSpacing"_ustr);
         mbAddParaLineSpacingToTableCells    = aOptions.get(u"AddTableLineSpacing"_ustr);
         mbUseFormerObjectPos                = aOptions.get(u"UseObjectPositioning"_ustr);
@@ -150,6 +151,7 @@ sw::DocumentSettingManager::DocumentSettingManager(SwDoc &rDoc)
         mbContinuousEndnotes                = aOptions.get(u"ContinuousEndnotes"_ustr);
         mbMsWordCompGridMetrics             = aOptions.get(u"MsWordCompGridMetrics"_ustr);
         mbIgnoreTabsAndBlanksForLineCalculation = aOptions.get(u"IgnoreTabsAndBlanksForLineCalculation"_ustr);
+        mbLineSpacingAsGapBelow = aOptions.get(u"LineSpacingAsGapBelow"_ustr);
         mbBalanceSpacesAndIdeographicSpaces = aOptions.get(u"BalanceSpacesAndIdeographicSpaces"_ustr);
         mbAdjustTableLineHeightsToGridHeight = aOptions.get(u"AdjustTableLineHeightsToGridHeight"_ustr);
         mbListLabelAlignmentIgnoresDirection = aOptions.get(u"ListLabelAlignmentIgnoresDirection"_ustr);
@@ -161,7 +163,6 @@ sw::DocumentSettingManager::DocumentSettingManager(SwDoc &rDoc)
         mbTabCompat                         = true;
         mbUseVirtualDevice                  = true;
         mbAddExternalLeading                = true;
-        mbOldLineSpacing                    = false;
         mbAddParaSpacingToTableCells        = false;
         mbAddParaLineSpacingToTableCells    = false;
         mbUseFormerObjectPos                = false;
@@ -221,6 +222,7 @@ bool sw::DocumentSettingManager::get(/*[in]*/ DocumentSettingId id) const
         case DocumentSettingId::PROTECT_FORM: return mbProtectForm;
         // tdf#104349 tdf#104668
         case DocumentSettingId::MS_WORD_COMP_TRAILING_BLANKS: return mbMsWordCompTrailingBlanks;
+        case DocumentSettingId::MS_WORD_COMP_MIN_TEXT_WRAP_GAP: return mbMsWordCompMinTextWrapGap;
         case DocumentSettingId::MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY: return mbMsWordCompMinLineHeightByFly;
         // #i89181#
         case DocumentSettingId::TAB_AT_LEFT_INDENT_FOR_PARA_IN_LIST: return mbTabAtLeftIndentForParagraphsInList;
@@ -290,6 +292,7 @@ bool sw::DocumentSettingManager::get(/*[in]*/ DocumentSettingId id) const
         case DocumentSettingId::MS_WORD_COMP_GRID_METRICS: return mbMsWordCompGridMetrics;
         case DocumentSettingId::NO_CLIPPING_WITH_WRAP_POLYGON: return mbNoClippingWithWrapPolygon;
         case DocumentSettingId::MS_WORD_UL_TRAIL_SPACE: return mbMsWordUlTrailSpace;
+        case DocumentSettingId::LINE_SPACING_AS_GAP_BELOW: return mbLineSpacingAsGapBelow;
         case DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES:
             return mbBalanceSpacesAndIdeographicSpaces;
         case DocumentSettingId::FORCE_TOP_ALIGNMENT_IN_CELL_WITH_FLOATING_ANCHOR:
@@ -413,6 +416,10 @@ void sw::DocumentSettingManager::set(/*[in]*/ DocumentSettingId id, /*[in]*/ boo
         // tdf#140349
         case DocumentSettingId::MS_WORD_COMP_TRAILING_BLANKS:
             mbMsWordCompTrailingBlanks = value;
+            break;
+
+        case DocumentSettingId::MS_WORD_COMP_MIN_TEXT_WRAP_GAP:
+            mbMsWordCompMinTextWrapGap = value;
             break;
 
         case DocumentSettingId::MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY:
@@ -635,6 +642,9 @@ void sw::DocumentSettingManager::set(/*[in]*/ DocumentSettingId id, /*[in]*/ boo
         case DocumentSettingId::MS_WORD_UL_TRAIL_SPACE:
             mbMsWordUlTrailSpace = value;
             break;
+        case DocumentSettingId::LINE_SPACING_AS_GAP_BELOW:
+            mbLineSpacingAsGapBelow = value;
+            break;
         case DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES:
             mbBalanceSpacesAndIdeographicSpaces = value;
             break;
@@ -781,12 +791,14 @@ void sw::DocumentSettingManager::ReplaceCompatibilityOptions(const DocumentSetti
     mbUseHiResolutionVirtualDevice = rSource.mbUseHiResolutionVirtualDevice;
     mbOldLineSpacing = rSource.mbOldLineSpacing;
     mbAddParaSpacingToTableCells = rSource.mbAddParaSpacingToTableCells;
+    // assume MISSING mApplyParagraphMarkFormatToNumbering = rSource.mApplyParagraphMarkFormatToNumbering;
     mbAddParaLineSpacingToTableCells = rSource.mbAddParaLineSpacingToTableCells;
     mbUseFormerObjectPos = rSource.mbUseFormerObjectPos;
     mbUseFormerTextWrapping = rSource.mbUseFormerTextWrapping;
     mbConsiderWrapOnObjPos = rSource.mbConsiderWrapOnObjPos;
     mbMathBaselineAlignment = rSource.mbMathBaselineAlignment;
     mbStylesNoDefault = rSource.mbStylesNoDefault;
+    // assume not compatibility settings: mEmbedFonts, mEmbedUsedFonts, mEmbedLatinScriptFonts, mEmbedAsianScriptFonts, mEmbedComplexScriptFonts, mEmbedSystemFonts
     mbOldNumbering = rSource.mbOldNumbering;
     mbIgnoreFirstLineIndentInNumbering = rSource.mbIgnoreFirstLineIndentInNumbering;
     mbNoGapAfterNoteNumber = rSource.mbNoGapAfterNoteNumber;
@@ -800,6 +812,7 @@ void sw::DocumentSettingManager::ReplaceCompatibilityOptions(const DocumentSetti
     mbTabRelativeToIndent = rSource.mbTabRelativeToIndent;
     mbProtectForm = rSource.mbProtectForm;
     mbMsWordCompTrailingBlanks = rSource.mbMsWordCompTrailingBlanks;
+    mbMsWordCompMinTextWrapGap = rSource.mbMsWordCompMinTextWrapGap;
     mbMsWordCompMinLineHeightByFly = rSource.mbMsWordCompMinLineHeightByFly;
     mbInvertBorderSpacing = rSource.mbInvertBorderSpacing;
     mbCollapseEmptyCellPara = rSource.mbCollapseEmptyCellPara;
@@ -823,12 +836,28 @@ void sw::DocumentSettingManager::ReplaceCompatibilityOptions(const DocumentSetti
     // No mbProtectFields: this is false by default everywhere
     mbHeaderSpacingBelowLastPara = rSource.mbHeaderSpacingBelowLastPara;
     mbFrameAutowidthWithMorePara = rSource.mbFrameAutowidthWithMorePara;
+    // assume MISSING mbGutterAtTop = rSource.mbGutterAtTop;
+    // assume No mnImagePreferredDPI: not a compatibility setting
+    // assume No mbAutoFirstLineIndentDisregardLineSpace: this is true by default everywhere
+    // assume No mbHyphenateURLs: this is false by default everywhere
+    // assume MISSING mbDoNotBreakWrappedTables = rSource.mbDoNotBreakWrappedTables;
+    // assume MISSING mbAllowTextAfterFloatingTableBreak = rSource.mbAllowTextAfterFloatingTableBreak;
+    // assume MISSING mbJustifyLinesWithShrinking = rSource.mbJustifyLinesWithShrinking;
+    // assume No mbApplyTextAttrToEmptyLineAtEndOfParagraph: this is false by default everywhere
+    // assume MISSING mbApplyParagraphMarkFormatToEmptyLineAtEndOfParagraph = rSource.mbApplyParagraphMarkFormatToEmptyLineAtEndOfParagraph;
+    // assume MISSING mbHiddenParagraphMarkPerLineProperties = rSource.mbHiddenParagraphMarkPerLineProperties;
+    // assume No mbIgnoreHiddenCharsForLineCalculation: this is true by default everywhere
+    // assume MISSING mbDoNotMirrorRtlDrawObjs = rSource.mbDoNotMirrorRtlDrawObjs;
+    // assume MISSING mbNoNumberingShowFollowBy = rSource.mbNoNumberingShowFollowBy;
     mbFootnoteInColumnToPageEnd = rSource.mbFootnoteInColumnToPageEnd;
     mbDropCapPunctuation = rSource.mbDropCapPunctuation;
     mbUseVariableWidthNBSP = rSource.mbUseVariableWidthNBSP;
+    // assume MISSING mbPaintHellOverHeaderFooter = rSource.mbPaintHellOverHeaderFooter;
+    // assume MISSING mbMinRowHeightInclBorder = rSource.mbMinRowHeightInclBorder;
     mbMsWordCompGridMetrics = rSource.mbMsWordCompGridMetrics;
     mbNoClippingWithWrapPolygon = rSource.mbNoClippingWithWrapPolygon;
     mbMsWordUlTrailSpace = rSource.mbMsWordUlTrailSpace;
+    mbLineSpacingAsGapBelow = rSource.mbLineSpacingAsGapBelow;
     mbBalanceSpacesAndIdeographicSpaces = rSource.mbBalanceSpacesAndIdeographicSpaces;
     mbForceTopAlignmentInCellWithFloatingAnchor = rSource.mbForceTopAlignmentInCellWithFloatingAnchor;
     mbAdjustTableLineHeightsToGridHeight = rSource.mbAdjustTableLineHeightsToGridHeight;
@@ -1046,6 +1075,11 @@ void sw::DocumentSettingManager::dumpAsXml(xmlTextWriterPtr pWriter) const
                                 BAD_CAST(OString::boolean(mbMsWordCompTrailingBlanks).getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbMsWordCompMinTextWrapGap"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbMsWordCompMinTextWrapGap).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbMsWordCompMinLineHeightByFly"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
                                 BAD_CAST(OString::boolean(mbMsWordCompMinLineHeightByFly).getStr()));
@@ -1237,6 +1271,11 @@ void sw::DocumentSettingManager::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbMsWordUlTrailSpace"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
                                 BAD_CAST(OString::boolean(mbMsWordUlTrailSpace).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbLineSpacingAsGapBelow"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbLineSpacingAsGapBelow).getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbBalanceSpacesAndIdeographicSpaces"));

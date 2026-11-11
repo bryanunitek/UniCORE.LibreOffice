@@ -43,6 +43,7 @@
 #include <hb-icu.h>
 #include <hb-aat.h>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <set>
@@ -94,6 +95,21 @@ struct UnclusteredGlyphData
     {
     }
 };
+
+// Whether nCharPos is inside a shaping cluster (but not at its start)
+bool IsInsideCluster(hb_buffer_t* pHbBuffer, const SubRun& rSubRun, int nCharPos)
+{
+    // Positions outside of/at the ends of the run are not inside any of its clusters.
+    if (nCharPos <= rSubRun.mnMin || nCharPos >= rSubRun.mnEnd)
+        return false;
+
+    // Any other position that is not the start of a cluster is inside one.
+    unsigned int nGlyphCount = 0;
+    const hb_glyph_info_t* pGlyphInfos = hb_buffer_get_glyph_infos(pHbBuffer, &nGlyphCount);
+    return std::none_of(pGlyphInfos, pGlyphInfos + nGlyphCount,
+                        [nCharPos](const hb_glyph_info_t& rInfo)
+                        { return static_cast<int>(rInfo.cluster) == nCharPos; });
+}
 
 // This is a helper class to enable correct styling and glyph placement when a grapheme cluster is
 // split across multiple adjoining layouts.
@@ -162,7 +178,8 @@ public:
 
     void ShapeSubRun(const sal_Unicode* pStr, const int nLength, const SubRun& aSubRun,
                      hb_font_t* pHbFont, const std::vector<hb_feature_t>& maFeatures,
-                     hb_language_t oHbLanguage)
+                     hb_language_t oHbLanguage, hb_buffer_t* pClusteredBuffer,
+                     int nDrawOriginCluster, int nDrawMinCharPos, int nDrawEndCharPos)
     {
         if (!m_bEnable)
         {
@@ -170,6 +187,14 @@ public:
         }
 
         m_aGlyphs.clear();
+
+        // Remapping is needed only when a boundary is inside a cluster, not at its start
+        if (!IsInsideCluster(pClusteredBuffer, aSubRun, nDrawOriginCluster)
+            && !IsInsideCluster(pClusteredBuffer, aSubRun, nDrawMinCharPos)
+            && !IsInsideCluster(pClusteredBuffer, aSubRun, nDrawEndCharPos))
+        {
+            return;
+        }
 
         hb_buffer_clear_contents(m_pHbBuffer);
 
@@ -574,6 +599,9 @@ bool GenericSalLayout::LayoutText(vcl::text::ImplLayoutArgs& rArgs, const SalLay
 
             // Produce HB_GLYPH_FLAG_SAFE_TO_INSERT_TATWEEL that we use below.
             nHbFlags |= HB_BUFFER_FLAG_PRODUCE_SAFE_TO_INSERT_TATWEEL;
+            // Produce the unsafe-to-concat flag, which marks the cluster boundaries at which a
+            // glyph subset cannot be cut out and reused without reshaping (see isSafeToBreak).
+            nHbFlags |= HB_BUFFER_FLAG_PRODUCE_UNSAFE_TO_CONCAT;
 
             if (nMinRunPos == 0)
                 nHbFlags |= HB_BUFFER_FLAG_BOT; /* Beginning-of-text */
@@ -612,7 +640,9 @@ bool GenericSalLayout::LayoutText(vcl::text::ImplLayoutArgs& rArgs, const SalLay
             }
 
             // Populate glyph cluster remapping data
-            stClusterMapper.ShapeSubRun(pStr, nLength, aSubRun, pHbFont, maFeatures, oHbLanguage);
+            stClusterMapper.ShapeSubRun(pStr, nLength, aSubRun, pHbFont, maFeatures, oHbLanguage,
+                                        pHbBuffer, rArgs.mnDrawOriginCluster,
+                                        rArgs.mnDrawMinCharPos, rArgs.mnDrawEndCharPos);
 
             int nRunGlyphCount = hb_buffer_get_length(pHbBuffer);
             hb_glyph_info_t *pHbGlyphInfos = hb_buffer_get_glyph_infos(pHbBuffer, nullptr);
@@ -759,7 +789,20 @@ bool GenericSalLayout::LayoutText(vcl::text::ImplLayoutArgs& rArgs, const SalLay
                         // tdf#126111: fallback is meaningless for PUA codepoints
                         if (u_charType(aCurrChar) != U_PRIVATE_USE_CHAR)
                         {
-                            aFallbackRuns.AddPos(nOrigCharPos, bRightToLeft);
+                            // tdf#174298: SetNeedFallback() extends the request to whole
+                            // graphemes, but a shaping cluster can have more than one grapheme, so
+                            // request fallback for the whole shaping cluster.
+                            int32_t nClusterEnd = nEndRunPos;
+                            for (int j = i; j >= 0 && j < nRunGlyphCount; j += bRightToLeft ? -1 : 1)
+                            {
+                                if (pHbGlyphInfos[j].cluster != pHbGlyphInfos[i].cluster)
+                                {
+                                    nClusterEnd = pHbGlyphInfos[j].cluster;
+                                    break;
+                                }
+                            }
+                            for (int32_t nPos = nCharPos; nPos < nClusterEnd; ++nPos)
+                                aFallbackRuns.AddPos(nPos, bRightToLeft);
                             if (SalLayoutFlags::ForFallback & rArgs.mnFlags)
                                 continue;
                         }
@@ -782,8 +825,10 @@ bool GenericSalLayout::LayoutText(vcl::text::ImplLayoutArgs& rArgs, const SalLay
                 if (u_isUWhiteSpace(aChar))
                     nGlyphFlags |= GlyphItemFlags::IS_SPACING;
 
-                if (hb_glyph_info_get_glyph_flags(&pHbGlyphInfos[i]) & HB_GLYPH_FLAG_UNSAFE_TO_BREAK)
-                    nGlyphFlags |= GlyphItemFlags::IS_UNSAFE_TO_BREAK;
+                hb_glyph_flags_t const eHbGlyphFlags
+                    = hb_glyph_info_get_glyph_flags(&pHbGlyphInfos[i]);
+                if (eHbGlyphFlags & HB_GLYPH_FLAG_UNSAFE_TO_CONCAT)
+                    nGlyphFlags |= GlyphItemFlags::IS_UNSAFE_TO_CONCAT;
 
                 if (!m_bHasFontKashidaPositions
                     || (hb_glyph_info_get_glyph_flags(&pHbGlyphInfos[i])

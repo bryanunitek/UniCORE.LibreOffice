@@ -25,10 +25,7 @@
 
 #include <QtGui/QImage>
 
-QtVirtualDevice::QtVirtualDevice(double fScale)
-    : m_fScale(fScale)
-{
-}
+QtVirtualDevice::QtVirtualDevice() {}
 
 SalGraphics* QtVirtualDevice::AcquireGraphics()
 {
@@ -46,9 +43,6 @@ void QtVirtualDevice::ReleaseGraphics(SalGraphics* pGraphics)
 
 bool QtVirtualDevice::SetSize(tools::Long nNewDX, tools::Long nNewDY, bool bAlphaMaskTransparent)
 {
-    assert(!bAlphaMaskTransparent && "TODO");
-    (void)bAlphaMaskTransparent;
-
     if (nNewDX == 0)
         nNewDX = 1;
     if (nNewDY == 0)
@@ -59,13 +53,18 @@ bool QtVirtualDevice::SetSize(tools::Long nNewDX, tools::Long nNewDY, bool bAlph
 
     m_aFrameSize = QSize(nNewDX, nNewDY);
 
-    nNewDX *= m_fScale;
-    nNewDY *= m_fScale;
+    static constexpr double fScale = 1;
+    nNewDX *= fScale;
+    nNewDY *= fScale;
 
     m_pImage.reset(new QImage(nNewDX, nNewDY, Qt_DefaultFormat32));
 
-    m_pImage->fill(Qt::transparent);
-    m_pImage->setDevicePixelRatio(m_fScale);
+    if (bAlphaMaskTransparent)
+        m_pImage->fill(Qt::transparent);
+    else
+        m_pImage->fill(Qt::white);
+
+    m_pImage->setDevicePixelRatio(fScale);
 
     // update device in existing graphics
     for (auto pQtGraph : m_aGraphics)

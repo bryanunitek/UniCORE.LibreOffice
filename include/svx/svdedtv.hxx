@@ -55,7 +55,7 @@ enum class SdrInsertFlags
 {
     NONE        = 0x0000,
     DONTMARK    = 0x0001, /* object will not be marked (the actual marking remains) */
-    ADDMARK     = 0x0002, /* object will be added an existing selection  */
+    ADDMARK     = 0x0002, /* object will be added to an existing selection  */
     SETDEFATTR  = 0x0004, /* actual attributes (+StyleSheet) are assigned to the object */
     SETDEFLAYER = 0x0008, /* actual layer is assigned to the object */
 };
@@ -89,7 +89,7 @@ protected:
     bool m_bOrthoDesiredOnMarked : 1;
     bool m_bOneOrMoreMovable : 1;        // at least one object is moveable
     bool m_bMoreThanOneNoMovRot : 1;     // more than one object is not movable nor turnable (Crook)
-    bool m_bContortionPossible : 1;      // all polygones (grouped if necessary)
+    bool m_bContortionPossible : 1;      // all polygons (grouped if necessary)
     bool m_bMoveAllowed : 1;
     bool m_bResizeFreeAllowed : 1;
     bool m_bResizePropAllowed : 1;
@@ -120,7 +120,7 @@ protected:
 
     // converts an object, when positive it removes the old one from its List
     // and inserts the new one instead. including Undo.
-    // Nor MarkEntry nor ModelChgBroadcast is created.
+    // Neither MarkEntry nor ModelChgBroadcast is created.
     SAL_DLLPRIVATE rtl::Reference<SdrObject> ImpConvertOneObj(SdrObject* pObj, bool bPath, bool bLineToArea);
 
     // set both flags: bToTopPossible and bToBtmPossible.
@@ -270,7 +270,7 @@ public:
 
     // Unite several objects to a polygon:
     // - rectangles/circles/text... are implicitly converted.
-    // - polygones are closed automatically
+    // - polygons are closed automatically
     // - attributes and layer are taken from the first object marked
     //   (thus from lowest Z-order).
     // - group objects are included when all (!) member objects of
@@ -293,7 +293,7 @@ public:
 
     // Decompose marked polypolygon objects into polygons.
     // Grouped objects are searched and decomposed, if all member objects are PathObjs.
-    // bMakeLines=TRUE:  all polygones are decomposed into single lines resp. bezier segments
+    // bMakeLines=TRUE:  all polygons are decomposed into single lines resp. bezier segments
     void DismantleMarkedObjects(bool bMakeLines=false);
     bool IsCombinePossible(bool bNoPolyPoly=false) const;
     bool IsDismantlePossible(bool bMakeLines=false) const;
@@ -363,7 +363,7 @@ public:
     bool IsUnGroupPossible() const { ForcePossibilities(); return m_bUnGroupPossible; }
     bool IsGroupEnterPossible() const { ForcePossibilities(); return m_bGrpEnterPossible; }
 
-    // Convert marked objects to polygones/Beziercurves. The bool-functions
+    // Convert marked objects to polygons/Beziercurves. The bool-functions
     // return sal_True, if at least one marked object could be converted.
     // Also member objects of group objects are converted.
     // For a better description see: SdrObj.HXX
@@ -423,7 +423,7 @@ public:
 
     // If one or more objects of the type SdrGrafObj or SdrOle2Obj
     // are marked and these are capable to deliver a StarView-metafile,
-    // this methods converts the metafile to a drawing object.
+    // this method converts the metafile to a drawing object.
     // The SdrGrafObjs/SdrOle2Objs are replaced by the new objects.
     void DoImportMarkedMtf(SvdProgressInfo *pProgrInfo=nullptr);
     bool IsImportMtfPossible() const { ForcePossibilities(); return m_bImportMtfPossible; }

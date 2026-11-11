@@ -8,6 +8,7 @@
  */
 
 #include "rtfsdrimport.hxx"
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <com/sun/star/container/XNamed.hpp>
@@ -244,7 +245,7 @@ void RTFSdrImport::applyProperty(uno::Reference<drawing::XShape> const& xShape,
     else if (aKey == u"rotation")
     {
         // See DffPropertyReader::Fix16ToAngle(): in RTF, positive rotation angles are clockwise, we have them as counter-clockwise.
-        // Additionally, RTF type is 0..360*2^16, our is 0..360*100.
+        // Additionally, RTF type is 0..360*2^16, ours is 0..360*100.
         sal_Int32 nRotation = o3tl::toInt32(aValue) * 100 / RTF_MULTIPLIER;
         uno::Reference<lang::XServiceInfo> xServiceInfo(xShape, uno::UNO_QUERY);
         if (!xServiceInfo->supportsService(u"com.sun.star.text.TextFrame"_ustr))
@@ -312,6 +313,13 @@ int RTFSdrImport::initShape(uno::Reference<drawing::XShape>& o_xShape,
         }
     }
 
+    // tdf#167714 a horizontal rule is shapeType 1 with fHorizRule, i.e. a plain filled bar
+    const bool bHorizontalRule
+        = std::any_of(rShape.getProperties().begin(), rShape.getProperties().end(),
+                      [](const std::pair<OUString, OUString>& rProperty) {
+                          return rProperty.first == "fHorizRule" && rProperty.second.toInt32() != 0;
+                      });
+
     switch (nType)
     {
         case ESCHER_ShpInst_PictureFrame:
@@ -323,6 +331,13 @@ int RTFSdrImport::initShape(uno::Reference<drawing::XShape>& o_xShape,
             break;
         case ESCHER_ShpInst_Rectangle:
         case ESCHER_ShpInst_TextBox:
+            // A rule has to be the same model object the VML import creates for o:hr, so that
+            // layout has one thing to recognise and the marker can be restricted to rectangles.
+            if (bHorizontalRule)
+            {
+                createShape(u"com.sun.star.drawing.RectangleShape"_ustr, o_xShape, o_xPropSet);
+                break;
+            }
             // If we're inside a groupshape, can't use text frames.
             if (!bClose && m_aParents.size() == 1)
             {
@@ -781,7 +796,10 @@ void RTFSdrImport::resolve(RTFShape& rShape, bool bClose, ShapeOrPict const shap
                 }
             }
         }
-        else if (rProperty.first == "fHorizRule") // TODO: what does "fStandardHR" do?
+        // "fStandardHR" tells the shaded rule from a picture rule. Both are laid out the same
+        // way, but a picture rule defaults to a fixed width instead of a percentage, so the
+        // property is not merely cosmetic - it is just not imported yet.
+        else if (rProperty.first == "fHorizRule")
         {
             // horizontal rule: relative width defaults to 100% of paragraph
             // TODO: does it have a default height?
@@ -792,6 +810,7 @@ void RTFSdrImport::resolve(RTFShape& rShape, bool bClose, ShapeOrPict const shap
             nRelativeWidthRelation = text::RelOrientation::FRAME;
             if (xPropertySet.is())
             {
+                xPropertySet->setPropertyValue(u"HorizontalRule"_ustr, uno::Any(true));
                 sal_Int16 const nVertOrient = text::VertOrientation::CENTER;
                 xPropertySet->setPropertyValue(u"VertOrient"_ustr, uno::Any(nVertOrient));
             }
@@ -1011,8 +1030,8 @@ void RTFSdrImport::resolve(RTFShape& rShape, bool bClose, ShapeOrPict const shap
     // Set position and size
     if (xShape.is())
     {
-        sal_Int32 nLeft = rShape.getLeft();
-        sal_Int32 nTop = rShape.getTop();
+        gfx::Length nLeft = rShape.getLeftLength();
+        gfx::Length nTop = rShape.getTopLength();
 
         bool bInShapeGroup = oGroupLeft && oGroupTop && oGroupRight && oGroupBottom && oRelLeft
                              && oRelTop && oRelRight && oRelBottom;
@@ -1026,9 +1045,8 @@ void RTFSdrImport::resolve(RTFShape& rShape, bool bClose, ShapeOrPict const shap
             sal_Int32 nCoordSysHeight = *oGroupBottom - *oGroupTop;
             double fWidthRatio = static_cast<double>(nShapeWidth) / nCoordSysWidth;
             double fHeightRatio = static_cast<double>(nShapeHeight) / nCoordSysHeight;
-            nLeft = static_cast<sal_Int32>(rShape.getLeft()
-                                           + fWidthRatio * (*oRelLeft - *oGroupLeft));
-            nTop = static_cast<sal_Int32>(rShape.getTop() + fHeightRatio * (*oRelTop - *oGroupTop));
+            nLeft = gfx::Length::hmm(rShape.getLeft() + fWidthRatio * (*oRelLeft - *oGroupLeft));
+            nTop = gfx::Length::hmm(rShape.getTop() + fHeightRatio * (*oRelTop - *oGroupTop));
 
             // See lclGetAbsRect() in the VML import.
             aSize.Width = std::lround(fWidthRatio * (*oRelRight - *oRelLeft));
@@ -1037,11 +1055,13 @@ void RTFSdrImport::resolve(RTFShape& rShape, bool bClose, ShapeOrPict const shap
 
         if (m_bTextFrame)
         {
-            xPropertySet->setPropertyValue(u"HoriOrientPosition"_ustr, uno::Any(nLeft));
-            xPropertySet->setPropertyValue(u"VertOrientPosition"_ustr, uno::Any(nTop));
+            xPropertySet->setPropertyValue(u"HoriOrientPositionEMU"_ustr,
+                                           uno::Any(sal_Int64(nLeft.as_emu())));
+            xPropertySet->setPropertyValue(u"VertOrientPositionEMU"_ustr,
+                                           uno::Any(sal_Int64(nTop.as_emu())));
         }
         else
-            xShape->setPosition(awt::Point(nLeft, nTop));
+            xShape->setPosition(awt::Point(std::round(nLeft.as_hmm()), std::round(nTop.as_hmm())));
 
         if (bInShapeGroup)
             xShape->setSize(aSize);
@@ -1142,15 +1162,10 @@ void RTFSdrImport::resolve(RTFShape& rShape, bool bClose, ShapeOrPict const shap
         return;
     }
 
-    // Send it to dmapper
+    // Send it to dmapper. Inside a table this has to wait for the row to be replayed, when the
+    // cells exist - resolvePict() defers its own output the same way.
     if (xShape.is())
-    {
-        m_rImport.Mapper().startShape(xShape);
-        if (bClose)
-        {
-            m_rImport.Mapper().endShape();
-        }
-    }
+        m_rImport.insertShape(xShape, bClose);
 
     if (m_rImport.isInBackground())
     {
@@ -1165,8 +1180,6 @@ void RTFSdrImport::resolve(RTFShape& rShape, bool bClose, ShapeOrPict const shap
 
     m_xShape = std::move(xShape);
 }
-
-void RTFSdrImport::close() { m_rImport.Mapper().endShape(); }
 
 void RTFSdrImport::append(std::u16string_view aKey, std::u16string_view aValue)
 {

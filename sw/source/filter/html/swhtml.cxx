@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <config_java.h>
 
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
@@ -49,6 +50,7 @@
 #include <unotools/pathoptions.hxx>
 #include <vcl/metric.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/wrkwin.hxx>
 #include <sfx2/event.hxx>
 #include <sfx2/docfile.hxx>
 
@@ -111,6 +113,7 @@
 #include "wrthtml.hxx"
 #include <linkenum.hxx>
 #include <breakit.hxx>
+#include <SwAppletImpl.hxx>
 #include <swdll.hxx>
 #include <txatbase.hxx>
 
@@ -308,15 +311,14 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
     m_bInFootEndNoteAnchor( false ),
     m_bInFootEndNoteSymbol( false ),
     m_bIgnoreHTMLComments( bNoHTMLComments ),
-    m_bRemoveHidden( false ),
     m_bBodySeen( false ),
     m_bReadingHeaderOrFooter( false ),
     m_bNotifyMacroEventRead( false ),
+    m_bFromClipboard( m_sBaseURL.isEmpty() ),
     m_isInTableStructure(false),
     m_nTableDepth( 0 ),
     m_nFloatingFrames( 0 ),
-    m_nListItems( 0 ),
-    m_pTempViewFrame(nullptr)
+    m_nListItems( 0 )
 {
     // If requested explicitly, then force ignoring of comments (don't create postits for them).
     if (!bFuzzing)
@@ -497,7 +499,7 @@ SwHTMLParser::~SwHTMLParser()
             SfxObjectCreateMode::INTERNAL != pShell->GetCreateMode() )
         {
             SfxMedium * medium = pShell->GetMedium();
-            m_xDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks( nLinkMode == MANUAL, nullptr, medium == nullptr ? OUString() : medium->GetName() );
+            m_xDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks( nLinkMode == MANUAL, medium == nullptr ? OUString() : medium->GetName() );
         }
 
         if ( pShell->IsLoading() )
@@ -531,15 +533,12 @@ SwHTMLParser::~SwHTMLParser()
 
     m_xDoc.clear();
 
-    if ( m_pTempViewFrame )
+    if (m_xControlSizeContainer.is())
     {
-        m_pTempViewFrame->DoClose();
-
-        // the temporary view frame is hidden, so the hidden flag might need to be removed
-        SwDocShell* pShell = m_xDoc.is() ? m_xDoc->GetDocShell() : nullptr;
-        if ( m_bRemoveHidden && pShell && pShell->GetMedium() )
-            pShell->GetMedium()->GetItemSet().ClearItem( SID_HIDDEN );
+        uno::Reference<lang::XComponent>(m_xControlSizeContainer, uno::UNO_QUERY_THROW)->dispose();
+        m_xControlSizeContainer.clear();
     }
+    m_xControlSizeWindow.disposeAndClear();
 }
 
 IMPL_LINK_NOARG( SwHTMLParser, AsyncCallback, void*, void )
@@ -717,6 +716,14 @@ void SwHTMLParser::Continue( HtmlTokenId nToken )
                 SwScriptField aField( pType, m_aScriptType, m_aScriptSource,
                                     false );
                 InsertAttr( SwFormatField( aField ), false );
+            }
+
+            if( m_pAppletImpl )
+            {
+                if( m_pAppletImpl->GetApplet().is() )
+                    EndApplet();
+                else
+                    EndObject();
             }
 
             // maybe remove an existing LF after the last paragraph
@@ -1147,6 +1154,30 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
             return;
         }
+        else if( m_pAppletImpl )
+        {
+            // in an applet only <PARAM> tags and the </APPLET> tag
+            // are of interest for us (for the moment)
+            // <SCRIPT> is ignored here (from Netscape)!
+
+            switch( nToken )
+            {
+            case HtmlTokenId::APPLET_OFF:
+                m_bCallNextToken = false;
+                EndApplet();
+                break;
+            case HtmlTokenId::OBJECT_OFF:
+                m_bCallNextToken = false;
+                EndObject();
+                break;
+            case HtmlTokenId::PARAM:
+                InsertParam();
+                break;
+            default: break;
+            }
+
+            return;
+        }
         else if( m_bTextArea )
         {
             // in a TextArea everything up to </TEXTAREA> is inserted as text.
@@ -1435,11 +1466,22 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
                 InsertImage();
             break;
         }
+#if HAVE_FEATURE_JAVA
+        NewObject();
+        m_bCallNextToken = m_pAppletImpl!=nullptr && m_xTable;
+#endif
         break;
 
     case HtmlTokenId::OBJECT_OFF:
         if (!m_aEmbeds.empty())
             m_aEmbeds.pop();
+        break;
+
+    case HtmlTokenId::APPLET_ON:
+#if HAVE_FEATURE_JAVA
+        InsertApplet();
+        m_bCallNextToken = m_pAppletImpl!=nullptr && m_xTable;
+#endif
         break;
 
     case HtmlTokenId::IFRAME_ON:
@@ -2080,8 +2122,16 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
     case HtmlTokenId::AREA:
         if( m_pImageMap )
+        {
+            const size_t nAreas = m_pImageMap->GetIMapObjectCount();
             ParseAreaOptions( m_pImageMap, m_sBaseURL, SvMacroItemId::OnMouseOver,
                                          SvMacroItemId::OnMouseOut );
+            if (m_pImageMap->GetIMapObjectCount() > nAreas
+                && !m_pImageMap->GetIMapObject(nAreas)->GetMacroTable().empty())
+            {
+                NotifyMacroEventRead();
+            }
+        }
         break;
 
     case HtmlTokenId::FRAMESET_ON:
@@ -2676,7 +2726,7 @@ SwViewShell *SwHTMLParser::CallEndAction( bool bChkAction, bool bChkPtr )
         {
             const Point aVisSttPos( DOCUMENTBORDER, DOCUMENTBORDER );
             if( GetMedium() && aVisSttPos == m_pActionViewShell->VisArea().Pos() )
-                ::JumpToSwMark( m_pActionViewShell,
+                (void)::JumpToSwMark( m_pActionViewShell,
                                 SwMarkName(GetMedium()->GetURLObject().GetMark()) );
             m_bChkJumpMark = false;
         }
@@ -2941,7 +2991,8 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                     const SvxBrushItem& rBrush = static_cast< SvxBrushItem& >(*pAttr->m_pItem);
                     SfxItemSet aNewSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(m_xDoc->GetAttrPool()));
 
-                    setSvxBrushItemAsFillAttributesToTargetSet(rBrush, aNewSet);
+                    setSvxBrushItemAsFillAttributesToTargetSet(rBrush, aNewSet,
+                                                               m_xDoc->GetLinkReferer());
                     m_xDoc->getIDocumentContentOperations().InsertItemSet(aAttrPam, aNewSet, SetAttrMode::DONTREPLACE);
                     break;
                 }
@@ -5636,7 +5687,7 @@ bool TestImportHTML(SvStream &rStream)
     SwGlobals::ensure();
 
     SfxObjectShellLock xDocSh(new SwDocShell(SfxObjectCreateMode::INTERNAL));
-    xDocSh->DoInitNew();
+    xDocSh->DoInitNew(SfxNewDocumentMacros::Disallow);
     SwDoc *pD =  static_cast<SwDocShell*>((&xDocSh))->GetDoc();
 
     SwPaM aPaM(pD->GetNodes().GetEndOfContent(), SwNodeOffset(-1));

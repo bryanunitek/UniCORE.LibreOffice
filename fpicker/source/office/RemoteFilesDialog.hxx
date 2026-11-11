@@ -11,9 +11,7 @@
 
 #include "autocmpledit.hxx"
 #include <svtools/place.hxx>
-
-#include <unotools/viewoptions.hxx>
-
+#include <svtools/viewoptions.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld/Button.hxx>
 #include <vcl/weld/ToggleButton.hxx>
@@ -158,6 +156,8 @@ private:
                       const OUString& rPassword, bool bPersistent);
 
     void AddService();
+
+    UrlRecord FindPersistentPassword(std::u16string_view aUrl, const Reference<XInteractionHandler>& rHandler) const;
 
     DECL_LINK ( SelectServiceHdl, weld::ComboBox&, void );
     DECL_LINK ( EditServiceMenuHdl, const OUString&, void );

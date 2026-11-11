@@ -785,7 +785,7 @@ public:
                 std::vector<EditTextObject*> aCloned;
                 aCloned.reserve(nDataSize);
                 for (; it != itEnd; ++it)
-                    aCloned.push_back(ScEditUtil::Clone(**it, mrDestCol.GetDoc()).release());
+                    aCloned.push_back(new EditTextObject(ScEditUtil::Clone(**it, mrDestCol.GetDoc())));
 
                 maDestPos.miCellPos = mrDestCol.GetCellStore().set(
                     maDestPos.miCellPos, nTopRow, aCloned.begin(), aCloned.end());
@@ -1038,9 +1038,9 @@ void ScColumn::CopyCellToDocument( SCROW nSrcRow, SCROW nDestRow, ScColumn& rDes
         {
             EditTextObject* p = sc::edittext_block::at(*it->data, aPos.second);
             if (&rDocument == &rDestCol.GetDoc())
-                rDestCol.maCells.set(nDestRow, p->Clone().release());
+                rDestCol.maCells.set(nDestRow, new EditTextObject(*p));
             else
-                rDestCol.maCells.set(nDestRow, ScEditUtil::Clone(*p, rDestCol.GetDoc()).release());
+                rDestCol.maCells.set(nDestRow, new EditTextObject(ScEditUtil::Clone(*p, rDestCol.GetDoc())));
         }
         break;
         case sc::element_type_formula:
@@ -1340,7 +1340,7 @@ class CopyByCloneHandler
             EditEngine& rEngine = mrDestCol.GetDoc().GetEditEngine();
             rEngine.SetText(aStr.getString());
             maDestPos.miCellPos =
-                mrDestCol.GetCellStore().set(maDestPos.miCellPos, nRow, rEngine.CreateTextObject().release());
+                mrDestCol.GetCellStore().set(maDestPos.miCellPos, nRow, new EditTextObject(rEngine.CreateTextObject()));
         }
         else
         {
@@ -1483,7 +1483,7 @@ public:
                 std::vector<EditTextObject*> aCloned;
                 aCloned.reserve(nDataSize);
                 for (; it != itEnd; ++it)
-                    aCloned.push_back(ScEditUtil::Clone(**it, mrDestCol.GetDoc()).release());
+                    aCloned.push_back(new EditTextObject(ScEditUtil::Clone(**it, mrDestCol.GetDoc())));
 
                 maDestPos.miCellPos = mrDestCol.GetCellStore().set(
                     maDestPos.miCellPos, nRow, aCloned.begin(), aCloned.end());
@@ -2374,7 +2374,7 @@ bool ScColumn::UpdateReference( sc::RefUpdateContext& rCxt, ScDocument* pUndoDoc
                             rCxt.maRange.aStart.Col() <= nCol && nCol <= rCxt.maRange.aEnd.Col());
     if (bThisColShifted)
     {
-        // Cells in this column is being shifted.  Split formula grouping at
+        // Cells in this column are being shifted.  Split formula grouping at
         // the top and bottom boundaries before they get shifted.
         // Also, for deleted rows split at the top of the deleted area to adapt
         // the affected group length.
@@ -2634,22 +2634,6 @@ public:
     }
 };
 
-/** For adjusting relative tab references. */
-class RelativeTabRefUpdater
-{
-    SCTAB mnOldTab;
-    SCTAB mnNewTab;
-    sc::TargetTabState meMode;
-public:
-    RelativeTabRefUpdater(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode) :
-        mnOldTab(nOldTab), mnNewTab(nNewTab), meMode(eMode) {}
-
-    void operator() (size_t /*nRow*/, ScFormulaCell* pCell)
-    {
-        pCell->AdjustRelativeTabRefs(mnOldTab, mnNewTab, meMode);
-    }
-};
-
 class UsedRangeNameFinder
 {
     sc::UpdatedRangeNames& mrIndexes;
@@ -2849,7 +2833,7 @@ struct CalcAllHandler
         if (pCell->GetCode()->IsRecalcModeNormal())
             nNewVal = pCell->GetValue();
         else
-            nNewVal = nOldVal;  // random(), jetzt() etc.
+            nNewVal = nOldVal;  // random(), now() etc.
 
         assert(nOldVal == nNewVal);
 #endif
@@ -2989,7 +2973,7 @@ public:
     bool operator() (size_t nRow, const ScFormulaCell* p)
     {
         // With a formula cell, it's considered an edit text cell when either
-        // the result is multi-line or it has more than one script types.
+        // the result is multi-line or it has more than one script type.
         SvtScriptType nScriptType = mrColumn.GetRangeScriptType(miAttrPos, nRow, nRow, miCellPos);
         if (IsAmbiguousScriptNonZero(nScriptType))
             return true;
@@ -3078,12 +3062,6 @@ void ScColumn::UpdateInsertTabAbs(SCTAB nNewPos)
     sc::ProcessFormulaEditText(maCells, aFunc);
     if (aFunc.isModified())
         CellStorageModified();
-}
-
-void ScColumn::AdjustRelativeTabRefs(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode)
-{
-    RelativeTabRefUpdater aFunc(nOldTab, nNewTab, eMode);
-    sc::ProcessFormula(maCells, aFunc);
 }
 
 void ScColumn::UpdateMoveTab( sc::RefUpdateMoveTabContext& rCxt, SCTAB nTabNo )

@@ -11,10 +11,13 @@
 
 #include <test/unoapi_test.hxx>
 
+#include <boost/property_tree/json_parser.hpp>
+
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
 
 #include <comphelper/propertysequence.hxx>
+#include <tools/json_writer.hxx>
 #include <vcl/scheduler.hxx>
 #include <sfx2/dispatch.hxx>
 #include <svl/stritem.hxx>
@@ -377,6 +380,10 @@ CPPUNIT_TEST_FIXTURE(AnnotationTest, testAnnotationDuplicatePage)
         CPPUNIT_ASSERT_EQUAL(u"Comment"_ustr, xAnnotation->GetText());
     }
 
+    // The moment the comment was written has to travel with the copy as well.
+    const util::DateTime aDateTimeUTC(0, 3, 2, 1, 15, 6, 2026, true);
+    pPage1->getAnnotations().at(0)->setDateTimeUTC(aDateTimeUTC);
+
     // Let's duplicate the page
     dispatchCommand(mxComponent, u".uno:DuplicatePage"_ustr, {});
 
@@ -414,6 +421,11 @@ CPPUNIT_TEST_FIXTURE(AnnotationTest, testAnnotationDuplicatePage)
 
         // Check text of the annotation
         CPPUNIT_ASSERT_EQUAL(u"Comment"_ustr, xAnnotation->GetText());
+
+        // The copy carries the same moment as the original
+        CPPUNIT_ASSERT_EQUAL(aDateTimeUTC.Year, xAnnotation->getDateTimeUTC().Year);
+        CPPUNIT_ASSERT_EQUAL(aDateTimeUTC.Hours, xAnnotation->getDateTimeUTC().Hours);
+        CPPUNIT_ASSERT_EQUAL(aDateTimeUTC.Minutes, xAnnotation->getDateTimeUTC().Minutes);
 
         // Annotation in page 1 is not the same instance as annotation in page 2
         // We verify the annotation was copied
@@ -520,6 +532,236 @@ CPPUNIT_TEST_FIXTURE(AnnotationTest, testAnnotationTextUpdate)
 
         CPPUNIT_ASSERT_EQUAL(u"ABC"_ustr, pPage->getAnnotations().at(0)->GetText());
     }
+}
+
+CPPUNIT_TEST_FIXTURE(AnnotationTest, testAnnotationThreadedFields)
+{
+    // Threaded-comment fields (threaded/resolved/parentId) are carried by the
+    // annotation model, survive toData/fromData and clone, and surface in the
+    // Kit JSON so the Online client can show the resolve UI.
+    createSdDrawDoc();
+
+    auto pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pXImpressDocument);
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    SdPage* pPage = pViewShell->GetActualPage();
+
+    // A classic (non-threaded) annotation.
+    rtl::Reference<sdr::annotation::Annotation> xFlat = pPage->createAnnotation();
+    xFlat->setAuthor(u"Flat"_ustr);
+    xFlat->setPosition(geometry::RealPoint2D(0.0, 0.0));
+    xFlat->setSize(geometry::RealSize2D(10.0, 10.0));
+    xFlat->getTextRange()->setString(u"flat"_ustr);
+    pPage->addAnnotation(xFlat, -1);
+
+    CPPUNIT_ASSERT(!xFlat->IsThreaded());
+    CPPUNIT_ASSERT(!xFlat->IsResolved());
+    CPPUNIT_ASSERT_EQUAL(sal_uInt64(0), xFlat->GetParentId());
+
+    // A threaded root annotation, resolved.
+    rtl::Reference<sdr::annotation::Annotation> xRoot = pPage->createAnnotation();
+    xRoot->setAuthor(u"Root"_ustr);
+    xRoot->setPosition(geometry::RealPoint2D(20.0, 0.0));
+    xRoot->setSize(geometry::RealSize2D(10.0, 10.0));
+    xRoot->getTextRange()->setString(u"root"_ustr);
+    xRoot->SetThreaded(true);
+    xRoot->SetResolved(true);
+    pPage->addAnnotation(xRoot, -1);
+
+    CPPUNIT_ASSERT(xRoot->IsThreaded());
+    CPPUNIT_ASSERT(xRoot->IsResolved());
+    CPPUNIT_ASSERT_EQUAL(sal_uInt64(0), xRoot->GetParentId());
+
+    // A threaded reply referencing the root.
+    rtl::Reference<sdr::annotation::Annotation> xReply = pPage->createAnnotation();
+    xReply->setAuthor(u"Reply"_ustr);
+    xReply->setPosition(geometry::RealPoint2D(40.0, 0.0));
+    xReply->setSize(geometry::RealSize2D(10.0, 10.0));
+    xReply->getTextRange()->setString(u"reply"_ustr);
+    xReply->SetThreaded(true);
+    xReply->SetParentId(xRoot->GetId());
+    pPage->addAnnotation(xReply, -1);
+
+    CPPUNIT_ASSERT(xReply->IsThreaded());
+    CPPUNIT_ASSERT(!xReply->IsResolved());
+    CPPUNIT_ASSERT_EQUAL(xRoot->GetId(), xReply->GetParentId());
+
+    // toData / fromData round-trip carries the three new fields.
+    sdr::annotation::AnnotationData aSaved;
+    xReply->toData(aSaved);
+    CPPUNIT_ASSERT(aSaved.m_Threaded);
+    CPPUNIT_ASSERT(!aSaved.m_Resolved);
+    CPPUNIT_ASSERT_EQUAL(xRoot->GetId(), aSaved.m_ParentId);
+
+    // Flip the live annotation, then restore via fromData.
+    xReply->SetThreaded(false);
+    xReply->SetResolved(true);
+    xReply->SetParentId(0);
+    xReply->fromData(aSaved);
+    CPPUNIT_ASSERT(xReply->IsThreaded());
+    CPPUNIT_ASSERT(!xReply->IsResolved());
+    CPPUNIT_ASSERT_EQUAL(xRoot->GetId(), xReply->GetParentId());
+
+    // clone() propagates the fields.
+    rtl::Reference<sdr::annotation::Annotation> xClone = xRoot->clone(pPage);
+    CPPUNIT_ASSERT(xClone->IsThreaded());
+    CPPUNIT_ASSERT(xClone->IsResolved());
+    CPPUNIT_ASSERT_EQUAL(sal_uInt64(0), xClone->GetParentId());
+
+    // Per-annotation ToJSON emits the new keys only when threaded.
+    auto parseJson = [](std::string_view aText) {
+        std::stringstream aStream{ std::string(aText) };
+        boost::property_tree::ptree aTree;
+        boost::property_tree::read_json(aStream, aTree);
+        return aTree;
+    };
+
+    {
+        auto aTree = parseJson(xFlat->ToJSON(sdr::annotation::CommentNotificationType::Modify));
+        const auto& rComment = aTree.get_child("comment");
+        CPPUNIT_ASSERT(!rComment.get_child_optional("threaded"));
+        CPPUNIT_ASSERT(!rComment.get_child_optional("resolved"));
+        CPPUNIT_ASSERT(!rComment.get_child_optional("parentId"));
+    }
+    {
+        auto aTree = parseJson(xRoot->ToJSON(sdr::annotation::CommentNotificationType::Modify));
+        const auto& rComment = aTree.get_child("comment");
+        CPPUNIT_ASSERT_EQUAL(std::string("true"), rComment.get<std::string>("threaded"));
+        CPPUNIT_ASSERT_EQUAL(std::string("true"), rComment.get<std::string>("resolved"));
+        CPPUNIT_ASSERT_EQUAL(sal_uInt64(0), rComment.get<sal_uInt64>("parentId"));
+    }
+    {
+        auto aTree = parseJson(xReply->ToJSON(sdr::annotation::CommentNotificationType::Modify));
+        const auto& rComment = aTree.get_child("comment");
+        CPPUNIT_ASSERT_EQUAL(std::string("true"), rComment.get<std::string>("threaded"));
+        CPPUNIT_ASSERT_EQUAL(std::string("false"), rComment.get<std::string>("resolved"));
+        CPPUNIT_ASSERT_EQUAL(xRoot->GetId(), rComment.get<sal_uInt64>("parentId"));
+    }
+
+    // Doc-level getPostIts dump: flat annotation has no threaded keys; root and
+    // reply carry the expected values.
+    tools::JsonWriter aWriter;
+    pXImpressDocument->getPostIts(aWriter);
+    auto aDocTree = parseJson(aWriter.finishAndGetAsOString());
+
+    int nVerified = 0;
+    for (const auto& rEntry : aDocTree.get_child("comments"))
+    {
+        const auto& rComment = rEntry.second;
+        const sal_uInt64 nId = rComment.get<sal_uInt64>("id");
+        if (nId == xFlat->GetId())
+        {
+            CPPUNIT_ASSERT(!rComment.get_child_optional("threaded"));
+            CPPUNIT_ASSERT(!rComment.get_child_optional("resolved"));
+            CPPUNIT_ASSERT(!rComment.get_child_optional("parentId"));
+            ++nVerified;
+        }
+        else if (nId == xRoot->GetId())
+        {
+            CPPUNIT_ASSERT_EQUAL(std::string("true"), rComment.get<std::string>("threaded"));
+            CPPUNIT_ASSERT_EQUAL(std::string("true"), rComment.get<std::string>("resolved"));
+            CPPUNIT_ASSERT_EQUAL(sal_uInt64(0), rComment.get<sal_uInt64>("parentId"));
+            ++nVerified;
+        }
+        else if (nId == xReply->GetId())
+        {
+            CPPUNIT_ASSERT_EQUAL(std::string("true"), rComment.get<std::string>("threaded"));
+            CPPUNIT_ASSERT_EQUAL(std::string("false"), rComment.get<std::string>("resolved"));
+            CPPUNIT_ASSERT_EQUAL(xRoot->GetId(), rComment.get<sal_uInt64>("parentId"));
+            ++nVerified;
+        }
+    }
+    CPPUNIT_ASSERT_EQUAL(3, nVerified);
+}
+
+CPPUNIT_TEST_FIXTURE(AnnotationTest, testModernCommentImport)
+{
+    // A presentation whose comments are held in the newer comment part keeps them on load, as
+    // one thread with the replies hanging off its root.
+    createSdImpressDoc("pptx/modern-comments.pptx");
+
+    auto pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pXImpressDocument);
+    SdPage* pPage = pXImpressDocument->GetDoc()->GetSdPage(0, PageKind::Standard);
+    CPPUNIT_ASSERT(pPage);
+
+    // Without the accompanying fix in place, this test would have failed with an expected 3 but
+    // an actual 0: the part was not read at all, so every comment was dropped on load.
+    auto const& rAnnotations = pPage->getAnnotations();
+    CPPUNIT_ASSERT_EQUAL(size_t(3), rAnnotations.size());
+
+    // The author comes from the separate author list the entries refer to by id.
+    for (auto const& xAnnotation : rAnnotations)
+    {
+        CPPUNIT_ASSERT_EQUAL(u"Comment Author"_ustr, xAnnotation->getAuthor());
+        CPPUNIT_ASSERT_EQUAL(u"CA"_ustr, xAnnotation->getInitials());
+        CPPUNIT_ASSERT(xAnnotation->IsThreaded());
+    }
+
+    // The thread root comes first, then its two replies in the order the file lists them.
+    CPPUNIT_ASSERT_EQUAL(u"Make this colorful"_ustr, rAnnotations[0]->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"Nice and big"_ustr, rAnnotations[1]->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"Faster"_ustr, rAnnotations[2]->GetText());
+
+    CPPUNIT_ASSERT_EQUAL(sal_uInt64(0), rAnnotations[0]->GetParentId());
+    CPPUNIT_ASSERT_EQUAL(rAnnotations[0]->GetId(), rAnnotations[1]->GetParentId());
+    CPPUNIT_ASSERT_EQUAL(rAnnotations[0]->GetId(), rAnnotations[2]->GetParentId());
+
+    // The created value is a moment in UTC, so it is recorded as one and not only as a wall
+    // clock. Without that a reader in another zone is shown the author's clock as their own.
+    for (auto const& xAnnotation : rAnnotations)
+        CPPUNIT_ASSERT_EQUAL(xAnnotation->getDateTime().Year, xAnnotation->getDateTimeUTC().Year);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(22), rAnnotations[0]->getDateTimeUTC().Minutes);
+
+    // The time each entry carries is kept as the file has it.
+    util::DateTime aDateTime = rAnnotations[0]->getDateTime();
+    CPPUNIT_ASSERT_EQUAL(sal_Int16(2026), aDateTime.Year);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(8), aDateTime.Month);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(21), aDateTime.Day);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(16), aDateTime.Hours);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(22), aDateTime.Minutes);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(22), aDateTime.Seconds);
+}
+
+CPPUNIT_TEST_FIXTURE(AnnotationTest, testAnnotationDateUtcOdfRoundtrip)
+{
+    // An annotation records the moment it was written beside the author's wall clock, and that
+    // moment survives a save and reload.
+    createSdImpressDoc();
+    dispatchCommand(mxComponent, u".uno:InsertAnnotation"_ustr, {});
+
+    auto pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pXImpressDocument);
+    SdPage* pPage = pXImpressDocument->GetDoc()->GetSdPage(0, PageKind::Standard);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pPage->getAnnotations().size());
+
+    // Inserting an annotation records a moment, so the year is a real one rather than the zero
+    // that stands for "nothing recorded".
+    CPPUNIT_ASSERT(pPage->getAnnotations()[0]->getDateTimeUTC().Year != 0);
+
+    // A known moment, so what lands in the file can be compared against it.
+    util::DateTime aDateTimeUTC(0, 3, 2, 1, 15, 6, 2026, true);
+    pPage->getAnnotations()[0]->setDateTimeUTC(aDateTimeUTC);
+
+    // Saving a presentation that has an annotation does not pass export validation, because the
+    // element is written in the officeooo namespace rather than the office one. That predates
+    // this and is why nothing here round-trips a presentation with a comment.
+    skipValidation();
+    saveAndReload(TestFilter::ODP);
+    auto pReloaded = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pReloaded);
+    SdPage* pReloadedPage = pReloaded->GetDoc()->GetSdPage(0, PageKind::Standard);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pReloadedPage->getAnnotations().size());
+
+    // Without the accompanying fix in place, this test would have failed: ODF kept the wall
+    // clock alone, so the zone it was read in was lost.
+    util::DateTime aReloaded = pReloadedPage->getAnnotations()[0]->getDateTimeUTC();
+    CPPUNIT_ASSERT_EQUAL(sal_Int16(2026), aReloaded.Year);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(6), aReloaded.Month);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(15), aReloaded.Day);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(1), aReloaded.Hours);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(2), aReloaded.Minutes);
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(3), aReloaded.Seconds);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

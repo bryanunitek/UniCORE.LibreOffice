@@ -123,7 +123,7 @@ void UnoApiTest::validate(TestFilter eFilter)
         eFormat = ValidationFormat::MSBINARY;
     else if (eFilter == TestFilter::PPT)
         eFormat = ValidationFormat::MSBINARY;
-    else if (eFilter == TestFilter::PDF_WRITER)
+    else if (eFilter == TestFilter::PDF)
         eFormat = ValidationFormat::PDF;
     else
     {
@@ -188,7 +188,7 @@ void UnoApiTest::validate(TestFilter eFilter)
     }
 
 #if !defined _WIN32
-    // For now, this is only needed by some Linux ASan builds, so keep it simply and disable it on
+    // For now, this is only needed by some Linux ASan builds, so keep it simple and disable it on
     // Windows (which doesn't support the relevant shell syntax for (un-)setting environment
     // variables).
     OUString env;
@@ -344,7 +344,7 @@ void UnoApiTest::save(TestFilter eFilter, const uno::Sequence<beans::PropertyVal
 
     if (pPassword)
     {
-        if (eFilter == TestFilter::PDF_WRITER)
+        if (eFilter == TestFilter::PDF)
         {
             comphelper::SequenceAsHashMap aFilterData;
             if (aMediaDescriptor.contains(u"FilterData"_ustr))
@@ -375,7 +375,7 @@ void UnoApiTest::save(TestFilter eFilter, const uno::Sequence<beans::PropertyVal
     css::uno::Reference<frame::XStorable> xStorable(mxComponent, css::uno::UNO_QUERY_THROW);
     xStorable->storeToURL(maTempFile.GetURL(), aMediaDescriptor.getAsConstPropertyValueList());
 
-    if (eFilter == TestFilter::PDF_WRITER)
+    if (eFilter == TestFilter::PDF)
     {
         comphelper::SequenceAsHashMap aFilterData;
         if (aMediaDescriptor.contains(u"FilterData"_ustr))
@@ -403,20 +403,17 @@ void UnoApiTest::saveAndReload(TestFilter eFilter,
     loadFromURL(maTempFile.GetURL(), rParams, pPassword);
 }
 
-std::unique_ptr<vcl::pdf::PDFiumDocument> UnoApiTest::parsePDFExport(const OString& rPassword)
+std::unique_ptr<vcl::pdf::PDFiumDocument>
+UnoApiTest::parsePDFExport(const std::shared_ptr<vcl::pdf::PDFium>& rPDFium,
+                           const OString& rPassword)
 {
     SvFileStream aFile(maTempFile.GetURL(), StreamMode::READ);
     maMemory.WriteStream(aFile);
-    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
-    if (!pPDFium)
-    {
-        return nullptr;
-    }
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
-        = pPDFium->openDocument(maMemory.GetData(), maMemory.GetSize(), rPassword);
+        = rPDFium->openDocument(maMemory.GetData(), maMemory.GetSize(), rPassword);
     if (!pPdfDocument)
     {
-        OString aError = OUStringToOString(pPDFium->getLastError(), RTL_TEXTENCODING_UTF8);
+        OString aError = OUStringToOString(rPDFium->getLastError(), RTL_TEXTENCODING_UTF8);
         CPPUNIT_ASSERT_MESSAGE(aError.getStr(), pPdfDocument);
     }
     return pPdfDocument;

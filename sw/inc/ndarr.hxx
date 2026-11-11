@@ -212,12 +212,14 @@ public:
                                            bool bSkipProtect = true );
     static SwContentNode* GoNextSection( SwPosition *, bool bSkipHidden  = true,
                                            bool bSkipProtect = true );
+    // canCrossBoundary allows moving out of the current global section (fly / header / footer /
+    // footnote / redlines / content).
     SW_DLLPUBLIC static SwContentNode* GoPrevSection( SwNodeIndex *, bool bSkipHidden  = true,
-                                           bool bSkipProtect = true );
+                                           bool bSkipProtect = true, bool canCrossBoundary = false );
     static SwContentNode* GoPrevSection( SwPosition *, bool bSkipHidden  = true,
-                                           bool bSkipProtect = true );
+                                           bool bSkipProtect = true, bool canCrossBoundary = false );
 
-    /** Create an empty section of Start- and EndNote. It may be called
+    /** Create an empty section of Start- and EndNode. It may be called
        only if a new section with content is to be created,
        e.g. at filters/Undo/... */
     static SwStartNode* MakeEmptySection( const SwNode& rWhere,
@@ -268,12 +270,14 @@ public:
                         const SwAttrSet * pAttrSet);
 
     /// Create balanced table from selected range.
+    /// @param nCols  number of additional empty columns to append (tdf#167632)
     SwTableNode* TextToTable( const SwNodeRange& rRange, sal_Unicode cCh,
                                 SwTableFormat* pTableFormat,
                                 SwTableLineFormat* pLineFormat,
                                 SwTableBoxFormat* pBoxFormat,
                                 SwTextFormatColl* pTextColl,
-                                SwUndoTextToTable* pUndo );
+                                SwUndoTextToTable* pUndo,
+                                sal_uInt16 nCols = 0 );
 
     void ExpandRangeForTableBox(const SwNodeRange & rRange,
                                 std::optional<SwNodeRange>& rExpandedRange);
@@ -287,7 +291,7 @@ public:
     /// Create regular text from what was table.
     bool TableToText( const SwNodeRange& rRange, sal_Unicode cCh,
                         SwUndoTableToText* );
-    /// Is in untbl.cxx and may called only by Undo-object.
+    /// Is in untbl.cxx and may be called only by Undo-object.
     SwTableNode* UndoTableToText( SwNodeOffset nStt, SwNodeOffset nEnd,
                         const SwTableToTextSaves& rSavedData );
 
@@ -300,7 +304,7 @@ public:
                         sal_uInt16 nInsPos, sal_uInt16 nCnt = 1 );
     /** Splits a table at the base-line which contains the index.
        All base lines behind it are moved to a new table/ -node.
-       Is the flag bCalcNewSize set to TRUE, the new SSize for both
+       If the flag bCalcNewSize is set to TRUE, the new SSize for both
        tables is calculated from the Maximum of the boxes, provided
        SSize is set "absolute" (LONG_MAX).
      */

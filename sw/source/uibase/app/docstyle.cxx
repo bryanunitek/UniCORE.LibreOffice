@@ -39,6 +39,7 @@
 #include <docsh.hxx>
 #include <frmfmt.hxx>
 #include <charfmt.hxx>
+#include <charformats.hxx>
 #include <tblafmt.hxx>
 #include <poolfmt.hxx>
 #include <pagedesc.hxx>
@@ -1210,20 +1211,13 @@ std::vector<std::pair<sal_uInt16, OUString>> SwDocStyleSheet::GetItemPresentatio
     std::vector<std::pair<sal_uInt16, OUString>> aResult;
     IntlWrapper aIntlWrapper(SvtSysLocale().GetUILanguageTag());
 
-    // Get parent item set for comparison
-    const SfxItemSet* pParentSet = nullptr;
-    SfxStyleSheetBase* pParentStyle = nullptr;
-    if (!GetParent().isEmpty())
-    {
-        pParentStyle = m_pPool->Find(GetParent(), nFamily);
-        if (pParentStyle)
-            pParentSet = &pParentStyle->GetItemSet();
-    }
-
     if (SfxStyleFamily::Page == nFamily)
     {
         if (!pSet)
             GetItemSet();
+
+        // tdf#172128: use the ItemSet parent instead of the shared object returned by Find(parent)
+        const SfxItemSet* pParentSet = pSet->GetParent();
 
         SfxItemIter aIter(*pSet);
 
@@ -1308,6 +1302,7 @@ std::vector<std::pair<sal_uInt16, OUString>> SwDocStyleSheet::GetItemPresentatio
             GetItemSet();
 
         const SfxItemSet* pCheckSet = pWorkingSet ? pWorkingSet : pSet;
+        const SfxItemSet* pParentSet = pCheckSet->GetParent();
 
         const drawing::FillStyle eFillStyle(pCheckSet->Get(XATTR_FILLSTYLE).GetValue());
         const bool bUseFloatTransparence(pCheckSet->Get(XATTR_FILLFLOATTRANSPARENCE).IsEnabled());
@@ -2714,6 +2709,12 @@ void SwDocStyleSheet::SetPhysical(bool bPhys)
         m_pColl    = nullptr;
         m_pFrameFormat  = nullptr;
         m_pDesc    = nullptr;
+        // tdf#172128: SwDocStyleSheetPool::Find() reuses one sheet object. Clear the
+        // cached ItemSet so attributes from the previously represented style cannot
+        // leak into the next style (and then be exported as direct overrides).
+        m_aCoreSet.ClearItem();
+        m_aCoreSet.SetParent(nullptr);
+        pSet = nullptr;
     }
 }
 
@@ -3341,7 +3342,7 @@ SfxStyleSheetBase*  SwStyleSheetIterator::First()
                     if ( tmpMask & SfxStyleSearchBits::Favourite )
                     {
                         SwFormat* pFormat = rDoc.FindTextFormatCollByName( pColl->GetName() );
-                        if (!(pFormat && pFormat->IsFavourite())) continue;
+                        if (!(pFormat && pFormat->IsFavourite().value_or(false))) continue;
                     }
 
                     // searched for used and found none
@@ -3609,12 +3610,55 @@ SfxStyleSheetBase* SwStyleSheetIterator::Find(const OUString& rName)
     return nullptr;
 }
 
+static std::map<UIName, const SwFormat*> MakeNameToFormatMap(const SwFormatsBase& rFormats)
+{
+    std::map<UIName, const SwFormat*> ret;
+    for( size_t n = 0; n < rFormats.GetFormatCount(); ++n )
+    {
+        auto pFormat = rFormats.GetFormat(n);
+        ret.insert( { pFormat->GetName(), pFormat } );
+    }
+    return ret;
+}
+
 void SwStyleSheetIterator::AppendStyleList(const std::vector<OUString>& rList,
                                             bool bTestUsed, bool bTestHidden, bool bOnlyHidden,
                                             SwGetPoolIdFromName nSection, SfxStyleFamily eFamily )
 {
     const SwDoc& rDoc = static_cast<const SwDocStyleSheetPool*>(pBasePool)->GetDoc();
     bool bUsed = false;
+
+    // Most of the searching for formats uses a linear search, so to avoid an O(n^2) loop, build
+    // a map of name->SwFormat.
+    std::map<UIName, const SwFormat*> aNameToFormatMap;
+    switch ( nSection )
+    {
+        case SwGetPoolIdFromName::TxtColl:
+            aNameToFormatMap = MakeNameToFormatMap(*rDoc.GetTextFormatColls());
+            break;
+        case SwGetPoolIdFromName::ChrFmt:
+            aNameToFormatMap = MakeNameToFormatMap(*rDoc.GetCharFormats());
+            break;
+        case SwGetPoolIdFromName::FrmFmt:
+            aNameToFormatMap = MakeNameToFormatMap(*rDoc.GetFrameFormats());
+            break;
+        case SwGetPoolIdFromName::PageDesc:
+            // do nothing
+            break;
+        case SwGetPoolIdFromName::NumRule:
+            // do nothing
+            break;
+        default:
+            OSL_ENSURE( false, "unknown PoolFormat-Id" );
+    }
+
+    auto findByName = [&aNameToFormatMap] (const UIName& rName) -> const SwFormat*
+        {
+            auto it = aNameToFormatMap.find(rName);
+            if (it == aNameToFormatMap.end())
+                return nullptr;
+            return it->second;
+        };
     for (const auto & rEntry : rList)
     {
         UIName i(rEntry);
@@ -3625,24 +3669,24 @@ void SwStyleSheetIterator::AppendStyleList(const std::vector<OUString>& rList,
         {
             case SwGetPoolIdFromName::TxtColl:
                 {
-                    bUsed = rDoc.getIDocumentStylePoolAccess().IsPoolTextCollUsed( nId );
-                    SwFormat* pFormat = rDoc.FindTextFormatCollByName( i );
+                    const SwFormat* pFormat = findByName(i);
+                    bUsed = pFormat != nullptr && rDoc.getIDocumentStylePoolAccess().IsPoolTextCollUsed( static_cast<const SwTextFormatColl&>(*pFormat) );
                     bHidden = pFormat && pFormat->IsHidden( );
-                    bFavourite = pFormat && pFormat->IsFavourite();
+                    bFavourite = pFormat && pFormat->IsFavourite().value_or(false);
                 }
                 break;
             case SwGetPoolIdFromName::ChrFmt:
                 {
-                    bUsed = rDoc.getIDocumentStylePoolAccess().IsPoolFormatUsed( nId );
-                    SwFormat* pFormat = rDoc.FindCharFormatByName( i );
+                    const SwFormat* pFormat = findByName(i);
+                    bUsed = pFormat != nullptr && rDoc.getIDocumentStylePoolAccess().IsPoolFormatUsed( *pFormat );
                     bHidden = pFormat && pFormat->IsHidden( );
-                    bFavourite = pFormat && pFormat->IsFavourite();
+                    bFavourite = pFormat && pFormat->IsFavourite().value_or(false);
                 }
                 break;
             case SwGetPoolIdFromName::FrmFmt:
                 {
-                    bUsed = rDoc.getIDocumentStylePoolAccess().IsPoolFormatUsed( nId );
-                    SwFormat* pFormat = rDoc.FindFrameFormatByName( i );
+                    const SwFormat* pFormat = findByName(i);
+                    bUsed = pFormat != nullptr && rDoc.getIDocumentStylePoolAccess().IsPoolFormatUsed( *pFormat );
                     bHidden = pFormat && pFormat->IsHidden( );
                 }
                 break;

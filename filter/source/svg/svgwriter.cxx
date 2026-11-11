@@ -37,6 +37,7 @@
 #include <tools/fract.hxx>
 #include <tools/helpers.hxx>
 #include <tools/stream.hxx>
+#include <tools/urlobj.hxx>
 #include <xmloff/namespacemap.hxx>
 #include <xmloff/unointerfacetouniqueidentifiermapper.hxx>
 #include <i18nlangtag/languagetag.hxx>
@@ -55,7 +56,14 @@
 
 #include <memory>
 
+using namespace ::com::sun::star;
+using namespace ::com::sun::star::container;
+using namespace ::com::sun::star::beans;
+using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::style;
+using namespace ::com::sun::star::text;
+using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::xml::sax;
 
 constexpr OUString aPrefixClipPathId = u"clip_path_"_ustr;
 
@@ -1302,7 +1310,15 @@ bool SVGTextWriter::nextTextPortion()
 #if OSL_DEBUG_LEVEL > 0
                                 sInfo += "url: " + mrExport.GetRelativeReference( sURL );
 #endif
-                                msUrl = mrExport.GetRelativeReference( sURL );
+                                // A link to a place in the presentation starts with '#'.
+                                INetURLObject aINetURLObject(sURL);
+                                if (sURL.startsWith("#")
+                                    || (!aINetURLObject.HasError()
+                                        && !aINetURLObject.IsExoticProtocol()
+                                        && aINetURLObject.GetProtocol() != INetProtocol::Javascript))
+                                    msUrl = mrExport.GetRelativeReference( sURL );
+                                else
+                                    msUrl.clear();
                                 if( !msUrl.isEmpty() )
                                 {
                                     implRegisterInterface( xPortionTextRange );
@@ -2170,7 +2186,9 @@ void SVGActionWriter::ImplAddLineAttr( const LineInfo &rAttrs )
         {
             if (!aDashArrayStr.isEmpty())
                 aDashArrayStr.append(",");
-            aDashArrayStr.append(x);
+            // tdf#86206 - map dash lengths to ensure correct dash pattern in scaled documents
+            const sal_Int32 nDash = ImplMap(basegfx::fround(x));
+            aDashArrayStr.append(nDash);
         }
         if (!aDashArrayStr.isEmpty())
             mrExport.AddAttribute(u"stroke-dasharray"_ustr, aDashArrayStr.makeStringAndClear());
@@ -3668,7 +3686,7 @@ void SVGActionWriter::ImplWriteActions( const GDIMetaFile& rMtf,
                         if(1 != mapCurShape->maShapePolyPoly.Count()
                             || !mapCurShape->maShapePolyPoly[0].IsEqual(aPoly))
                         {
-                            // this path action is not covering the same path than the already existing
+                            // this path action is not covering the same path as the already existing
                             // fill polypolygon, so write out the fill polygon
                             ImplWriteShape( *mapCurShape );
                             mapCurShape.reset();

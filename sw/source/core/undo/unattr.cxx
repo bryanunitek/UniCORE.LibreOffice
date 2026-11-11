@@ -66,7 +66,7 @@
 
 
 SwUndoFormatAttrHelper::SwUndoFormatAttrHelper(SwFormat& rFormat, bool bSvDrwPt)
-    : SwClient(&rFormat)
+    : sw::ClientBase<SwFormat>(&rFormat)
     , m_rFormat(rFormat)
     , m_bSaveDrawPt(bSvDrwPt)
 {
@@ -538,7 +538,8 @@ bool SwUndoFormatAttr::RestoreFlyAnchor(::sw::UndoRedoContext & rContext)
         // change of the Contact object by setting the anchor.
         const SwFormatVertOrient& rVertOrient = pFrameFormat->GetVertOrient();
         const SwFormatHoriOrient& rHoriOrient = pFrameFormat->GetHoriOrient();
-        Point aFormatPos(rHoriOrient.GetPos(), rVertOrient.GetPos());
+        Point aFormatPos(rHoriOrient.getPosition().as_twip<SwTwips>(),
+                         rVertOrient.getPosition().as_twip<SwTwips>());
         if (aDrawSavePt != aFormatPos)
         {
             // If the position would be the same, then skip the call: either it would do nothing or

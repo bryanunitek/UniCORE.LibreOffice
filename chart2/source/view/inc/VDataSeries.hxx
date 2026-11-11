@@ -94,6 +94,7 @@ public:
 
     css::uno::Sequence< double > const & getAllX() const;
     css::uno::Sequence< double > const & getAllY() const;
+    css::uno::Sequence< double > const & getAllFeatureValues() const;
 
     double getXMeanValue() const;
     double getYMeanValue() const;
@@ -172,8 +173,6 @@ public:
     void setOldTimeBased( VDataSeries* pOldSeries, double nPercent );
     VDataSeries* createCopyForTimeBased() const;
 
-    const VDataSequence& getCalculatedYValues() const { return m_aCalculatedValues_Y; }
-
     // Chart types that calculate the resulting values use this once during addSeries
     // to promote the calculated Y sidecar into the primary Y values, so the rendering
     // path plots the frequencies instead of the raw data.
@@ -201,7 +200,7 @@ private: //member
     rtl::Reference<::chart::DataSeries> m_xDataSeries;
     css::uno::Reference<css::beans::XPropertySet> m_xDataSeriesProps; // cached
 
-    //all points given by the model data (here are not only the visible points meant)
+    //all points given by the model data (not only the visible points)
     sal_Int32       m_nPointCount;
 
     VDataSequence   m_aValues_X;
@@ -216,6 +215,7 @@ private: //member
     VDataSequence   m_aValues_Y_Last;
 
     VDataSequence   m_aValues_Bubble_Size;
+    VDataSequence   m_aValues_Feature;
 
     VDataSequence*  m_pValueSequenceForDataLabelNumberFormatDetection;
 

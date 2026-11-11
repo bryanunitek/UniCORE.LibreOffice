@@ -125,7 +125,7 @@ CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testPageObjects)
     CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFPageObjectType::Text, pPageObject->getType());
 
     CPPUNIT_ASSERT_EQUAL(u"The quick, brown fox jumps over a lazy dog. DJs flock by when "
-                         "MTV ax quiz prog. Junk MTV quiz"_ustr,
+                         "MTV ax quiz prog. Junk MTV quiz "_ustr,
                          pPageObject->getText(pTextPage));
 
     CPPUNIT_ASSERT_EQUAL(12.0, pPageObject->getFontSize());
@@ -514,6 +514,12 @@ CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testStructureTree)
 
     auto pPage = pDocument->openPage(0);
     CPPUNIT_ASSERT(pPage);
+
+    // the page object side of the marked content ids the structure tree references
+    bool bFoundFirstMark = false;
+    for (int i = 0; !bFoundFirstMark && i < pPage->getObjectCount(); ++i)
+        bFoundFirstMark = pPage->getObject(i)->getMarkedContentID() == 0;
+    CPPUNIT_ASSERT(bFoundFirstMark);
 
     auto pTree = pPage->getStructureTree();
     CPPUNIT_ASSERT(pTree);

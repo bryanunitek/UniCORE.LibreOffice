@@ -139,8 +139,8 @@ void SwAccessibleContext::ChildrenScrolled( const SwFrame *pFrame,
             else if( !bVisibleChildrenOnly ||
                      rLower.AlwaysIncludeAsChild() )
             {
-                // This wouldn't be required if the SwAccessibleFrame,
-                // wouldn't know about the visible area.
+                // This wouldn't be required if the SwAccessibleFrame
+                // didn't know about the visible area.
                 eAction = Action::SCROLLED;
             }
             if( Action::NONE != eAction )
@@ -224,7 +224,7 @@ void SwAccessibleContext::ChildrenScrolled( const SwFrame *pFrame,
                     aBox.Overlaps( rOldVisArea ) ||
                     aBox.Overlaps( rNewVisArea ) ) )
         {
-            // There are no unaccessible SdrObjects that need to be notified
+            // There are no inaccessible SdrObjects that need to be notified
             ChildrenScrolled( rLower.GetSwFrame(), rOldVisArea );
         }
     }
@@ -722,8 +722,6 @@ uno::Reference< XAccessible > SAL_CALL SwAccessibleContext::getAccessibleAtPoint
 
     ThrowIfDisposed();
 
-    uno::Reference< XAccessible > xAcc;
-
     vcl::Window *pWin = GetWindow();
     if (!pWin)
     {
@@ -741,19 +739,13 @@ uno::Reference< XAccessible > SAL_CALL SwAccessibleContext::getAccessibleAtPoint
 
     const SwAccessibleChild aChild( GetChildAtPixel( aPixPoint, *(GetMap()) ) );
     if( aChild.GetSwFrame() )
-    {
-        xAcc = GetMap()->GetContext( aChild.GetSwFrame() );
-    }
-    else if( aChild.GetDrawObject() )
-    {
-        xAcc = GetMap()->GetContext( aChild.GetDrawObject(), this );
-    }
-    else if ( aChild.GetWindow() )
-    {
-        xAcc = aChild.GetWindow()->GetAccessible();
-    }
+        return GetMap()->GetContext(aChild.GetSwFrame());
+    if (aChild.GetDrawObject())
+        return GetMap()->GetContext(aChild.GetDrawObject(), this);
+    if (aChild.GetWindow())
+        return aChild.GetWindow()->GetAccessible();
 
-    return xAcc;
+    return {};
 }
 
 /**
@@ -871,8 +863,8 @@ void SAL_CALL SwAccessibleContext::grabFocus()
                 SwPosition const aStartPos(pTextFrame->MapViewToModelPos(pTextFrame->GetOffset()));
                 SwPaM aPaM( aStartPos );
 
-                // set PaM at cursor shell
-                Select( aPaM );
+                // set PaM at cursor shell, in the current frame
+                SelectInFrame( *pTextFrame, aPaM );
             }
         }
     }
@@ -1075,7 +1067,7 @@ void SwAccessibleContext::InvalidateChildPosOrSize(
         {
             if( rChildFrameOrObj.GetSwFrame() )
             {
-                // The frame becomes visible. A child event must be send.
+                // The frame becomes visible. A child event must be sent.
                 ::rtl::Reference< SwAccessibleContext > xAccImpl =
                     GetMap()->GetContextImpl( rChildFrameOrObj.GetSwFrame() );
                 xAccImpl->ScrolledIn();
@@ -1106,9 +1098,9 @@ void SwAccessibleContext::InvalidateChildPosOrSize(
     else
     {
         // If the frame was visible before, then a child event for the parent
-        // needs to be send. However, there is no wrapper existing, and so
-        // no notifications for grandchildren are required. If the are
-        // grandgrandchildren, they would be notified by the layout.
+        // needs to be sent. However, there is no wrapper existing, and so
+        // no notifications for grandchildren are required. If there are
+        // great-grandchildren, they would be notified by the layout.
         if( bVisibleChildrenOnly &&
             !bNew && IsShowing( rOldFrame ) )
         {
@@ -1271,6 +1263,30 @@ bool SwAccessibleContext::Select( SwPaM *pPaM, SdrObject *pObj,
     }
 
     return bRet;
+}
+
+bool SwAccessibleContext::SelectInFrame( const SwTextFrame& rTextFrame, SwPaM& rPaM )
+{
+    PinFrameForCursor( rTextFrame, *rPaM.GetPoint() );
+    return Select( rPaM );
+}
+
+void SwAccessibleContext::PinFrameForCursor( const SwTextFrame& rTextFrame, const SwPosition& rPos )
+{
+    SwCursorShell* pCursorShell = GetCursorShell();
+    if (!pCursorShell)
+        return;
+
+    SwRect aCharRect;
+    if (rTextFrame.GetCharRect(aCharRect, rPos))
+    {
+        pCursorShell->GetCursorDocPos() = aCharRect.Pos();
+    }
+    else
+    {
+        pCursorShell->GetCursorDocPos()
+            = rTextFrame.getFrameArea().Pos() + rTextFrame.getFramePrintArea().Pos();
+    }
 }
 
 OUString SwAccessibleContext::GetResource(TranslateId pResId,

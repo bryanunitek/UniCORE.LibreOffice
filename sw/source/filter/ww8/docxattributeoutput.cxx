@@ -104,6 +104,9 @@
 #include <svx/svdogrp.hxx>
 #include <svx/diagram/DiagramHelper_svx.hxx>
 #include <svl/grabbagitem.hxx>
+#include <svl/numformat.hxx>
+#include <svl/zformat.hxx>
+#include <i18nlangtag/mslangid.hxx>
 #include <tools/date.hxx>
 #include <tools/datetime.hxx>
 #include <tools/datetimeutils.hxx>
@@ -694,13 +697,13 @@ OString DocxAttributeOutput::convertToOOXMLVertOrient(sal_Int16 nOrient)
         case text::VertOrientation::LINE_CENTER:
             return "center"_ostr;
         case text::VertOrientation::BOTTOM:
+        case text::VertOrientation::CHAR_BOTTOM: // approximation - nothing compares exactly
+        case text::VertOrientation::LINE_TOP: // TEXT_LINE inverts the DOCX meaning of 'bottom'
             return "bottom"_ostr;
-        case text::VertOrientation::LINE_BOTTOM:
-            return "outside"_ostr;
         case text::VertOrientation::TOP:
+        case text::VertOrientation::CHAR_TOP:
+        case text::VertOrientation::LINE_BOTTOM: // TEXT_LINE inverts the DOCX meaning of 'top'
             return "top"_ostr;
-        case text::VertOrientation::LINE_TOP:
-            return "inside"_ostr;
         default:
             return OString();
     }
@@ -1125,7 +1128,8 @@ void DocxAttributeOutput::PopulateFrameProperties(const SwFrameFormat* pFrameFor
 
     const SwFormatHoriOrient& rHoriOrient = pFrameFormat->GetHoriOrient();
     const SwFormatVertOrient& rVertOrient = pFrameFormat->GetVertOrient();
-    awt::Point aPos(rHoriOrient.GetPos(), rVertOrient.GetPos());
+    awt::Point aPos(rHoriOrient.getPosition().as_twip<sal_Int32>(),
+                    rVertOrient.getPosition().as_twip<sal_Int32>());
 
     // A few assumptions need to be made here, because framePr is a confused mixture
     // of (multiple) paragraph's border properties being transferred to/from a frame.
@@ -2277,6 +2281,20 @@ void DocxAttributeOutput::EndRun(const SwTextNode* pNode, sal_Int32 nPos, sal_In
     DoWriteBookmarksStart(m_rFinalBookmarksStart);
     DoWriteBookmarksEnd(m_rFinalBookmarksEnd); // Write all final bookmarks
     DoWriteBookmarkEndIfExist(nPos);
+
+    // The run that just ended is the initial of a drop cap: give it its own paragraph.
+    if (m_oDropCap)
+    {
+        // A hyperlink or a structured document tag that is still open here wraps the runs
+        // of both paragraphs, so the end of the first paragraph would land inside it and
+        // the file would not open at all. What can be seen from the document is already
+        // left out in FormatDrop(), and a structured document tag that was kept in a grab
+        // bag in WriteCollectedRunProperties(), so this is only a backstop.
+        if (m_nHyperLinkCount.back() > 0 || m_aRunSdt.m_bStartedSdt)
+            m_oDropCap.reset();
+        else
+            SplitParagraphAtDropCap();
+    }
 }
 
 void DocxAttributeOutput::DoWriteBookmarkTagStart(const OUString& bookmarkName)
@@ -2674,7 +2692,7 @@ void DocxAttributeOutput::WriteSdtPlainText(const OUString & sValue, const uno::
         }
 
         // Store databindings data for later writing to corresponding XMLs
-        OUString sPrefixMapping, sXpath;
+        OUString sPrefixMapping, sXpath, sStoreItemID;
         for (const auto& rProp : aGrabBagSdt)
         {
             if (rProp.Name == "ooxml:CT_SdtPr_dataBinding")
@@ -2687,6 +2705,8 @@ void DocxAttributeOutput::WriteSdtPlainText(const OUString & sValue, const uno::
                         sPrefixMapping = rDBProp.Value.get<OUString>();
                     else if (rDBProp.Name == "ooxml:CT_DataBinding_xpath")
                         sXpath = rDBProp.Value.get<OUString>();
+                    else if (rDBProp.Name == "ooxml:CT_DataBinding_storeItemID")
+                        sStoreItemID = rDBProp.Value.get<OUString>();
                 }
             }
         }
@@ -2694,7 +2714,7 @@ void DocxAttributeOutput::WriteSdtPlainText(const OUString & sValue, const uno::
         if (sXpath.getLength())
         {
             // Given xpath is sufficient
-            m_rExport.AddSdtData(sPrefixMapping, sXpath, sValue);
+            m_rExport.AddSdtData(sPrefixMapping, sXpath, sStoreItemID, sValue);
         }
     }
 
@@ -2908,7 +2928,8 @@ void DocxAttributeOutput::WriteContentControlStart()
                 0
             };
             aSnippet = comphelper::string::removeAny(aSnippet, aForbidden);
-            m_rExport.AddSdtData(rPrefixMapping, rXpath, aSnippet);
+            m_rExport.AddSdtData(rPrefixMapping, rXpath,
+                                 m_pContentControl->GetDataBindingStoreItemID(), aSnippet);
         }
     }
 
@@ -3204,6 +3225,41 @@ void DocxAttributeOutput::CmdEndField_Impl(SwTextNode const*const pNode,
         }
 }
 
+static LanguageType lcl_getDateFieldNumberFormatLang(const FieldInfos& rInfos, SwDoc& rDoc)
+{
+    if (!rInfos.pField)
+        return LANGUAGE_DONTKNOW;
+    switch (rInfos.eType)
+    {
+        case ww::eDATE:
+        case ww::eTIME:
+        case ww::eCREATEDATE:
+        case ww::eSAVEDATE:
+        case ww::ePRINTDATE:
+            break;
+        default:
+            return LANGUAGE_DONTKNOW;
+    }
+    SvNumberFormatter* pFormatter = rDoc.GetNumberFormatter();
+    const SvNumberformat* pEntry
+        = pFormatter ? pFormatter->GetEntry(rInfos.pField->GetUntypedFormat()) : nullptr;
+    return pEntry ? pEntry->GetLanguage() : LANGUAGE_DONTKNOW;
+}
+
+/// The w:lang attribute for the script of this language.
+static sal_Int32 lcl_getLangAttr(LanguageType nLang)
+{
+    switch (MsLangId::getScriptType(nLang))
+    {
+        case css::i18n::ScriptType::ASIAN:
+            return FSNS(XML_w, XML_eastAsia);
+        case css::i18n::ScriptType::COMPLEX:
+            return FSNS(XML_w, XML_bidi);
+        default:
+            return FSNS(XML_w, XML_val);
+    }
+}
+
 /// Writes properties for run that is used to separate field implementation.
 /// There are several runs are used:
 ///     <w:r>
@@ -3246,6 +3302,10 @@ void DocxAttributeOutput::DoWriteFieldRunProperties( const SwTextNode * pNode, s
     }
 
     m_bPreventDoubleFieldsHandling = true;
+    // tdf#146973 OOXML takes a date field's month/day names from the run language
+    m_nFieldFormatLang = m_Fields.empty()
+        ? LANGUAGE_DONTKNOW
+        : lcl_getDateFieldNumberFormatLang(m_Fields.back(), m_rExport.m_rDoc);
 
     {
         m_pSerializer->startElementNS(XML_w, XML_rPr);
@@ -3262,6 +3322,15 @@ void DocxAttributeOutput::DoWriteFieldRunProperties( const SwTextNode * pNode, s
         SwWW8AttrIter aAttrIt( m_rExport, *pNode );
         aAttrIt.OutAttr( nPos, bWriteCombChars );
 
+        // add w:lang unless CharLanguage already emitted it from the run above
+        if ( m_nFieldFormatLang != LANGUAGE_DONTKNOW )
+        {
+            const sal_Int32 nLangAttr = lcl_getLangAttr( m_nFieldFormatLang );
+            if ( !m_pCharLangAttrList || !m_pCharLangAttrList->hasAttribute( nLangAttr ) )
+                AddToAttrList( m_pCharLangAttrList, nLangAttr,
+                               LanguageTag( m_nFieldFormatLang ).getBcp47MS() );
+        }
+
         // 3. write the character properties
         WriteCollectedRunProperties();
 
@@ -3271,6 +3340,7 @@ void DocxAttributeOutput::DoWriteFieldRunProperties( const SwTextNode * pNode, s
         m_pSerializer->endElementNS( XML_w, XML_rPr );
     }
 
+    m_nFieldFormatLang = LANGUAGE_DONTKNOW;
     m_bPreventDoubleFieldsHandling = false;
 }
 
@@ -3422,6 +3492,8 @@ void DocxAttributeOutput::InitCollectedRunProperties()
     m_pCharLangAttrList = nullptr;
     m_oFontSize.reset();
     m_bCharPostureWritten = false;
+    m_bCharPositionWritten = false;
+    m_bCharStyleWritten = false;
 
     // Write the elements in the spec order
     static const sal_Int32 aOrder[] =
@@ -3678,6 +3750,32 @@ void DocxAttributeOutput::WriteCollectedRunProperties()
     if ( m_pFontsAttrList.is() )
     {
         m_pSerializer->singleElementNS( XML_w, XML_rFonts, detachFrom( m_pFontsAttrList ) );
+    }
+
+    if (m_oDropCap && !m_oDropCap->bSizeWritten)
+    {
+        if (m_aRunSdt.m_oSdtPrToken.has_value())
+        {
+            // A structured document tag begins on this run, and it wraps the runs of both
+            // paragraphs, so EndRun() will not be able to split the paragraph. Give up the
+            // drop cap here, while the size can still be left out: an initial written large
+            // without a frame around it reads as a stray letter in the middle of a
+            // sentence, which is worse to look at than a paragraph that lost its drop cap.
+            m_oDropCap.reset();
+        }
+        else
+        {
+            // This run is the initial of a drop cap, which Word only renders large if the
+            // size and the offset of the baseline are spelled out for it.
+            m_oFontSize = m_oDropCap->nFontSize;
+            if (!m_bCharPositionWritten)
+                m_pSerializer->singleElementNS(XML_w, XML_position, FSNS(XML_w, XML_val),
+                                               OString::number(m_oDropCap->nPosition));
+            if (!m_bCharStyleWritten && !m_oDropCap->aCharStyleId.isEmpty())
+                m_pSerializer->singleElementNS(XML_w, XML_rStyle, FSNS(XML_w, XML_val),
+                                               m_oDropCap->aCharStyleId);
+            m_oDropCap->bSizeWritten = true;
+        }
     }
 
     if ( m_oFontSize )
@@ -4616,9 +4714,130 @@ void DocxAttributeOutput::EndRedline(const SwRedlineData* pRedlineData, bool bPa
         EndRedline(pRedlineData->Next());
 }
 
-void DocxAttributeOutput::FormatDrop( const SwTextNode& /*rNode*/, const SwFormatDrop& /*rSwFormatDrop*/, sal_uInt16 /*nStyle*/, ww8::WW8TableNodeInfo::Pointer_t /*pTextNodeInfo*/, ww8::WW8TableNodeInfoInner::Pointer_t )
+void DocxAttributeOutput::FormatDrop( const SwTextNode& rNode, const SwFormatDrop& rSwFormatDrop, sal_uInt16 nStyle, ww8::WW8TableNodeInfo::Pointer_t /*pTextNodeInfo*/, ww8::WW8TableNodeInfoInner::Pointer_t )
 {
-    SAL_INFO("sw.ww8", "TODO DocxAttributeOutput::FormatDrop( const SwTextNode& rNode, const SwFormatDrop& rSwFormatDrop, sal_uInt16 nStyle )" );
+    // Word frames the initial in a paragraph of its own, followed by a paragraph with
+    // the rest of the text, so remember what it takes to write that frame. The split
+    // itself has to wait until the initial's run is closed, in EndRun().
+    const sal_Int32 nDropLen
+        = rSwFormatDrop.GetWholeWord() ? rNode.GetDropLen(0) : rSwFormatDrop.GetChars();
+    if (nDropLen <= 0 || nDropLen >= rNode.GetText().getLength())
+    {
+        // Nothing would be left for the second paragraph, and reading such a file back
+        // would take the following paragraph's text into the frame instead.
+        return;
+    }
+
+    // A hyperlink, a content control or a ruby that begins in the initial and reaches past
+    // it wraps runs of both paragraphs, so the end of the first paragraph would land inside
+    // it and the file would not open at all. Leave the drop cap out in that case.
+    if (const SwpHints* pHints = rNode.GetpSwpHints())
+    {
+        for (size_t i = 0; i < pHints->Count(); ++i)
+        {
+            const SwTextAttr* pHint = pHints->Get(i);
+            if (pHint->Which() != RES_TXTATR_INETFMT
+                && pHint->Which() != RES_TXTATR_CONTENTCONTROL
+                && pHint->Which() != RES_TXTATR_CJK_RUBY)
+                continue;
+            const sal_Int32* pEnd = pHint->End();
+            if (pHint->GetStart() < nDropLen && pEnd && *pEnd > nDropLen)
+                return;
+        }
+    }
+
+    // Word does not enlarge the initial on its own, it expects the sizes that the
+    // layout came up with.
+    int nFontHeight = 0;
+    int nDropHeight = 0;
+    int nDropDescent = 0;
+    rNode.GetDropSize(nFontHeight, nDropHeight, nDropDescent);
+    if (nDropHeight <= 0)
+    {
+        // GetDropSize guesses the same sizes itself when the layout has not measured an
+        // initial, but it can still hand back a height of zero, and a line height of
+        // zero together with the line rule "exact" would make the line collapse.
+        nFontHeight = rNode.GetSwAttrSet().Get(RES_CHRATR_FONTSIZE).GetHeight();
+        nDropHeight = rSwFormatDrop.GetLines() * nFontHeight;
+        nDropDescent = nFontHeight / 5;
+    }
+
+    DropCapInfo aDropCap;
+    aDropCap.aStyleId = m_rExport.m_pStyles->GetStyleId(nStyle);
+    // The frame paragraph carries the paragraph style, so a list that comes with the
+    // style would put a number in front of the initial as well as in front of the text.
+    const SwTextFormatColl* pTextColl = rNode.GetTextColl();
+    aDropCap.bStyleIsNumbered = pTextColl && !pTextColl->GetNumRule().GetValue().isEmpty();
+    if (const SwCharFormat* pCharFormat = rSwFormatDrop.GetCharFormat())
+        aDropCap.aCharStyleId = m_rExport.m_pStyles->GetStyleId(m_rExport.GetId(pCharFormat));
+    aDropCap.nLines = rSwFormatDrop.GetLines();
+    aDropCap.nDistance = rSwFormatDrop.GetDistance();
+    aDropCap.nLineHeight = nDropHeight;
+    aDropCap.nFontSize = nFontHeight / 10;
+    aDropCap.nPosition = -((aDropCap.nLines - 1) * nDropDescent) / 10;
+    m_oDropCap = aDropCap;
+}
+
+void DocxAttributeOutput::SplitParagraphAtDropCap()
+{
+    const DropCapInfo& rDropCap = *m_oDropCap;
+
+    // The initial's run is in this mark already, so the properties of the paragraph
+    // framing it have to be prepended.
+    m_pSerializer->mark(Tag_DropCapParagraphProperties);
+    m_pSerializer->startElementNS(XML_w, XML_pPr);
+    if (!rDropCap.aStyleId.isEmpty())
+        m_pSerializer->singleElementNS(XML_w, XML_pStyle, FSNS(XML_w, XML_val), rDropCap.aStyleId);
+
+    rtl::Reference<sax_fastparser::FastAttributeList> pFramePrAttrList
+        = sax_fastparser::FastSerializerHelper::createAttrList();
+    pFramePrAttrList->add(FSNS(XML_w, XML_dropCap), "drop");
+    pFramePrAttrList->add(FSNS(XML_w, XML_lines), OString::number(rDropCap.nLines));
+    if (rDropCap.nDistance)
+        pFramePrAttrList->add(FSNS(XML_w, XML_hSpace), OString::number(rDropCap.nDistance));
+    pFramePrAttrList->add(FSNS(XML_w, XML_wrap), "around");
+    pFramePrAttrList->add(FSNS(XML_w, XML_vAnchor), "text");
+    pFramePrAttrList->add(FSNS(XML_w, XML_hAnchor), "text");
+    m_pSerializer->singleElementNS(XML_w, XML_framePr, pFramePrAttrList);
+
+    if (rDropCap.bStyleIsNumbered)
+    {
+        // Take the frame paragraph out of the list again: the number belongs in front of
+        // the text, which is in the paragraph that follows. A numbering id of zero is how
+        // OOXML says that a paragraph is in no list at all.
+        m_pSerializer->startElementNS(XML_w, XML_numPr);
+        m_pSerializer->singleElementNS(XML_w, XML_ilvl, FSNS(XML_w, XML_val), "0");
+        m_pSerializer->singleElementNS(XML_w, XML_numId, FSNS(XML_w, XML_val), "0");
+        m_pSerializer->endElementNS(XML_w, XML_numPr);
+    }
+
+    m_pSerializer->singleElementNS(XML_w, XML_spacing,
+                                   FSNS(XML_w, XML_line), OString::number(rDropCap.nLineHeight),
+                                   FSNS(XML_w, XML_lineRule), "exact");
+
+    m_pSerializer->startElementNS(XML_w, XML_rPr);
+    if (!rDropCap.aCharStyleId.isEmpty())
+        m_pSerializer->singleElementNS(XML_w, XML_rStyle, FSNS(XML_w, XML_val),
+                                       rDropCap.aCharStyleId);
+    m_pSerializer->singleElementNS(XML_w, XML_position, FSNS(XML_w, XML_val),
+                                   OString::number(rDropCap.nPosition));
+    m_pSerializer->singleElementNS(XML_w, XML_sz, FSNS(XML_w, XML_val),
+                                   OString::number(rDropCap.nFontSize));
+    m_pSerializer->endElementNS(XML_w, XML_rPr);
+
+    m_pSerializer->endElementNS(XML_w, XML_pPr);
+    m_pSerializer->mergeTopMarks(Tag_DropCapParagraphProperties,
+                                 sax_fastparser::MergeMarks::PREPEND);
+
+    // Close the initial's paragraph and open the one that takes the rest of the text.
+    // The paragraph properties are written at the end of the text node and prepended,
+    // so they land in this second paragraph, where they belong.
+    m_pSerializer->endElementNS(XML_w, XML_p);
+    m_pSerializer->mergeTopMarks(Tag_StartParagraph_2);
+    m_pSerializer->startElementNS(XML_w, XML_p);
+    m_pSerializer->mark(Tag_StartParagraph_2);
+
+    m_oDropCap.reset();
 }
 
 void DocxAttributeOutput::ParagraphStyle( sal_uInt16 nStyle )
@@ -6547,8 +6766,10 @@ OString DocxAttributeOutput::GetOLEStyle(const SwFlyFrameFormat& rFormat, const 
             bInsideFrame = pAnchorNode->FindFlyStartNode() != nullptr;
 
         aPos = (bInsideFrame ? OString() : "position:absolute;"_ostr) + "margin-left:"
-               + OString::number(double(rFormat.GetHoriOrient().GetPos()) / 20) + "pt;margin-top:"
-               + OString::number(double(rFormat.GetVertOrient().GetPos()) / 20) + "pt;";
+               + OString::number(rFormat.GetHoriOrient().getPosition().as_twip<sal_Int32>() / 20.0)
+               + "pt;margin-top:"
+               + OString::number(rFormat.GetVertOrient().getPosition().as_twip<sal_Int32>() / 20.0)
+               + "pt;";
     }
 
     OString sShapeStyle = "width:" + OString::number( double( rSize.Width() ) / 20 ) +
@@ -6888,10 +7109,10 @@ void DocxAttributeOutput::OutputFlyFrame_Impl(const ww8::Frame& rFrame, const Po
         {
             if (auto pParentFly = rFrame.GetContentNode()->GetFlyFormat())
             {
-                auto aHori(rFrame.GetFrameFormat().GetHoriOrient());
-                aHori.SetPos(aHori.GetPos() + pParentFly->GetHoriOrient().GetPos());
-                auto aVori(rFrame.GetFrameFormat().GetVertOrient());
-                aVori.SetPos(aVori.GetPos() + pParentFly->GetVertOrient().GetPos());
+                SwFormatHoriOrient aHori(rFrame.GetFrameFormat().GetHoriOrient());
+                aHori.adjustPosition(pParentFly->GetHoriOrient().getPosition());
+                SwFormatVertOrient aVori(rFrame.GetFrameFormat().GetVertOrient());
+                aVori.adjustPosition(pParentFly->GetVertOrient().getPosition());
 
                 const_cast<SwFrameFormat&>(rFrame.GetFrameFormat()).SetFormatAttr(aHori);
                 const_cast<SwFrameFormat&>(rFrame.GetFrameFormat()).SetFormatAttr(aVori);
@@ -7137,12 +7358,30 @@ static bool lcl_guessQFormat(const OUString& rName, sal_uInt16 nWwId)
     return aAllowlist.find(rName) != aAllowlist.end();
 }
 
+/// Detect whether the source document was loaded from DOCX. The writerfilter
+/// import populates the document-level InteropGrabBag (latentStyles, default
+/// tab stops, etc.) on every DOCX it loads; new documents and ODT imports
+/// leave it empty. A non-empty bag is therefore a reliable "DOCX origin"
+/// signal we can use to suppress the lcl_guessQFormat fallback for styles
+/// that were auto-created (e.g. the Heading pool style spawned as parent of
+/// Heading 1) rather than imported from the source.
+static bool lcl_sourceWasDocx(const MSWordExportBase& rExport)
+{
+    if (!rExport.m_xTextDoc.is())
+        return false;
+    uno::Sequence<beans::PropertyValue> aDocGrabBag;
+    rExport.m_xTextDoc->getPropertyValue(u"InteropGrabBag"_ustr) >>= aDocGrabBag;
+    return aDocGrabBag.hasElements();
+}
+
 void DocxAttributeOutput::StartStyle( const OUString& rName, StyleType eType,
         sal_uInt16 nBase, sal_uInt16 nNext, sal_uInt16 nLink, sal_uInt16 nWwId, sal_uInt16 nSlot, bool bAutoUpdate )
 {
     bool bUnhideWhenUsed = false, bSemiHidden = false, bLocked = false, bDefault = false, bCustomStyle = false;
-    bool bQFormat = false; // DEPRECATED: from grab-bag
-    bool bRealQFormat = true; // from SwFormat
+    // unset means we have no information from import: fall back to lcl_guessQFormat.
+    // Set means the format was imported from a DOCX (via ParseFavourites) and the
+    // import-time qFormat state must be preserved on export.
+    std::optional<bool> oQFormat;
 
     OUString aRsid, aUiPriority;
     rtl::Reference<FastAttributeList> pStyleAttributeList = FastSerializerHelper::createAttrList();
@@ -7151,7 +7390,7 @@ void DocxAttributeOutput::StartStyle( const OUString& rName, StyleType eType,
     {
         const SwFormat* pFormat = m_rExport.m_pStyles->GetSwFormat(nSlot);
         pFormat->GetGrabBagItem(aAny);
-        bRealQFormat = pFormat->IsFavourite();
+        oQFormat = pFormat->IsFavourite();
     }
     else
     {
@@ -7165,7 +7404,14 @@ void DocxAttributeOutput::StartStyle( const OUString& rName, StyleType eType,
         if (rProp.Name == "uiPriority")
             aUiPriority = rProp.Value.get<OUString>();
         else if (rProp.Name == "qFormat")
-            bQFormat = true;
+        {
+            // For paragraph and character styles SwFormat::IsFavourite already
+            // carries the import-time decision (set by ParseFavourites). Only
+            // honor the grab-bag value when we have no SwFormat-level state,
+            // which today only happens for numbering styles.
+            if (!oQFormat.has_value())
+                oQFormat = rProp.Value.get<sal_Int32>() != 0;
+        }
         else if (rProp.Name == "rsid")
             aRsid = rProp.Value.get<OUString>();
         else if (rProp.Name == "unhideWhenUsed")
@@ -7229,8 +7475,19 @@ void DocxAttributeOutput::StartStyle( const OUString& rName, StyleType eType,
         m_pSerializer->singleElementNS(XML_w, XML_semiHidden);
     if (bUnhideWhenUsed)
         m_pSerializer->singleElementNS(XML_w, XML_unhideWhenUsed);
-    // by default we use old guess, if user marks style as non-favourite -> do not export qFormat
-    if (bRealQFormat && (bQFormat || lcl_guessQFormat(rName, nWwId)))
+    // Honor the explicit qFormat value from import. Otherwise: for DOCX-sourced
+    // documents the absence of qFormat means the style was auto-created and
+    // wasn't in the source - preserve that silence. For new or ODT-imported
+    // documents fall back to guessing so well-known built-in styles still get
+    // qFormat in their first DOCX export.
+    bool bEmitQFormat;
+    if (oQFormat.has_value())
+        bEmitQFormat = oQFormat.value();
+    else if (lcl_sourceWasDocx(m_rExport))
+        bEmitQFormat = false;
+    else
+        bEmitQFormat = lcl_guessQFormat(rName, nWwId);
+    if (bEmitQFormat)
         m_pSerializer->singleElementNS(XML_w, XML_qFormat);
     if (bLocked)
         m_pSerializer->singleElementNS(XML_w, XML_locked);
@@ -8338,6 +8595,7 @@ void DocxAttributeOutput::CharEscapement( const SvxEscapementItem& rEscapement )
     float fHeight = rItem.GetHeight();
     OString sPos = OString::number( round(( fHeight * nEsc ) / 1000) );
     m_pSerializer->singleElementNS(XML_w, XML_position, FSNS(XML_w, XML_val), sPos);
+    m_bCharPositionWritten = true;
 
     if( ( 100 != nProp || sIss.match( "baseline" ) ) && !m_oFontSize )
     {
@@ -8348,7 +8606,7 @@ void DocxAttributeOutput::CharEscapement( const SvxEscapementItem& rEscapement )
 void DocxAttributeOutput::CharFont( const SvxFontItem& rFont)
 {
     GetExport().GetId( rFont ); // ensure font info is written to fontTable.xml
-    const OUString& sFontName(rFont.GetFamilyName());
+    OUString sFontName(wwFontHelper::GetExportFontName(rFont));
     if (sFontName.isEmpty())
         return;
 
@@ -8392,7 +8650,13 @@ void DocxAttributeOutput::CharKerning( const SvxKerningItem& rKerning )
 
 void DocxAttributeOutput::CharLanguage( const SvxLanguageItem& rLanguage )
 {
-    OUString aLanguageCode(LanguageTag( rLanguage.GetLanguage()).getBcp47MS());
+    LanguageType nLang = rLanguage.GetLanguage();
+    // tdf#146973 a date/time field run carries its number format locale instead
+    if ( m_nFieldFormatLang != LANGUAGE_DONTKNOW
+         && rLanguage.Which() == GetWhichOfScript( RES_CHRATR_LANGUAGE,
+                                     MsLangId::getScriptType( m_nFieldFormatLang ) ) )
+        nLang = m_nFieldFormatLang;
+    OUString aLanguageCode( LanguageTag( nLang ).getBcp47MS() );
 
     switch ( rLanguage.Which() )
     {
@@ -8540,7 +8804,7 @@ void DocxAttributeOutput::CharFontCJK( const SvxFontItem& rFont )
         return;
     }
 
-    AddToAttrList( m_pFontsAttrList, FSNS( XML_w, XML_eastAsia ), rFont.GetFamilyName() );
+    AddToAttrList( m_pFontsAttrList, FSNS( XML_w, XML_eastAsia ), wwFontHelper::GetExportFontName(rFont) );
 }
 
 void DocxAttributeOutput::CharPostureCJK( const SvxPostureItem& rPosture )
@@ -8573,7 +8837,7 @@ void DocxAttributeOutput::CharFontCTL( const SvxFontItem& rFont )
         return;
     }
 
-    AddToAttrList( m_pFontsAttrList, FSNS( XML_w, XML_cs ), rFont.GetFamilyName() );
+    AddToAttrList( m_pFontsAttrList, FSNS( XML_w, XML_cs ), wwFontHelper::GetExportFontName(rFont) );
 }
 
 void DocxAttributeOutput::CharPostureCTL( const SvxPostureItem& rPosture)
@@ -8754,7 +9018,10 @@ void DocxAttributeOutput::TextINetFormat( const SwFormatINetFormat& rLink )
     {
         OString aStyleId(m_rExport.m_pStyles->GetStyleId(m_rExport.GetId(pFormat)));
         if (!aStyleId.equalsIgnoreAsciiCase("DefaultStyle"))
+        {
             m_pSerializer->singleElementNS(XML_w, XML_rStyle, FSNS(XML_w, XML_val), aStyleId);
+            m_bCharStyleWritten = true;
+        }
     }
 }
 
@@ -8763,6 +9030,7 @@ void DocxAttributeOutput::TextCharFormat( const SwFormatCharFormat& rCharFormat 
     OString aStyleId(m_rExport.m_pStyles->GetStyleId(m_rExport.GetId(rCharFormat.GetCharFormat())));
 
     m_pSerializer->singleElementNS(XML_w, XML_rStyle, FSNS(XML_w, XML_val), aStyleId);
+    m_bCharStyleWritten = true;
 }
 
 void DocxAttributeOutput::RefField( const SwField&  rField, const OUString& rRef )
@@ -8866,9 +9134,13 @@ DocxAttributeOutput::hasProperties DocxAttributeOutput::WritePostitFields()
         m_pSerializer->startElementNS( XML_w, XML_comment, pAttributeList );
 
         // Make sure to give parent/child fields a paraId
-        const bool bNeedParaId = f->GetResolved() || data.parentStatus != ParentStatus::None;
-        if (bNeedParaId)
+        const bool bNeedParaIdForExtended
+            = f->GetResolved() || data.parentStatus != ParentStatus::None;
+        if (bNeedParaIdForExtended)
             eResult = hasProperties::yes;
+        // The part carrying the moment the comment was written refers to it by paragraph id as
+        // well, so a comment with a moment needs one even when it is neither resolved nor a reply.
+        const bool bNeedParaId = bNeedParaIdForExtended || f->GetDateTimeUTC().has_value();
 
         if (f->GetTextObject() != nullptr)
         {
@@ -8929,6 +9201,41 @@ void DocxAttributeOutput::WritePostItFieldsResolved()
             FSNS(XML_w15, XML_paraId), idstr,
             FSNS(XML_w15, XML_done), sDone,
             FSNS(XML_w15, XML_paraIdParent), sParentId);
+    }
+}
+
+bool DocxAttributeOutput::HasPostitFieldsWithDateUTC() const
+{
+    return std::any_of(m_postitFields.begin(), m_postitFields.end(),
+                       [](const auto& rPair) { return bool(rPair.first->GetDateTimeUTC()); });
+}
+
+void DocxAttributeOutput::WritePostItFieldsIds()
+{
+    for (auto& [f, data] : m_postitFields)
+    {
+        if (!f->GetDateTimeUTC())
+            continue;
+        // The paragraph id is already unique per comment, so it serves as the durable id too.
+        // The two parts only have to agree with each other.
+        OUString idstr = NumberToHexBinary(data.lastParaId);
+        m_pSerializer->singleElementNS(XML_w16cid, XML_commentId,
+            FSNS(XML_w16cid, XML_paraId), idstr,
+            FSNS(XML_w16cid, XML_durableId), idstr);
+    }
+}
+
+void DocxAttributeOutput::WritePostItFieldsExtensible()
+{
+    for (auto& [f, data] : m_postitFields)
+    {
+        const std::optional<DateTime>& oDateTimeUTC = f->GetDateTimeUTC();
+        if (!oDateTimeUTC)
+            continue;
+        // The value is already in UTC, which is what DateTimeToOString marks it as.
+        m_pSerializer->singleElementNS(XML_w16cex, XML_commentExtensible,
+            FSNS(XML_w16cex, XML_durableId), NumberToHexBinary(data.lastParaId),
+            FSNS(XML_w16cex, XML_dateUtc), DateTimeToOString(*oDateTimeUTC));
     }
 }
 
@@ -9159,15 +9466,18 @@ void DocxAttributeOutput::FootnoteEndnoteReference()
 }
 
 static void WriteFootnoteSeparatorHeight(
-    ::sax_fastparser::FSHelperPtr const& pSerializer, SwTwips const nHeight)
+    ::sax_fastparser::FSHelperPtr const& pSerializer, gfx::Length const nHeight)
 {
     // try to get the height by setting font size of the paragraph
-    if (nHeight != 0)
+    if (nHeight != 0_emu)
     {
+        // The font size is in half-points, taken from the exact height so it
+        // is rounded only once.
+        const sal_Int32 nHalfPoints(std::round(nHeight.as_pt() * 2.0));
         pSerializer->startElementNS(XML_w, XML_pPr);
         pSerializer->startElementNS(XML_w, XML_rPr);
         pSerializer->singleElementNS(XML_w, XML_sz, FSNS(XML_w, XML_val),
-            OString::number((nHeight + 5) / 10));
+            OString::number(nHalfPoints));
         pSerializer->endElementNS(XML_w, XML_rPr);
         pSerializer->endElementNS(XML_w, XML_pPr);
     }
@@ -9192,7 +9502,7 @@ void DocxAttributeOutput::FootnotesEndnotes( bool bFootnotes )
     m_pSerializer->startElementNS(XML_w, XML_p);
 
     bool bSeparator = true;
-    SwTwips nHeight(0);
+    gfx::Length nHeight = 0_emu;
     if (bFootnotes)
     {
         const SwPageFootnoteInfo& rFootnoteInfo = m_rExport.m_rDoc.GetPageDesc(0).GetFootnoteInfo();
@@ -9207,7 +9517,7 @@ void DocxAttributeOutput::FootnotesEndnotes( bool bFootnotes )
         {
             // Don't request separator if this is a Word-style separator, which is handled at a
             // layout level.
-            nHeight = 0;
+            nHeight = 0_emu;
         }
     }
 
@@ -9396,7 +9706,9 @@ void DocxAttributeOutput::ParaAdjust( const SvxAdjustItem& rAdjust )
             switch ( rAdjust.GetPropWordSpacingMinimum() )
             {
                 case 133:
-                    if ( rAdjust.GetPropWordSpacingMaximum() == 133 )
+                case 150:
+                    if ( rAdjust.GetPropWordSpacingMaximum() == 133 ||
+                            rAdjust.GetPropWordSpacingMaximum() == 150 )
                         pAdjustString = "lowKashida";
                     break;
                 case 200:
@@ -10158,7 +10470,9 @@ void DocxAttributeOutput::FormatVertOrientation( const SwFormatVertOrient& rFlyV
 
     if (m_rExport.SdrExporter().getTextFrameSyntax())
     {
-        m_rExport.SdrExporter().getTextFrameStyle().append(";margin-top:" + OString::number(double(rFlyVert.GetPos()) / 20) + "pt");
+        m_rExport.SdrExporter().getTextFrameStyle().append(
+            ";margin-top:" + OString::number(rFlyVert.getPosition().as_twip<sal_Int32>() / 20.0)
+            + "pt");
         if ( !sAlign.isEmpty() )
             m_rExport.SdrExporter().getTextFrameStyle().append(";mso-position-vertical:" + sAlign);
         m_rExport.SdrExporter().getTextFrameStyle().append(";mso-position-vertical-relative:" + sVAnchor);
@@ -10172,7 +10486,7 @@ void DocxAttributeOutput::FormatVertOrientation( const SwFormatVertOrient& rFlyV
             AddToAttrList( m_rExport.SdrExporter().getFlyAttrList(), FSNS( XML_w, XML_yAlign ), sAlign );
         else
             AddToAttrList( m_rExport.SdrExporter().getFlyAttrList(), FSNS( XML_w, XML_y ),
-                OString::number( rFlyVert.GetPos() ) );
+                OString::number(rFlyVert.getPosition().as_twip<sal_Int32>()));
         AddToAttrList( m_rExport.SdrExporter().getFlyAttrList(), FSNS( XML_w, XML_vAnchor ), sVAnchor );
     }
 }
@@ -10184,7 +10498,9 @@ void DocxAttributeOutput::FormatHorizOrientation( const SwFormatHoriOrient& rFly
 
     if (m_rExport.SdrExporter().getTextFrameSyntax())
     {
-        m_rExport.SdrExporter().getTextFrameStyle().append(";margin-left:" + OString::number(double(rFlyHori.GetPos()) / 20) + "pt");
+        m_rExport.SdrExporter().getTextFrameStyle().append(
+            ";margin-left:" + OString::number(rFlyHori.getPosition().as_twip<sal_Int32>() / 20.0)
+            + "pt");
         if ( !sAlign.isEmpty() )
             m_rExport.SdrExporter().getTextFrameStyle().append(";mso-position-horizontal:" + sAlign);
         m_rExport.SdrExporter().getTextFrameStyle().append(";mso-position-horizontal-relative:" + sHAnchor);
@@ -10198,7 +10514,7 @@ void DocxAttributeOutput::FormatHorizOrientation( const SwFormatHoriOrient& rFly
             AddToAttrList( m_rExport.SdrExporter().getFlyAttrList(), FSNS( XML_w, XML_xAlign ), sAlign );
         else
             AddToAttrList( m_rExport.SdrExporter().getFlyAttrList(), FSNS( XML_w, XML_x ),
-                OString::number( rFlyHori.GetPos() ) );
+                OString::number(rFlyHori.getPosition().as_twip<sal_Int32>()));
         AddToAttrList( m_rExport.SdrExporter().getFlyAttrList(), FSNS( XML_w, XML_hAnchor ), sHAnchor );
     }
 }
@@ -10893,6 +11209,8 @@ DocxAttributeOutput::DocxAttributeOutput( DocxExport &rExport, const FSHelperPtr
       m_pSerializer( pSerializer ),
       m_rDrawingML( *pDrawingML ),
       m_bCharPostureWritten(false),
+      m_bCharPositionWritten(false),
+      m_bCharStyleWritten(false),
       m_bEndCharSdt(false),
       m_endPageRef( false ),
       m_pFootnotesList( new ::docx::FootnotesList() ),

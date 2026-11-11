@@ -49,12 +49,17 @@ namespace drawinglayer::primitive2d
             bool                                    mbBackground;
             /// flag for image (OBJ_GRAF)
             bool                                    mbIsImage;
-            /// flag for form control object
+            /// flag for decoration, which goes out as an artifact
             bool                                    mbIsDecorative;
             /// anchor structure element (Writer)
             void const* m_pAnchorStructureElementKey;
             /// for Annot structure element, the ids of the annotations
             ::std::vector<sal_Int32> m_AnnotIds;
+            /// for a table cell element, the columns and the rows it spans
+            sal_Int32 mnColSpan;
+            sal_Int32 mnRowSpan;
+            /// for a table header cell, whether it is the header of a row, rather than a column
+            bool mbRowHeader;
 
         public:
             /// constructor
@@ -65,16 +70,23 @@ namespace drawinglayer::primitive2d
                 bool bIsDecorative,
                 Primitive2DContainer&& aChildren,
                 void const* pAnchorStructureElementKey = nullptr,
-                ::std::vector<sal_Int32> const* pAnnotIds = nullptr);
+                ::std::vector<sal_Int32> const* pAnnotIds = nullptr,
+                sal_Int32 nColSpan = 1,
+                sal_Int32 nRowSpan = 1,
+                bool bRowHeader = false);
 
             /// data read access
             const vcl::pdf::StructElement& getStructureElement() const { return maStructureElement; }
             bool isBackground() const { return mbBackground; }
             bool isImage() const { return mbIsImage; }
             bool isDecorative() const { return mbIsDecorative; }
-            bool isTaggedSdrObject() const;
+            /// whether this opens a structure element, rather than an artifact or nothing
+            bool opensStructureElement() const;
             void const* GetAnchorStructureElementKey() const { return m_pAnchorStructureElementKey; }
             const ::std::vector<sal_Int32> & GetAnnotIds() const { return m_AnnotIds; }
+            sal_Int32 getColSpan() const { return mnColSpan; }
+            sal_Int32 getRowSpan() const { return mnRowSpan; }
+            bool isRowHeader() const { return mbRowHeader; }
 
             /// compare operator
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;

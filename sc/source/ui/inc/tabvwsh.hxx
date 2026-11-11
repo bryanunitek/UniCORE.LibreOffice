@@ -22,6 +22,8 @@
 #include <formula/errorcodes.hxx>
 #include <formula/opcode.hxx>
 #include <svx/fmshell.hxx>
+#include <svx/svdobjkind.hxx>
+#include <svl/style.hxx>
 #include <sfx2/viewsh.hxx>
 #include <editeng/svxenum.hxx>
 #include <o3tl/deleter.hxx>
@@ -38,6 +40,9 @@
 #include <map>
 
 class SdrOle2Obj;
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::table { struct CellRangeAddress; }
+class ScTableSheetObj;
 class SfxAbstractTabDialog;
 class SfxBindings;
 class SfxChildWindow;
@@ -227,6 +232,8 @@ private:
     DECL_LINK( FormControlActivated, LinkParamNone*, void );
     DECL_LINK( DialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, void );
     DECL_LINK( GoToRefErrorHdl, weld::Button&, void );
+    DECL_LINK( DontShowAgainHdl, weld::Button&, void );
+    DECL_LINK( DeselectHiddenSheetsHdl, weld::Button&, void );
 
 protected:
     virtual void    Activate(bool bMDI) override;
@@ -244,7 +251,7 @@ protected:
     virtual void    QueryObjAreaPixel( tools::Rectangle& rRect ) const override;
 
     virtual OUString GetSelectionText( bool bWholeWord = false, bool bOnlyASample = false ) override;
-    virtual bool     HasSelection( bool bText = true ) const override;
+    virtual bool HasSelection(bool bMustHaveText) const override;
 
     virtual void    WriteUserData(OUString &, bool bBrowse = false) override;
     virtual void    ReadUserData(const OUString &, bool bBrowse = false) override;
@@ -377,13 +384,15 @@ public:
 
     ScNavigatorSettings*    GetNavigatorSettings();
 
-    // Drucken:
+    // Printing:
     virtual SfxPrinter*     GetPrinter( bool bCreate = false ) override;
     virtual sal_uInt16      SetPrinter( SfxPrinter* pNewPrinter,
                                           SfxPrinterChangeFlags nDiffFlags = SFX_PRINTER_ALL ) override;
 
     virtual bool            HasPrintOptionsPage() const override;
     virtual std::unique_ptr<SfxTabPage> CreatePrintOptionsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rOptions) override;
+
+    tools::Long GetCurrentPage() const;
 
     void            ConnectObject( const SdrOle2Obj* pObj );
     void            ActivateObject(SdrOle2Obj* pObj, sal_Int32 nVerb);
@@ -392,9 +401,9 @@ public:
 
     SAL_RET_MAYBENULL SC_DLLPUBLIC static ScTabViewShell* GetActiveViewShell();
 
-    std::shared_ptr<SfxModelessDialogController> CreateRefDialogController(SfxBindings* pB, SfxChildWindow* pCW,
-                                                    SfxChildWinInfo* pInfo,
-                                                    weld::Window* pParent, sal_uInt16 nSlotId);
+    std::shared_ptr<SfxModelessDialogController>
+    CreateRefDialogController(SfxBindings& rBindings, SfxChildWindow* pCW, SfxChildWinInfo& rInfo,
+                              weld::Window* pParent, sal_uInt16 nSlotId);
 
     void            UpdateOleZoom();
 
@@ -490,6 +499,9 @@ public:
     const std::shared_ptr<ScCondFormatDlgData>& getScCondFormatDlgData() const { return m_pScCondFormatDlgData; }
 
     void SetInsertWizardUndoMark();
+
+    void AppendInfoBarSelectAllSheets( const SCTAB nHiddenSheetsCount );
+    void RemoveInfoBarSelectAllSheets();
 
 private:
     void ExecuteMoveTable( SfxRequest& rReq );

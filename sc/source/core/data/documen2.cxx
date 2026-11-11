@@ -127,7 +127,7 @@ CellAttributeHelper& ScDocument::getCellAttributeHelper() const
         assert(!IsClipOrUndo() && "CellAttributeHelper needs to be shared using SharePooledResources, not created (!)");
         SfxItemPool* pPool(const_cast<ScDocument*>(this)->GetPool());
         assert(nullptr != pPool && "No SfxItemPool for this ScDocument (!)");
-        mpCellAttributeHelper.reset(new CellAttributeHelper(*pPool));
+        mpCellAttributeHelper.reset(new CellAttributeHelper(*pPool, const_cast<ScDocument*>(this)));
     }
 
     return *mpCellAttributeHelper;
@@ -544,15 +544,15 @@ ScNoteEditEngine& ScDocument::GetNoteEngine()
     return *mpNoteEngine;
 }
 
-std::unique_ptr<EditTextObject> ScDocument::CreateSharedStringTextObject( const svl::SharedString& rSS )
+EditTextObject ScDocument::CreateSharedStringTextObject( const svl::SharedString& rSS )
 {
     /* TODO: Add shared string support to the edit engine to make this process
      * simpler. */
     ScFieldEditEngine& rEngine = GetEditEngine();
     rEngine.SetTextCurrentDefaults( rSS.getString());
-    std::unique_ptr<EditTextObject> pObj( rEngine.CreateTextObject());
-    pObj->NormalizeString( GetSharedStringPool());
-    return pObj;
+    EditTextObject aObj( rEngine.CreateTextObject());
+    aObj.NormalizeString( GetSharedStringPool());
+    return aObj;
 }
 
 void ScDocument::ResetClip( ScDocument* pSourceDoc, const ScMarkData* pMarks )
@@ -1051,7 +1051,7 @@ bool ScDocument::TransferTab( ScDocument& rSrcDoc, SCTAB nSrcPos,
                     const ScRangeName* pNames = rSrcDoc.GetRangeName( nSrcPos);
                     if (pNames)
                         pNames->CopyUsedNames( nSrcPos, nSrcPos, nDestPos, rSrcDoc, *this, bGlobalNamesToLocal);
-                    rSrcDoc.GetRangeName()->CopyUsedNames( -1, nSrcPos, nDestPos, rSrcDoc, *this, bGlobalNamesToLocal);
+                    rSrcDoc.GetRangeName().CopyUsedNames( -1, nSrcPos, nDestPos, rSrcDoc, *this, bGlobalNamesToLocal);
                 }
                 rSrcDoc.maTabs[nSrcPos]->CopyToTable(aCxt, 0, 0, MaxCol(), MaxRow(),
                         ( bResultsOnly ? InsertDeleteFlags::ALL & ~InsertDeleteFlags::FORMULA : InsertDeleteFlags::ALL),

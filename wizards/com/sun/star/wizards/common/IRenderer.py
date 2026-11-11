@@ -17,10 +17,10 @@
 
 from abc import abstractmethod
 
-# A General interface which gives a string
+# A general interface which gives a string
 # that represents the rendered argument object.
-# Can be used to reference resources, internationalizartion
-# a.s.o
+# Can be used to reference resources, internationalization
+# a.s.o.
 class IRenderer:
 
     @abstractmethod

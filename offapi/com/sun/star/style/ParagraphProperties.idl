@@ -630,6 +630,43 @@ published service ParagraphProperties
             @since LibreOffice 26.8
          */
         [optional, property] boolean ParaComposer;
+
+        /** specifies a percent value on the Less Hyphenation .. Better Spacing
+            range, resulting in different paragraph layout depending also on
+            ParaWordSpacingMinimum and ParaWordSpacingMaximum.
+
+            <p>It takes a percent value between [0, 100].</p>
+
+            @see ParaWordSpacingMinimum
+
+            @see ParaWordSpacingMaximum
+
+            @since LibreOffice 27.2
+         */
+        [optional, property] long ParaHyphenationLevel;
+
+        /** specifies if automatic compound-based "smart" hyphenation is applied.
+
+            @since LibreOffice 27.2
+         */
+        [optional, property] boolean ParaIsCompoundBased;
+
+        /** This value is `TRUE` if compound word splitting is always allowed when
+            hyphenation is disabled in other positions by ParaHyphenationKeep
+            or by the associated end zone settings.
+
+            @see ParaHyphenationKeep
+
+            @see ParaHyphenationZoneColumn
+
+            @see ParaHyphenationZonePage
+
+            @see ParaHyphenationZoneSpread
+
+            @since LibreOffice 27.2
+         */
+        [optional, property] boolean ParaHyphenationSplitCompoundWord;
+
 };
 
 

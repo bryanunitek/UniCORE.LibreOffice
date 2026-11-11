@@ -19,6 +19,7 @@
 
 #include <com/sun/star/presentation/EffectNodeType.hpp>
 #include <com/sun/star/presentation/ShapeAnimationSubType.hpp>
+#include <xmloff/SoundReference.hxx>
 #include <com/sun/star/presentation/TextAnimationType.hpp>
 #include <com/sun/star/presentation/ParagraphTarget.hpp>
 #include <comphelper/processfactory.hxx>
@@ -410,24 +411,13 @@ static bool implIsInsideGroup( SdrObject const * pObj )
     // TTTT for current state of transition, SdrObject has a parent*
     // to a SdrObjList. That may be a SdrPage or a SdrObjGroup, both
     // are already derived from SdrObjList. To finally check, use
-    // the method 'getSdrObjectFromSdrObjList' - if it's not a SdrPage,
+    // the method 'getSdrObjectFromSdrObjList' (called internally from
+    // 'getParentSdrObjectFromSdrObject') - if it's not a SdrPage,
     // it will return SdrObjGroup or E3dScene -> SdrObject.
     // For future states, test for SdrObject. Trying to get the SdrPage
     // will in the future depend on the Object(this) to be inserted to a
     // SdrPage, regardless of e.g. being a group member.
-    if(nullptr == pObj)
-    {
-        return false;
-    }
-
-    SdrObjList* pSdrObjList(pObj->getParentSdrObjListFromSdrObject());
-
-    if(nullptr == pSdrObjList)
-    {
-        return false;
-    }
-
-    return (nullptr != pSdrObjList->getSdrObjectFromSdrObjList());
+    return pObj && pObj->getParentSdrObjectFromSdrObject();
 }
 
 void EffectMigration::SetAnimationEffect( SvxShape* pShape, AnimationEffect eEffect )
@@ -1205,8 +1195,12 @@ void EffectMigration::UpdateSoundEffect( SvxShape* pShape, SdAnimationInfo const
     bool bNeedRebuild = false;
 
     OUString aSoundFile;
+    bool bSoundAllowed = false;
     if( pInfo->mbSoundOn )
-        aSoundFile = pInfo->maSoundFile;
+    {
+        aSoundFile = pInfo->maSoundLink.getURL();
+        bSoundAllowed = pInfo->maSoundLink.isAllowed();
+    }
 
     for( aIter = pMainSequence->getBegin(); aIter != pMainSequence->getEnd(); ++aIter )
     {
@@ -1215,7 +1209,7 @@ void EffectMigration::UpdateSoundEffect( SvxShape* pShape, SdAnimationInfo const
         {
             if( !aSoundFile.isEmpty() )
             {
-                pEffect->createAudio( Any( aSoundFile ) );
+                pEffect->createAudio( xmloff::makeSoundSource( aSoundFile, bSoundAllowed ) );
             }
             else
             {
@@ -1252,7 +1246,7 @@ OUString EffectMigration::GetSoundFile( SvxShape* pShape )
                 if( pEffect->getTargetShape() == xShape )
                 {
                     if( pEffect->getAudio().is() )
-                        pEffect->getAudio()->getSource() >>= aSoundFile;
+                        aSoundFile = xmloff::getSoundURL( pEffect->getAudio()->getSource() );
                 }
             }
         }

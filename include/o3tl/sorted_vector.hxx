@@ -269,9 +269,9 @@ public:
     /* Clear() elements in the vector, and free them one by one. */
     void DeleteAndDestroyAll()
     {
-        for (const_iterator it = m_vector.begin(); it != m_vector.end(); ++it)
+        for (const auto& rElement : m_vector)
         {
-            delete *it;
+            delete rElement;
         }
 
         clear();
@@ -289,7 +289,7 @@ public:
 
 private:
     static bool compare_equal( const Value& v1, const Value& v2 )
-    {   // Synthetize == check from < check for std::unique asserts above.
+    {   // Synthesize == check from < check for std::unique asserts above.
         return !Compare()( v1, v2 ) && !Compare()( v2, v1 );
     }
 

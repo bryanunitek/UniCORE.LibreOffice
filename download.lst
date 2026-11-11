@@ -14,18 +14,23 @@ ARGON2_TARBALL := phc-winner-argon2-20190702.tar.gz
 # so that git cherry-pick
 # will not run into conflicts
 # please repack the tarball using external/boost/repack_tarball.sh
-BOOST_SHA256SUM := 2f975c10da79511c2f218189fc8a12eef1a92e3bd18206e9841d406296d065eb
-BOOST_TARBALL := boost_1_91_0.tar.xz
+BOOST_SHA256SUM := 6010caf17a5742227b54f0c3f5a045d09e8abb981faf7770d445cd705dc26214
+BOOST_TARBALL := boost_1_92_0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-BOX2D_SHA256SUM := fb6ef914b50f4312d7d921a600eabc12318bb3c55a0b8c0b90608fa4488ef2e4
-BOX2D_TARBALL := box2d-3.1.1.tar.gz
+BOX2D_SHA256SUM := ffec747b27a2267016f8d0240d658c82d187fb2271fa0f69fcbe53fbc067180d
+BOX2D_TARBALL := box2d-3.2.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
 BREAKPAD_SHA256SUM := c44a2e898895cfc13b42d2371ba4b88b0777d7782214d6cdc91c33720f3b0d91
 BREAKPAD_TARBALL := breakpad-b324760c7f53667af128a6b77b790323da04fcb9.tar.xz
+# three static lines
+# so that git cherry-pick
+# will not run into conflicts
+BROTLI_SHA256SUM := 98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f
+BROTLI_TARBALL := brotli-1.2.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -39,8 +44,8 @@ BZIP2_TARBALL := bzip2-1.0.8.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-CAIRO_SHA256SUM := 445ed8208a6e4823de1226a74ca319d3600e83f6369f99b14265006599c32ccb
-CAIRO_VERSION_MICRO := 4
+CAIRO_SHA256SUM := 1c767308174337a74694da0f3ec069c271452163a1ef4540964c50c301f157d4
+CAIRO_VERSION_MICRO := 6
 CAIRO_TARBALL := cairo-1.18.$(CAIRO_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
@@ -60,8 +65,8 @@ DRAGONBOX_TARBALL := dragonbox-1.1.3.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FAST_FLOAT_SHA256SUM := 3f05bdecaaa2a3ac0e99c3e0a286a6ab2b1cdcc10cf8fb1e67d1b2e12d2365f7
-FAST_FLOAT_TARBALL := fast_float-8.2.7.tar.gz
+FAST_FLOAT_SHA256SUM := 4dd695f051893c8218faf2ed9871fa4a4990aa6aee2d3190ed7bfa2e83092245
+FAST_FLOAT_TARBALL := fast_float-8.3.3.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -80,13 +85,13 @@ CPPUNIT_TARBALL := cppunit-1.15.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-CURL_SHA256SUM := 63fe2dc148ba0ceae89922ef838f7e5c946272c2e78b7c59fab4b79d3ce2b896
-CURL_TARBALL := curl-8.20.0.tar.xz
+CURL_SHA256SUM := 8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5
+CURL_TARBALL := curl-8.23.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-EBOOK_SHA256SUM := 7e8d8ff34f27831aca3bc6f9cc532c2f90d2057c778963b884ff3d1e34dfe1f9
-EBOOK_TARBALL := libe-book-0.1.3.tar.xz
+EBOOK_SHA256SUM := 104b7e791b6632745898e9b6a0037b7540235771a4d8c3bde2c764466ad912f1
+EBOOK_TARBALL := libe-book-0.1.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -111,18 +116,18 @@ ETONYEK_TARBALL := libetonyek-0.1.$(ETONYEK_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-EXPAT_SHA256SUM := 10b195ee78160a908388180a8fe3603d4e9a12f4755fbf5f3816b23a9d750da0
-EXPAT_TARBALL := expat-2.8.1.tar.xz
+EXPAT_SHA256SUM := c624ba2998fc65df1163a49641ff3f9ab73138b11641d92c86bee0fb01b1bc7f
+EXPAT_TARBALL := expat-2.10.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FIREBIRD_SHA256SUM := bd263c4f685fb8fc3f1dcb8be8a411033cc31c5404d1dfce5d3849aa3f63a64d
-FIREBIRD_TARBALL := Firebird-3.0.13.33818-0.tar.bz2
+FIREBIRD_SHA256SUM := dce3f26c0f015b3c40f36085f8cc21de58dd568e0f347fdd0fcc7942deda8cff
+FIREBIRD_TARBALL := Firebird-3.0.14.33856-0.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FONTCONFIG_SHA256SUM := e7064a4725431ddba06ff8b971ec5a4b422e23b0169ce215747beedcb30e9073
-FONTCONFIG_TARBALL := fontconfig-2.18.0.tar.xz
+FONTCONFIG_SHA256SUM := 4f7b554a38cdf78c033f666c8871f3749e14a094f65a07f630c91ed0b43d35e3
+FONTCONFIG_TARBALL := fontconfig-2.18.3.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -247,58 +252,18 @@ FONT_AMIRI_TARBALL := Amiri-1.001.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FONT_REEM_SHA256SUM := 94ae468fd88f37011607f03466bfc3a03fb617682b7bac6419b70de94cac22f0
-FONT_REEM_TARBALL := ReemKufi-2.0.zip
+FONT_REEM_SHA256SUM := 93498c38aa9e7401434b512079a5de771c6321145e5df4209896bdd2b9c0d15d
+FONT_REEM_TARBALL := ReemKufi-3.0.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FONT_SCHEHERAZADE_SHA256SUM := 251c8817ceb87d9b661ce1d5b49e732a0116add10abc046be4b8ba5196e149b5
-FONT_SCHEHERAZADE_TARBALL := Scheherazade-2.100.zip
+FREEHAND_SHA256SUM := 350b10d24a76d7e8c8ae98b74c2d432a2c8ddec08935d09856d20b695a35e600
+FREEHAND_TARBALL := libfreehand-0.1.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FONT_AGDASIMA_TARBALL := Agdasima-2.002.zip
-FONT_AGDASIMA_SHA256SUM := b4c17499f8bc183320ffdcf1f8491c778dd68a237adc056dc08e1fcb2da488f3
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
-FONT_BACASIME_ANTIQUE_TARBALL := Bacasime_Antique-2.000.zip
-FONT_BACASIME_ANTIQUE_SHA256SUM := 81127cebc97d4ee0b950c2bc2d6be0ed29abfe0d5988435eb9a39e382557250a
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
-FONT_BELANOSIMA_TARBALL := Belanosima-2.000.zip
-FONT_BELANOSIMA_SHA256SUM := 9c30e9e7cdb0797b651113a77f6b789659b8d8598a466b2ba92754e9dec30449
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
-FONT_CAPRASIMO_TARBALL := Caprasimo-1.001.zip
-FONT_CAPRASIMO_SHA256SUM := f066d27cfc99b6601083be102d08b4039da8d2834e2795aabd890f16c6fd1b9b
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
-FONT_LUGRASIMO_TARBALL := Lugrasimo-1.001.zip
-FONT_LUGRASIMO_SHA256SUM := db24dff31e8ddf6a113556c947a219f9534b072852e9ce2079a08c94854a7503
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
-FONT_LUMANOSIMO_TARBALL := Lumanosimo-1.010.zip
-FONT_LUMANOSIMO_SHA256SUM := d4545ad6afded9a55d9a7728cfc7453cf5637861db87aafe0a730676a0cb960f
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
-FONT_LUNASIMA_TARBALL := Lunasima-2.009.zip
-FONT_LUNASIMA_SHA256SUM := 4302809cf4b95b481bec53de87484d919b391c90a518d065f6c775fd435a5393
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
-FREEHAND_SHA256SUM := a431d78767e5aa27ade7c6d1b7a11a9f1848cb4b9260bf0a6a44689553ecccfe
-FREEHAND_TARBALL := libfreehand-0.1.3.tar.xz
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
-FREETYPE_SHA256SUM := 36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f
-FREETYPE_TARBALL := freetype-2.14.3.tar.xz
+FREETYPE_SHA256SUM := 93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5
+FREETYPE_TARBALL := freetype-2.15.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -322,8 +287,13 @@ GRAPHITE_TARBALL := graphite2-minimal-1.3.15.tgz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-HARFBUZZ_SHA256SUM := a54a5d8e9380a41fbb762ce367bcbf7704792dfca0d93f1bbca86c5a57902e0e
-HARFBUZZ_TARBALL := harfbuzz-14.2.1.tar.xz
+HARFBUZZ_SHA256SUM := 0fc7c565443a5f4be7da65ac5ee5bd737d9b158dc908708b7689a0a5796b0c8d
+HARFBUZZ_TARBALL := harfbuzz-15.1.0.tar.xz
+# three static lines
+# so that git cherry-pick
+# will not run into conflicts
+HIGHWAY_SHA256SUM := 36f672ab48ddb3c8555e9e89e16fe400cd7d16c6eb455a1a3d0c146a63ababdc
+HIGHWAY_TARBALL := highway-1.4.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -332,13 +302,13 @@ HSQLDB_TARBALL := 17410483b5b5f267aa18b7e00b65e6e0-hsqldb_1_8_0.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-HUNSPELL_SHA256SUM := 433274dac0619cb00c2e18b43a3dd3a9d50da5b5613fa9b5c21781e35dd76bc1
-HUNSPELL_TARBALL := hunspell-1.7.3.tar.gz
+HUNSPELL_SHA256SUM := 9c650ace31d4d8cc1da925a9507c3de1d50f1a54857af2f72429f517d5d53467
+HUNSPELL_TARBALL := hunspell-1.7.6.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-HYPHEN_SHA256SUM := 783743daf477de8c4d16e3c74b4d2827377017718d8e17e2d9440210246f6abe
-HYPHEN_TARBALL := 442b985e604f8143a5a0e7bacd6b2e40-hyphen-2.8.9.tar.gz
+HYPHEN_SHA256SUM := a51c876e588108695e88450310d9b3ea9d94d30bcd455c9a2bad2ffed09c1160
+HYPHEN_TARBALL := hyphen-2.8.10.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -347,10 +317,10 @@ IACCESSIBLE2_TARBALL := IAccessible2-1.3+git20231013.3d8c7f0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-ICU_SHA256SUM := 3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0
-ICU_TARBALL := icu4c-78.3-sources.tgz
-ICU_DATA_SHA256SUM := 9d8b3899096aeb83e4e21ef8a40fec9e03b28db18c48452efac882ce25a91e27
-ICU_DATA_TARBALL := icu4c-78.3-data.zip
+ICU_SHA256SUM := 06fa63ecb521048f8082f12ad988f6b678d90cbd88aafce24cbc94902b191d99
+ICU_TARBALL := icu4c-79.1-sources.tgz
+ICU_DATA_SHA256SUM := b3a430009bb5fab77b1a4b98fab85cc8f887e26d4e4166121724298ae14d7224
+ICU_DATA_TARBALL := icu4c-79.1-data.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -385,18 +355,18 @@ JFREEREPORT_SAC_TARBALL := 39bb3fcea1514f1369fcfc87542390fd-sacjava-1.3.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBJPEG_TURBO_SHA256SUM := ecae8008e2cc9ade2f2c1bb9d5e6d4fb73e7c433866a056bd82980741571a022
-LIBJPEG_TURBO_TARBALL := libjpeg-turbo-3.1.4.1.tar.gz
+LIBJPEG_TURBO_SHA256SUM := c27ad72a68da151177929aa969ae773a2da5ac2af9ce946079314fdac8cece7f
+LIBJPEG_TURBO_TARBALL := libjpeg-turbo-3.2.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LANGTAGREG_SHA256SUM := 5c728b7ca4d3c7ba6810c46df28fd906f617e7c7f43d04721fe200037dce308e
-LANGTAGREG_TARBALL := language-subtag-registry-2026-05-05.tar.bz2
+LANGTAGREG_SHA256SUM := 10223cc8c219427c86a4c66ce98282a00c7f4d9b0609355146282344783007f2
+LANGTAGREG_TARBALL := language-subtag-registry-2026-9-17.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LCMS2_SHA256SUM := bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8
-LCMS2_TARBALL := lcms2-2.19.1.tar.gz
+LCMS2_SHA256SUM := 18ff5504fa9cc8a2b1f3591180d90ead16c8a2ea78e530523b46eab70e1ca6b9
+LCMS2_TARBALL := lcms2-2.20.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -415,18 +385,23 @@ LIBEOT_TARBALL := libeot-0.01.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBEXTTEXTCAT_SHA256SUM := 93eb89fd4fc8f565806354e100e778b3ac9a24e5fc04c24e6a83fb1e9b6c9d59
-LIBEXTTEXTCAT_TARBALL := libexttextcat-3.4.8.tar.xz
+LIBEXTTEXTCAT_SHA256SUM := 71e9a3cc6c4a270efd61d76281664341e1fb0412b591f1939516413a992d1e87
+LIBEXTTEXTCAT_TARBALL := libexttextcat-3.4.9.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBFFI_SHA256SUM := f3a3082a23b37c293a4fcd1053147b371f2ff91fa7ea1b2a52e335676bac82dc
-LIBFFI_TARBALL := libffi-3.5.2.tar.gz
+LIBFFI_SHA256SUM := 7da3e2d9a171eb0a038f592ecad3ff2bb2550f3496d87b3b29ad0cf4430c0db4
+LIBFFI_TARBALL := libffi-3.8.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
 LIBGPGERROR_SHA256SUM := 7a85413f2bc354f4f8aa832b718af122e48965e9e0eb9012ee659c13c6385c93
 LIBGPGERROR_TARBALL := libgpg-error-1.61.tar.bz2
+# three static lines
+# so that git cherry-pick
+# will not run into conflicts
+LIBJXL_SHA256SUM := ab38928f7f6248e2a98cc184956021acb927b16a0dee71b4d260dc040a4320ea
+LIBJXL_TARBALL := libjxl-0.11.2.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -450,13 +425,13 @@ LIBWEBP_TARBALL := libwebp-1.6.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-XMLSEC_SHA256SUM := 53675e98fa83b48201d24f7bfbcaeaa1b51496b8b19ff969785856bdeb196af3
-XMLSEC_TARBALL := xmlsec1-1.3.11.tar.gz
+XMLSEC_SHA256SUM := 7e500061eed734c55d74c786998e7562e55b1aaa72a2dff8ce3130b4c5b832d5
+XMLSEC_TARBALL := xmlsec1-1.3.13.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBXML_SHA256SUM := 78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07
-LIBXML_VERSION_MICRO := 3
+LIBXML_SHA256SUM := 98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821
+LIBXML_VERSION_MICRO := 4
 LIBXML_TARBALL := libxml2-2.15.$(LIBXML_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
@@ -467,23 +442,18 @@ LIBXSLT_TARBALL := libxslt-1.1.$(LIBXSLT_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LPSOLVE_SHA256SUM := 171816288f14215c69e730f7a4f1c325739873e21f946ff83884b350574e6695
-LPSOLVE_TARBALL := 26b3e95ddf3d9c077c480ea45874b3b8-lp_solve_5.5.tar.gz
+LXML_SHA256SUM := 45222d94ddd511536f3b2f7d9deae3b2339b4ce0f075f1ca25703b07cad9dd21
+LXML_TARBALL := lxml-6.1.3.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LXML_SHA256SUM := ba96ae44888e0185281e937633a743ea90d5a196c6000f82565ebb0580012d40
-LXML_TARBALL := lxml-6.1.1.tar.gz
+LZMA_SHA256SUM := 0014c7886930454fe8bd4228665b51af55eeae560ea135c9c4cd33f55b2591d9
+LZMA_TARBALL := xz-5.8.4.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LZMA_SHA256SUM := 3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0
-LZMA_TARBALL := xz-5.8.3.tar.gz
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
-MARIADB_CONNECTOR_C_SHA256SUM := 156aed3b49f857d0ac74fb76f1982968bcbfd8382da3f5b6ae71f616729920d7
-MARIADB_CONNECTOR_C_TARBALL := mariadb-connector-c-3.4.8-src.tar.gz
+MARIADB_CONNECTOR_C_SHA256SUM := 521c0712e9291fa96558df9e2ff431376a3a79329f13751896b694cae12765b4
+MARIADB_CONNECTOR_C_TARBALL := mariadb-connector-c-3.4.11-src.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -507,19 +477,19 @@ MSPUB_TARBALL := libmspub-0.1.5.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-MWAW_SHA256SUM := a1a39ffcea3ff2a7a7aae0c23877ddf4918b554bf82b0de5d7ce8e7f61ea8e32
-MWAW_VERSION_MICRO := 22
+MWAW_SHA256SUM := ac3590f691a2904eb8c7dc8b757b8a29f125f592449e421459ae8fa928b399eb
+MWAW_VERSION_MICRO := 23
 MWAW_TARBALL := libmwaw-0.3.$(MWAW_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-MYTHES_SHA256SUM := 97bd2ba5738aebdba1bc31f30f1be42f1404386c94105ad5990d839a1311c8a5
-MYTHES_TARBALL := mythes-1.2.6.tar.xz
+MYTHES_SHA256SUM := 861af73ad57ee240647a79a64e31f214de6d63ea53e406d2d4c1f730706dd921
+MYTHES_TARBALL := mythes-1.2.7.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-NSS_SHA256SUM := 362de77e31a16e64be500a22980448c7f08e98dd8ab85c29d0c5e41d4df68d1c
-NSS_TARBALL := nss-3.124-with-nspr-4.39.tar.gz
+NSS_SHA256SUM := 21a9fa95043631db5331ad9202d8c7e7475f7d8d94fdf92c01624563c88502b4
+NSS_TARBALL := nss-3.133-with-nspr-4.39.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -549,13 +519,13 @@ ONLINEUPDATE_TARBALL := onlineupdate-c003be8b9727672e7d30972983b375f4c200233f-2.
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-OPENLDAP_SHA256SUM := d693b49517a42efb85a1a364a310aed16a53d428d1b46c0d31ef3fba78fcb656
-OPENLDAP_TARBALL := openldap-2.6.13.tgz
+OPENLDAP_SHA256SUM := aad731aa22118ff327b9b4ddfc4b6f18ef9476586205da88a532e90940b523d2
+OPENLDAP_TARBALL := openldap-2.7.2.tgz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-OPENSSL_SHA256SUM := deae7c80cba99c4b4f940ecadb3c3338b13cb77418409238e57d7f31f2a3b736
-OPENSSL_TARBALL := openssl-3.5.6.tar.gz
+OPENSSL_SHA256SUM := 603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
+OPENSSL_TARBALL := openssl-3.5.9.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -569,13 +539,13 @@ PAGEMAKER_TARBALL := libpagemaker-0.0.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-PDFIUM_SHA256SUM := 8de122fff74461770c9ca93ca3e6ca946b077f9110d562f40815e187e1255774
-PDFIUM_TARBALL := pdfium-7681.tar.bz2
+PDFIUM_SHA256SUM := 6119ad004b199dc0abdc95757b5fb592cffa7b02aac590b561f892fa239bf430
+PDFIUM_TARBALL := pdfium-8138.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-AFDKO_SHA256SUM := 5feed7c2468e25b25fce0479c04af07f4ed2680bc9251bb4c4aef9ec2fba5720
-AFDKO_TARBALL := afdko-4.0.3.tar.gz
+AFDKO_SHA256SUM := 083b504a1cd865e8bfbb42134a34318ce42ef5130daebfc5b0e2f2fb444326c5
+AFDKO_TARBALL := afdko-5.0.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -589,35 +559,35 @@ PIXMAN_TARBALL := pixman-0.46.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBPNG_SHA256SUM := 28eb403f51f0f7405249132cecfe82ea5c0ef97f1b32c5a65828814ae0d34775
-LIBPNG_TARBALL := libpng-1.6.58.tar.xz
+LIBPNG_SHA256SUM := d80dd2a38a37f803cb9b6ac7b14bd6e74ddc3b654780a8380bdf93523fdb4389
+LIBPNG_TARBALL := libpng-1.6.59.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBTIFF_SHA256SUM := b92017489bdc1db3a4c97191aa4b75366673cb746de0dce5d7a749d5954681ba
-LIBTIFF_TARBALL := tiff-4.7.1.tar.xz
+LIBTIFF_SHA256SUM := 4996f0c4f93094719b1ca5c6279b20e588773ba8a247533e486416fb662ddb88
+LIBTIFF_TARBALL := tiff-4.7.2.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-POPPLER_SHA256SUM := 4cb4e5a3dc8cb5eec751c8a23c8ba19f61f96dedc0cd07d2aee6b0c8e2cf6ba4
-POPPLER_TARBALL := poppler-26.06.0.tar.xz
+POPPLER_SHA256SUM := 41c32680160addf5a8dd7a830e4869c01e9f6bee1abb91e44fabd1ba9d7828fb
+POPPLER_TARBALL := poppler-26.11.0.tar.xz
 POPPLER_DATA_SHA256SUM := c835b640a40ce357e1b83666aabd95edffa24ddddd49b8daff63adb851cdab74
 POPPLER_DATA_TARBALL := poppler-data-0.4.12.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-POSTGRESQL_SHA256SUM := 11df0df97fe3ea4ba9a791faaf39cee1d2fe571e78885b5b55d8517d27c323b4
-POSTGRESQL_TARBALL := postgresql-15.18.tar.bz2
+POSTGRESQL_SHA256SUM := e1a64a87a46b825b88c082e4518161a47aab53c45694964f8ba1df28f7859f89
+POSTGRESQL_TARBALL := postgresql-15.19.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-PYTHON_SHA256SUM := 2ab91ff401783ccca64f75d10c882e957bdfd60e2bf5a72f8421793729b78a71
-PYTHON_TARBALL := Python-3.13.13.tar.xz
+PYTHON_SHA256SUM := abb0102e6d4ae027509bcb82327d9dd85515b44a3ba8ad538cfc5e9847029f68
+PYTHON_TARBALL := Python-3.13.18.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-QUICKJS_SHA256SUM := d4dbf9cbf7a855c790d3c4c468ac45b00371d56fd8ae26e1aaa1d336efc589d8
-QUICKJS_TARBALL := quickjs-0.15.1-amalgam.zip
+QUICKJS_SHA256SUM := 6c05066a6b62b483e2ba0f83d7a16688c6958182b214bfd693529434cef84a9e
+QUICKJS_TARBALL := quickjs-0.18.0-amalgam.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -646,14 +616,14 @@ REDLAND_TARBALL := e5be03eda13ef68aabab6e42aa67715e-redland-1.0.17.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-REVENGE_SHA256SUM := 5892ca6796f7a2a93d580832e907e849b19d980b40d326a283b18877ab6de0c5
-REVENGE_VERSION_MICRO := 5
+REVENGE_SHA256SUM := 52a65e904d255dbdd97a8b7bb28d6574e14f999eb01416aff004502406d0904d
+REVENGE_VERSION_MICRO := 6
 REVENGE_TARBALL := librevenge-0.0.$(REVENGE_VERSION_MICRO).tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-MD4C_SHA256SUM := 353c346f376b87c954a13f3415ede2d51264cc61dc5abcd38ff1d2aa0d059b9e
-MD4C_TARBALL := md4c-release-0.5.3.tar.gz
+MD4C_SHA256SUM := 4d151298125a81da3b2efa2e0eed8bdb7a9318569804e4fa4d7a2375ab83ef70
+MD4C_TARBALL := md4c-0.6.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -662,18 +632,18 @@ RHINO_TARBALL := rhino-1.7.15.1.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-SKIA_SHA256SUM := 92f613b60126f9068af02c5eb29abef6931e343888f027d87da100ddf2a003a1
-SKIA_TARBALL := skia-m147-ad8ecedbfdef9f4ae4b1e73347b6dd56e6637d38.tar.xz
+SKIA_SHA256SUM := d8ae87d86ac1cd665777ac83fdcd5d162712806511bad475182261f92fbe1ce9
+SKIA_TARBALL := skia-m150-31238c6efe24011a423df82c2816876f700cf58b.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-SQLITE3_SHA256SUM := 8a310d0a16c7a90cacd4c884e70faa51c902afed2a89f63aaa0126ab83558a32
-SQLITE3_TARBALL := sqlite-amalgamation-3530200.zip
+SQLITE3_SHA256SUM := 0a9c8e34352dad46006aa82836d5383bff9dc6bc9ce5a60553c05aa30e6ad1f9
+SQLITE3_TARBALL := sqlite-amalgamation-3540100.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-STAROFFICE_SHA256SUM := f94fb0ad8216f97127bedef163a45886b43c62deac5e5b0f5e628e234220c8db
-STAROFFICE_VERSION_MICRO := 7
+STAROFFICE_SHA256SUM := bbca92882e96c55bd1527670866d6bc7529ccb12786da55a2398b60a063378da
+STAROFFICE_VERSION_MICRO := 8
 STAROFFICE_TARBALL := libstaroffice-0.0.$(STAROFFICE_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
@@ -716,8 +686,8 @@ YRS_TARBALL := y-crdt-0.23.5.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-ZLIB_SHA256SUM := d7a0654783a4da529d1bb793b7ad9c3318020af77667bcae35f95d0e42a792f3
-ZLIB_TARBALL := zlib-1.3.2.tar.xz
+ZLIB_SHA256SUM := 4f11c512053d7bab8d9e9b89bde3575add3e4c50a383b42ef6cb837035fc5a7c
+ZLIB_TARBALL := zlib-1.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -731,13 +701,13 @@ ZMF_TARBALL := libzmf-0.0.2.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-ZXCVBN_C_SHA256SUM := 11e39f6776f9c82c68b2acb94336e32697d4ab6cdb4ac16f9583ccbdd735113a
-ZXCVBN_C_TARBALL := zxcvbn-c-2.6.tar.gz
+ZXCVBN_C_SHA256SUM := 0548647d8cda5c0d52e6e00cd6896005f2813869f9ed93c245536129e3bd3f4b
+ZXCVBN_C_TARBALL := zxcvbn-c-2.7.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-ZXING_SHA256SUM := e957f13e2ad4e31badb3d9af3f6ba8999a3ca3c9cc4d6bafc98032f9cce1a090
-ZXING_TARBALL := zxing-cpp-3.0.2.tar.gz
+ZXING_SHA256SUM := c3c02c29c0b519de7bd4e25b376e606e87f0761befd1282815642a2246613d14
+ZXING_TARBALL := zxing-cpp-3.1.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

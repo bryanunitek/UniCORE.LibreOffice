@@ -1124,14 +1124,23 @@ void SdrOle2Obj::SyncObjVisualArea(const uno::Reference<embed::XEmbeddedObject>&
             aRect.SetSize(Size(aSz.Width, aSz.Height));
         }
         catch (const uno::Exception&)
-        {}
+        {
+            TOOLS_WARN_EXCEPTION("svx.svdraw", "");
+        }
         SetLogicRect(aRect);
     }
     else
     {
         Size aSize = aRect.GetSize();
         awt::Size aSz(aSize.Width(), aSize.Height());
-        xObj->setVisualAreaSize(GetAspect(), aSz);
+        try
+        {
+            xObj->setVisualAreaSize(GetAspect(), aSz);
+        }
+        catch (const uno::Exception&)
+        {
+            TOOLS_WARN_EXCEPTION("svx.svdraw", "");
+        }
     }
 }
 
@@ -1568,7 +1577,7 @@ OUString SdrOle2Obj::TakeObjNamePlural() const
     return SvxResId(mpImpl->mbFrame ? STR_ObjNamePluralFrame : STR_ObjNamePluralOLE2);
 }
 
-rtl::Reference<SdrObject> SdrOle2Obj::CloneSdrObject(SdrModel& rTargetModel) const
+rtl::Reference<SdrObject> SdrOle2Obj::implCloneSdrObject(SdrModel& rTargetModel) const
 {
     return new SdrOle2Obj(rTargetModel, *this);
 }

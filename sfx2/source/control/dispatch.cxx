@@ -1098,7 +1098,7 @@ void SfxDispatcher::Update_Impl( bool bForce )
         SetMenu_Impl();
 
     SfxWorkWindow *pWorkWin = xImp->pFrame->GetFrame().GetWorkWindow_Impl();
-    pWorkWin->ResetStatusBar_Impl();
+    pWorkWin->ResetStatusBarId();
 
     {
         SfxWorkWindow *pWork = xImp->pFrame->GetFrame().GetWorkWindow_Impl();
@@ -1293,7 +1293,7 @@ void SfxDispatcher::Update_Impl_( bool bUIActive, bool bIsMDIApp, bool bIsIPOwne
     if (bIsTaskActive && eStatBarId != StatusBarId::None && xImp->pFrame)
     {
         // internal frames also may control statusbar
-        xImp->pFrame->GetFrame().GetWorkWindow_Impl()->SetStatusBar_Impl(eStatBarId);
+        xImp->pFrame->GetFrame().GetWorkWindow_Impl()->SetStatusBarId(eStatBarId);
     }
 }
 
@@ -1531,46 +1531,6 @@ SfxSlotFilterState SfxDispatcher::IsSlotEnabledByFilter_Impl( sal_uInt16 nSID ) 
         return bFound ? SfxSlotFilterState::DISABLED : SfxSlotFilterState::ENABLED;
 }
 
-static bool IsCommandAllowedInLokReadOnlyViewMode(std::u16string_view commandName,
-                                                  const SfxViewShell& viewShell)
-{
-    if (viewShell.IsAllowChangeComments())
-    {
-        static constexpr std::u16string_view allowed[] = {
-            u".uno:InsertAnnotation",
-            u".uno:InsertThreadedComment",
-            u".uno:ReplyComment",
-            u".uno:ResolveComment",
-            u".uno:ResolveCommentThread",
-            u".uno:DeleteComment",
-            u".uno:DeleteAnnotation",
-            u".uno:EditAnnotation",
-            u".uno:PromoteComment",
-            u".uno:Save",
-        };
-
-        if (std::find(std::begin(allowed), std::end(allowed), commandName) != std::end(allowed))
-            return true;
-    }
-    if (viewShell.IsAllowManageRedlines())
-    {
-        static constexpr std::u16string_view allowed[] = {
-            u".uno:AcceptTrackedChange",
-            u".uno:RejectTrackedChange",
-            u".uno:AcceptAllTrackedChanges",
-            u".uno:RejectAllTrackedChanges",
-            u".uno:AcceptTrackedChangeToNext",
-            u".uno:RejectTrackedChangeToNext",
-            u".uno:CommentChangeTracking",
-            u".uno:Save",
-        };
-
-        if (std::find(std::begin(allowed), std::end(allowed), commandName) != std::end(allowed))
-            return true;
-    }
-    return false;
-}
-
 /** This helper method searches for the <Slot-Server> which currently serves
     the nSlot. As the result, rServe is filled accordingly.
 
@@ -1603,27 +1563,6 @@ bool SfxDispatcher::FindServer_(sal_uInt16 nSlot, SfxSlotServer& rServer)
     Flush();
     sal_uInt16 nTotCount = xImp->aStack.size();
 
-    // Verb-Slot?
-    if (nSlot >= SID_VERB_START && nSlot <= SID_VERB_END)
-    {
-        for ( sal_uInt16 nShell = 0;; ++nShell )
-        {
-            SfxShell *pSh = GetShell(nShell);
-            if ( pSh == nullptr )
-                return false;
-            if ( dynamic_cast< const SfxViewShell *>( pSh ) !=  nullptr )
-            {
-                const SfxSlot* pSlot = pSh->GetVerbSlot_Impl(nSlot);
-                if ( pSlot )
-                {
-                    rServer.SetShellLevel(nShell);
-                    rServer.SetSlot( pSlot );
-                    return true;
-                }
-            }
-        }
-    }
-
     // SID check against set filter
     SfxSlotFilterState nSlotEnableMode = SfxSlotFilterState::DISABLED;
     if ( xImp->pFrame )
@@ -1641,9 +1580,6 @@ bool SfxDispatcher::FindServer_(sal_uInt16 nSlot, SfxSlotServer& rServer)
 
     const bool isViewerAppMode = officecfg::Office::Common::Misc::ViewerAppMode::get();
     const bool bReadOnlyGlobal = SfxSlotFilterState::ENABLED_READONLY != nSlotEnableMode && xImp->bReadOnly;
-    const bool bReadOnlyLokView = !bReadOnlyGlobal && comphelper::LibreOfficeKit::isActive()
-                                  && xImp->pFrame && xImp->pFrame->GetViewShell()
-                                  && xImp->pFrame->GetViewShell()->IsLokReadOnlyView();
 
     const bool bIsInPlace = xImp->pFrame && xImp->pFrame->GetObjectShell()->IsInPlaceActive();
     // Shell belongs to Server?
@@ -1711,19 +1647,6 @@ bool SfxDispatcher::FindServer_(sal_uInt16 nSlot, SfxSlotServer& rServer)
                 }
                 if (!bAllowThis)
                     return false;
-            }
-
-            // 2. LOK view context is read-only
-            if (bReadOnlyLokView)
-            {
-                if (!IsCommandAllowedInLokReadOnlyViewMode(pSlot->GetCommand(),
-                                                           *xImp->pFrame->GetViewShell()))
-                {
-                    SAL_WARN("sfx.control", "SfxDispatcher::FindServer_: rejecting command '"
-                                                << pSlot->GetCommand()
-                                                << "', not allowed in LOK read-only view mode");
-                    return false;
-                }
             }
         }
 

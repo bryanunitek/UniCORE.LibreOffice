@@ -82,6 +82,8 @@ OGridControlModel::OGridControlModel(const Reference<XComponentContext>& _rxFact
     ,m_bDisplaySynchron(true)
 {
     m_nClassId = FormComponentType::GRIDCONTROL;
+    // tdf#51727 - explicitly set to false so tab navigation skips this control by default
+    m_aTabStop <<= false;
 }
 
 OGridControlModel::OGridControlModel( const OGridControlModel* _pOriginal, const Reference< XComponentContext >& _rxFactory )
@@ -104,6 +106,7 @@ OGridControlModel::OGridControlModel( const OGridControlModel* _pOriginal, const
     m_bPrintable = _pOriginal->m_bPrintable;
     m_bAlwaysShowCursor = _pOriginal->m_bAlwaysShowCursor;
     m_bDisplaySynchron = _pOriginal->m_bDisplaySynchron;
+    m_aTabStop = _pOriginal->m_aTabStop;
     // clone the columns
     cloneColumns( _pOriginal );
     // TODO: clone the events?
@@ -385,7 +388,7 @@ void OGridControlModel::describeFixedProperties( Sequence< Property >& _rProps )
     *pProperties++ = css::beans::Property(PROPERTY_ENABLED, PROPERTY_ID_ENABLED, cppu::UnoType<sal_Bool>::get(), css::beans::PropertyAttribute::BOUND);
     *pProperties++ = css::beans::Property(PROPERTY_ENABLEVISIBLE, PROPERTY_ID_ENABLEVISIBLE, cppu::UnoType<sal_Bool>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::MAYBEDEFAULT);
     *pProperties++ = css::beans::Property(PROPERTY_BORDER, PROPERTY_ID_BORDER, cppu::UnoType<sal_Int16>::get(), css::beans::PropertyAttribute::BOUND);
-    *pProperties++ = css::beans::Property(PROPERTY_BORDERCOLOR, PROPERTY_ID_BORDERCOLOR, cppu::UnoType<sal_Int16>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::MAYBEVOID);
+    *pProperties++ = css::beans::Property(PROPERTY_BORDERCOLOR, PROPERTY_ID_BORDERCOLOR, cppu::UnoType<sal_Int32>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::MAYBEVOID);
     *pProperties++ = css::beans::Property(PROPERTY_DEFAULTCONTROL, PROPERTY_ID_DEFAULTCONTROL, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND);
     *pProperties++ = css::beans::Property(PROPERTY_TEXTCOLOR, PROPERTY_ID_TEXTCOLOR, cppu::UnoType<sal_Int32>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::MAYBEDEFAULT | css::beans::PropertyAttribute::MAYBEVOID);
     *pProperties++ = css::beans::Property(PROPERTY_BACKGROUNDCOLOR, PROPERTY_ID_BACKGROUNDCOLOR, cppu::UnoType<sal_Int32>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::MAYBEDEFAULT | css::beans::PropertyAttribute::MAYBEVOID);
@@ -662,6 +665,7 @@ Any OGridControlModel::getPropertyDefaultByHandle( sal_Int32 nHandle ) const
             aReturn <<= true;
             break;
         case PROPERTY_ID_ALWAYSSHOWCURSOR:
+        case PROPERTY_ID_TABSTOP:
             aReturn <<= false;
             break;
         case PROPERTY_ID_HELPURL:
@@ -672,7 +676,6 @@ Any OGridControlModel::getPropertyDefaultByHandle( sal_Int32 nHandle ) const
             aReturn <<= sal_Int16(1);
             break;
         case PROPERTY_ID_BORDERCOLOR:
-        case PROPERTY_ID_TABSTOP:
         case PROPERTY_ID_BACKGROUNDCOLOR:
         case PROPERTY_ID_ROWHEIGHT:
         case PROPERTY_ID_CURSORCOLOR:

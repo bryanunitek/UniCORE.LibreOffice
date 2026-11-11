@@ -52,7 +52,7 @@ ScAttrArray::ScAttrArray( SCCOL nNewCol, SCTAB nNewTab, ScDocument& rDoc, ScAttr
     nTab( nNewTab ),
     rDocument( rDoc )
 {
-    if ( nCol == -1 || !pDefaultColAttrArray || pDefaultColAttrArray->mvData.empty() )
+    if ( !pDefaultColAttrArray || pDefaultColAttrArray->mvData.empty() )
         return;
 
     ScAddress aAdrStart( nCol, 0, nTab );
@@ -62,6 +62,8 @@ ScAttrArray::ScAttrArray( SCCOL nNewCol, SCTAB nNewTab, ScDocument& rDoc, ScAttr
     {
         mvData[nIdx].nEndRow = pDefaultColAttrArray->mvData[nIdx].nEndRow;
         mvData[nIdx].setScPatternAttr(pDefaultColAttrArray->mvData[nIdx].getScPatternAttr());
+        if ( nCol == -1 )
+            continue;
         bool bNumFormatChanged = false;
         if ( ScGlobal::CheckWidthInvalidate( bNumFormatChanged,
              mvData[nIdx].getScPatternAttr()->GetItemSet(),
@@ -413,7 +415,7 @@ void ScAttrArray::RemoveCellCharAttribs( SCROW nStartRow, SCROW nEndRow,
 
         std::unique_ptr<EditTextObject> pOldData;
         if (pDataArray)
-            pOldData = aCell.getEditText()->Clone();
+            pOldData = std::make_unique<EditTextObject>(*aCell.getEditText());
 
         // Direct modification of cell content - something to watch out for if
         // we decide to share edit text instances in the future.
@@ -421,7 +423,7 @@ void ScAttrArray::RemoveCellCharAttribs( SCROW nStartRow, SCROW nEndRow,
 
         if (pDataArray)
         {
-            std::unique_ptr<EditTextObject> pNewData = aCell.getEditText()->Clone();
+            auto pNewData = std::make_unique<EditTextObject>(*aCell.getEditText());
             pDataArray->AddItem(nTab, nCol, nRow, std::move(pOldData), std::move(pNewData));
         }
     }
@@ -1168,7 +1170,7 @@ bool ScAttrArray::ApplyFrame( const SvxBoxItem&     rBoxItem,
 
     SvxBoxItem aNewFrame( *pOldFrame );
     bool bRTL=rDocument.IsLayoutRTL(nTab);
-    // fdo#37464 check if the sheet are RTL then replace right <=> left
+    // fdo#37464 check if the sheet is RTL then replace right <=> left
     if (bRTL)
     {
         if( bLeft && nDistRight==0)
@@ -1717,7 +1719,7 @@ void ScAttrArray::ChangeIndent( SCROW nStartRow, SCROW nEndRow, bool bIncrement 
                                pItem->GetValue() != SvxCellHorJustify::Right );
         sal_uInt16 nOldValue = rOldSet.Get( ATTR_INDENT ).GetValue();
         sal_uInt16 nNewValue = nOldValue;
-        // To keep Increment indent from running outside the cell1659
+        // To keep Increment indent from running outside the cell
         tools::Long nColWidth = static_cast<tools::Long>(
             rDocument.GetColWidth(nCol == -1 ? rDocument.MaxCol() : nCol,nTab));
         if ( bIncrement )
@@ -1919,6 +1921,12 @@ bool ScAttrArray::GetFirstVisibleAttr( SCROW& rFirstRow ) const
 
 const SCROW SC_VISATTR_STOP = 84;
 
+// how far a bordered block reaches into the print area, in its whole length and in its
+// distance below the last cell with content. The length counts the rows that already hold
+// content, so it stays the same as the form is filled in. 2000 rows is some forty pages here.
+
+const SCROW SC_VISATTR_BORDER_STOP = 2000;
+
 bool ScAttrArray::GetLastVisibleAttr( SCROW& rLastRow, SCROW nLastData, bool bSkipEmpty ) const
 {
     if ( mvData.empty() )
@@ -1928,8 +1936,8 @@ bool ScAttrArray::GetLastVisibleAttr( SCROW& rLastRow, SCROW nLastData, bool bSk
     }
 
     //  #i30830# changed behavior:
-    //  ignore all attributes starting with the first run of SC_VISATTR_STOP equal rows
-    //  below the last content cell
+    //  ignore a long run of equally formatted rows below the last content cell, and everything
+    //  below it. A bordered run of the size and position a form has is kept instead.
 
     if ( nLastData == rDocument.MaxRow() )
     {
@@ -1965,7 +1973,30 @@ bool ScAttrArray::GetLastVisibleAttr( SCROW& rLastRow, SCROW nLastData, bool bSk
             if ( nAttrStartRow <= nLastData )
                 nAttrStartRow = nLastData + 1;
             SCROW nAttrSize = mvData[nEndPos].nEndRow + 1 - nAttrStartRow;
+            bool bStop = false;
             if ( nAttrSize >= SC_VISATTR_STOP )
+            {
+                // The length is measured over the whole block, so it holds steady as the
+                // sheet is filled in. The distance keeps the search within
+                // SC_VISATTR_BORDER_STOP rows of the last cell with content.
+                const SvxBoxItem& rBox
+                    = mvData[nEndPos].getScPatternAttr()->GetItem( ATTR_BORDER );
+                const bool bBordered = rBox.GetLeft() || rBox.GetRight()
+                                        || rBox.GetTop() || rBox.GetBottom();
+                // walk back to the first range of this block, so the length is the same
+                // whichever of its ranges holds the last cell with content
+                SCSIZE nStartPos = nPos;
+                while ( nStartPos > 0
+                        && mvData[nStartPos-1].getScPatternAttr()->IsVisibleEqual(
+                               *mvData[nStartPos].getScPatternAttr() ) )
+                    --nStartPos;
+                const SCROW nRangeStartRow
+                    = ( nStartPos > 0 ) ? ( mvData[nStartPos-1].nEndRow + 1 ) : 0;
+                bStop = !bBordered
+                        || mvData[nEndPos].nEndRow + 1 - nRangeStartRow >= SC_VISATTR_BORDER_STOP
+                        || mvData[nEndPos].nEndRow - nLastData >= SC_VISATTR_BORDER_STOP;
+            }
+            if ( bStop )
                 break;  // while, ignore this range and below
             else if ( mvData[nEndPos].getScPatternAttr()->IsVisible() )
             {

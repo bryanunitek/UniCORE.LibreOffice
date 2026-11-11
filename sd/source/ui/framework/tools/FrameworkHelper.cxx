@@ -46,7 +46,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 namespace sd::framework {
 
@@ -65,8 +64,8 @@ public:
         lifetime by acquiring a reference to itself in the constructor.
         When it detects that the event will not be notified in the near
         future (because the queue of pending configuration change operations
-        is empty and therefore no event will be sent int the near future, it
-        does not acquires a reference and thus initiates its destruction in
+        is empty and therefore no event will be sent in the near future, it
+        does not acquire a reference and thus initiates its destruction in
         the constructor.)
         @param rBase
             This ViewShellBase object is used to determine the
@@ -219,7 +218,7 @@ namespace
         {
             rtl::Reference< sd::framework::Configuration > xConfiguration( i_rConfigController->getRequestedConfiguration() );
             std::vector< rtl::Reference< ResourceId > > aViewIds( xConfiguration->getResources(
-                i_rPaneId, FrameworkHelper::msViewURLPrefix, AnchorBindingMode_DIRECT ) );
+                i_rPaneId, FrameworkHelper::msViewURLPrefix, AnchorBindingMode::DIRECT));
             if ( !aViewIds.empty() )
                 return i_rConfigController->getResource( aViewIds[0] );
         }
@@ -430,36 +429,45 @@ ViewShell::ShellType FrameworkHelper::GetViewId (const OUString& rsViewURL)
 {
     if (maViewURLMap.empty())
     {
-        maViewURLMap[msImpressViewURL] = ViewShell::ST_IMPRESS;
-        maViewURLMap[msDrawViewURL] = ViewShell::ST_DRAW;
-        maViewURLMap[msOutlineViewURL] = ViewShell::ST_OUTLINE;
-        maViewURLMap[msNotesViewURL] = ViewShell::ST_NOTES;
-        maViewURLMap[msHandoutViewURL] = ViewShell::ST_HANDOUT;
-        maViewURLMap[msSlideSorterURL] = ViewShell::ST_SLIDE_SORTER;
-        maViewURLMap[msPresentationViewURL] = ViewShell::ST_PRESENTATION;
-        maViewURLMap[msSidebarViewURL] = ViewShell::ST_SIDEBAR;
-        maViewURLMap[msNotesPanelViewURL] = ViewShell::ST_NOTESPANEL;
+        maViewURLMap[msImpressViewURL] = ViewShell::ShellType::Impress;
+        maViewURLMap[msDrawViewURL] = ViewShell::ShellType::Draw;
+        maViewURLMap[msOutlineViewURL] = ViewShell::ShellType::Outline;
+        maViewURLMap[msNotesViewURL] = ViewShell::ShellType::Notes;
+        maViewURLMap[msHandoutViewURL] = ViewShell::ShellType::Handout;
+        maViewURLMap[msSlideSorterURL] = ViewShell::ShellType::SlideSorter;
+        maViewURLMap[msPresentationViewURL] = ViewShell::ShellType::Presentation;
+        maViewURLMap[msSidebarViewURL] = ViewShell::ShellType::Sidebar;
+        maViewURLMap[msNotesPanelViewURL] = ViewShell::ShellType::NotesPanel;
     }
     ViewURLMap::const_iterator iView (maViewURLMap.find(rsViewURL));
     if (iView != maViewURLMap.end())
         return iView->second;
     else
-        return ViewShell::ST_NONE;
+        return ViewShell::ShellType::None;
 }
 
 const OUString & FrameworkHelper::GetViewURL (ViewShell::ShellType eType)
 {
     switch (eType)
     {
-        case ViewShell::ST_IMPRESS : return msImpressViewURL;
-        case ViewShell::ST_DRAW : return msDrawViewURL;
-        case ViewShell::ST_OUTLINE : return msOutlineViewURL;
-        case ViewShell::ST_NOTES : return msNotesViewURL;
-        case ViewShell::ST_HANDOUT : return msHandoutViewURL;
-        case ViewShell::ST_SLIDE_SORTER : return msSlideSorterURL;
-        case ViewShell::ST_PRESENTATION : return msPresentationViewURL;
-        case ViewShell::ST_SIDEBAR : return msSidebarViewURL;
-        case ViewShell::ST_NOTESPANEL: return msNotesPanelViewURL;
+        case ViewShell::ShellType::Impress:
+            return msImpressViewURL;
+        case ViewShell::ShellType::Draw:
+            return msDrawViewURL;
+        case ViewShell::ShellType::Outline:
+            return msOutlineViewURL;
+        case ViewShell::ShellType::Notes:
+            return msNotesViewURL;
+        case ViewShell::ShellType::Handout:
+            return msHandoutViewURL;
+        case ViewShell::ShellType::SlideSorter:
+            return msSlideSorterURL;
+        case ViewShell::ShellType::Presentation:
+            return msPresentationViewURL;
+        case ViewShell::ShellType::Sidebar:
+            return msSidebarViewURL;
+        case ViewShell::ShellType::NotesPanel:
+            return msNotesPanelViewURL;
         default:
             return EMPTY_OUSTRING;
     }
@@ -911,12 +919,12 @@ void LifetimeController::Update()
     else
     {
         // Both the controller and the ViewShellBase have been destroyed.
-        // Remove the FrameworkHelper so that the next call its Instance()
+        // Remove the FrameworkHelper so that the next call to its Instance()
         // method can create a new instance.
         ::sd::framework::FrameworkHelper::ReleaseInstance(mrBase);
     }
 }
 
-} // end of anonymous namespace.
+} // end of anonymous namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

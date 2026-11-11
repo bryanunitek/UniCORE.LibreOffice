@@ -314,18 +314,6 @@ public:
     void                            SetWindowTextColor( const Color& rColor );
     const Color&                    GetWindowTextColor() const;
 
-    void                            SetWriterNotebookbarColor( const Color& rColor );
-    const Color&                    GetWriterNotebookbarColor() const;
-
-    void                            SetCalcNotebookbarColor( const Color& rColor );
-    const Color&                    GetCalcNotebookbarColor() const;
-
-    void                            SetImpressNotebookbarColor( const Color& rColor );
-    const Color&                    GetImpressNotebookbarColor() const;
-
-    void                            SetDrawNotebookbarColor( const Color& rColor );
-    const Color&                    GetDrawNotebookbarColor() const;
-
     void                            SetDialogColor( const Color& rColor );
     const Color&                    GetDialogColor() const;
 
@@ -373,6 +361,9 @@ public:
 
     void                            SetDisableColor( const Color& rColor );
     const Color&                    GetDisableColor() const;
+
+    void                            SetDisableTextColor( const Color& rColor );
+    const Color&                    GetDisableTextColor() const;
 
     void                            SetWarningColor( const Color& rColor );
     const Color&                    GetWarningColor() const;

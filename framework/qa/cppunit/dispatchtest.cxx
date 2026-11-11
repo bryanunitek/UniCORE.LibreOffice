@@ -21,7 +21,7 @@ using namespace ::com::sun::star;
 
 namespace
 {
-/// Sample interception implementation that asserts getInterceptedURLs() and queryDispatch() is in sync.
+/// Sample interception implementation that asserts getInterceptedURLs() and queryDispatch() are in sync.
 class MyInterceptor
     : public cppu::WeakImplHelper<frame::XDispatchProviderInterceptor, frame::XInterceptorInfo>
 {
@@ -192,7 +192,7 @@ CPPUNIT_TEST_FIXTURE(DispatchTest, testSfxOfficeDispatchDispose)
     mxComponent->dispose();
 
     util::URL urlSlot;
-    urlSlot.Complete = "slot:5598";
+    urlSlot.Complete = ".uno:JumpToMark";
     xParser->parseStrict(urlSlot);
     // crashed with UAF
     xDisp->dispatch(urlSlot, {});

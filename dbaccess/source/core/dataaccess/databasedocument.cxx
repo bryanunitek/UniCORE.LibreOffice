@@ -30,6 +30,8 @@
 
 #include <officecfg/Office/Common.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/document/DocumentEvent.hpp>
+#include <com/sun/star/document/XDocumentEventListener.hpp>
 #include <com/sun/star/document/XExporter.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
@@ -70,6 +72,7 @@
 
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <framework/documentmacrocalls.hxx>
 #include <framework/titlehelper.hxx>
 #include <unotools/saveopt.hxx>
 #include <comphelper/diagnose_ex.hxx>
@@ -77,6 +80,9 @@
 
 #include <vcl/GraphicObject.hxx>
 #include <tools/urlobj.hxx>
+
+#include <algorithm>
+#include <ranges>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
@@ -140,6 +146,7 @@ ODatabaseDocument::ODatabaseDocument(const ::rtl::Reference<ODatabaseModelImpl>&
             ,m_aViewMonitor( m_aEventNotifier )
             ,m_eInitState( NotInitialized )
             ,m_bClosing( false )
+            ,m_bMacroCallsAllowed( false )
             ,m_bAllowDocumentScripting( false )
             ,m_bHasBeenRecovered( false )
             ,m_bEmbedded(false)
@@ -466,6 +473,9 @@ void SAL_CALL ODatabaseDocument::initNew(  )
 
     impl_setInitializing();
 
+    // A new document gets its macros from the user.
+    m_bMacroCallsAllowed = true;
+
     // create a temporary storage
     Reference< XStorage > xTempStor( ::comphelper::OStorageHelper::GetTemporaryStorage( m_pImpl->m_aContext ) );
 
@@ -546,22 +556,64 @@ namespace
 
         const Sequence< Reference< XComponent > > aComponents( xDatabaseUI->getSubComponents() );
 
-        bool isAnyModified = false;
-        for ( auto const & xComponent : aComponents )
-        {
-            Reference< XModifiable > xModify( xComponent, UNO_QUERY );
-            if ( xModify.is() )
-            {
-                isAnyModified = xModify->isModified();
-                continue;
-            }
+        return std::ranges::any_of(aComponents, [](const Reference<XComponent>& xComp) {
+            Reference< XModifiable > xModify( xComp, UNO_QUERY );
+            return xModify.is() && xModify->isModified();
+        });
+    }
+}
 
-            // TODO: clarify: anything else to care for? Both the sub components with and without model
-            // should support the XModifiable interface, so I think nothing more is needed here.
-            OSL_FAIL( "lcl_hasAnyModifiedSubComponent_throw: anything left to do here?" );
+namespace
+{
+    bool lcl_storesEmbeddedDataOnSave( const ODatabaseModelImpl& i_rModel )
+    {
+        return i_rModel.isEmbeddedDatabase() && i_rModel.m_sConnectURL != "sdbc:embedded:hsqldb";
+    }
+
+    class RootCommitSuspension
+    {
+        ODatabaseModelImpl& m_rModel;
+        const bool          m_bSuspended;
+
+    public:
+        explicit RootCommitSuspension( ODatabaseModelImpl& i_rModel )
+            : m_rModel( i_rModel )
+            , m_bSuspended( lcl_storesEmbeddedDataOnSave( i_rModel ) )
+        {
+            if ( m_bSuspended )
+                m_rModel.suspendCommitPropagation();
         }
 
-        return isAnyModified;
+        ~RootCommitSuspension()
+        {
+            if ( m_bSuspended )
+                m_rModel.resumeCommitPropagation();
+        }
+
+        bool isActive() const { return m_bSuspended; }
+    };
+
+    void lcl_notifyEmbeddedConnections_nothrow( const Reference< XInterface >& i_rxDocument,
+        const OWeakConnectionArray& i_rConnections, const OUString& i_rTargetLocation )
+    {
+        const DocumentEvent aEvent( i_rxDocument, u"OnSaveTo"_ustr, nullptr,
+                                    Any( i_rTargetLocation ) );
+
+        for ( const auto& rConnection : i_rConnections )
+        {
+            Reference< XDocumentEventListener > xListener( rConnection.get(), UNO_QUERY );
+            if ( !xListener.is() )
+                continue;
+
+            try
+            {
+                xListener->documentEventOccured( aEvent );
+            }
+            catch( const Exception& )
+            {
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
+            }
+        }
     }
 }
 
@@ -578,6 +630,14 @@ sal_Bool SAL_CALL ODatabaseDocument::wasModifiedSinceLastSave()
     if ( isModified() )
         return true;
 
+    // Changing the data of an embedded engine like Firebird does not mark the document as
+    // modified, its data is written when the document is saved or the connection is closed.
+    // Whether there is data a recovery file would miss is not known, so assume it while connected.
+    if ( lcl_storesEmbeddedDataOnSave( *m_pImpl )
+        && std::ranges::any_of( m_pImpl->m_aConnections, []( const auto& rConnection )
+            { return rConnection.get().is(); } ) )
+        return true;
+
     // auto recovery is an "UI feature", it is to restore the UI the user knows. Thus,
     // we ask our connected controllers, not simply our existing form/report definitions.
     // (There is some information which even cannot be obtained without asking the controller.
@@ -586,11 +646,8 @@ sal_Bool SAL_CALL ODatabaseDocument::wasModifiedSinceLastSave()
 
     try
     {
-        for (auto const& controller : m_aControllers)
-        {
-            if ( lcl_hasAnyModifiedSubComponent_throw(controller) )
-                return true;
-        }
+        if (std::ranges::any_of(m_aControllers, lcl_hasAnyModifiedSubComponent_throw))
+            return true;
     }
     catch( const Exception& )
     {
@@ -607,6 +664,18 @@ void SAL_CALL ODatabaseDocument::storeToRecoveryFile( const OUString& i_TargetLo
 
     try
     {
+        RootCommitSuspension aSuspension( *m_pImpl );
+        if ( aSuspension.isActive() )
+        {
+            // a copy, the listeners may change the list
+            const OWeakConnectionArray aConnections( m_pImpl->m_aConnections );
+
+            // like storeToURL with its OnSaveTo, don't call the listeners with our mutex locked
+            aGuard.clear();
+            lcl_notifyEmbeddedConnections_nothrow( *this, aConnections, i_TargetLocation );
+            aGuard.reset();
+        }
+
         // create a storage for the target location
         Reference< XStorage > xTargetStorage( impl_createStorageFor_throw( i_TargetLocation ) );
 
@@ -763,6 +832,10 @@ bool ODatabaseDocument::impl_attachResource( const OUString& i_rLogicalDocumentU
 
         _rDocGuard.clear();
         // <- SYNCHRONIZED
+
+        // decide the macro mode while the load arguments still hold the interaction handler
+        m_pImpl->checkMacrosOnLoading();
+
         m_aEventNotifier.notifyDocumentEvent( u"OnLoadFinished"_ustr, nullptr, Any() );
     }
 
@@ -815,7 +888,8 @@ void SAL_CALL ODatabaseDocument::connectController( const Reference< XController
         return;
 
     // check/adjust our macro mode.
-    m_pImpl->checkMacrosOnLoading();
+    m_bMacroCallsAllowed = m_pImpl->checkMacrosOnLoading() || m_bMacroCallsAllowed;
+    framework::setDocumentMacroCallsAllowed( m_xUIConfigurationManager, m_bMacroCallsAllowed );
 }
 
 void SAL_CALL ODatabaseDocument::disconnectController( const Reference< XController >& _xController )
@@ -1249,6 +1323,7 @@ void SAL_CALL ODatabaseDocument::storeToURL( const OUString& _rURL, const Sequen
         Sequence<PropertyValue> aMediaDescriptor(lcl_appendFileNameToDescriptor(aArguments, _rURL));
 
         // store to this storage
+        RootCommitSuspension aSuspension( *m_pImpl );
         impl_storeToStorage_throw( xTargetStorage, aMediaDescriptor, aGuard );
     }
     catch( const Exception& )
@@ -1596,8 +1671,7 @@ void ODatabaseDocument::WriteThroughComponent( const Reference< XOutputStream >&
     Sequence<Any> aArgs( 1 + _rArguments.getLength() );
     auto pArgs = aArgs.getArray();
     pArgs[0] <<= xSaxWriter;
-    for ( sal_Int32 i = 0; i < _rArguments.getLength(); ++i )
-        pArgs[ i+1 ] = _rArguments[i];
+    std::ranges::copy(_rArguments, pArgs + 1);
 
     // get filter component
     Reference< XExporter > xExporter( m_pImpl->m_aContext->getServiceManager()->createInstanceWithArgumentsAndContext(rServiceName, aArgs, m_pImpl->m_aContext), UNO_QUERY_THROW );
@@ -1727,6 +1801,8 @@ Reference< XUIConfigurationManager2 > const & ODatabaseDocument::getUIConfigurat
     if ( !m_xUIConfigurationManager.is() )
     {
         m_xUIConfigurationManager = UIConfigurationManager::create( m_pImpl->m_aContext );
+
+        framework::setDocumentMacroCallsAllowed( m_xUIConfigurationManager, m_bMacroCallsAllowed );
 
         OUString aUIConfigFolderName( u"Configurations2"_ustr );
 

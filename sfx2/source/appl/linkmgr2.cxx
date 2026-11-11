@@ -292,7 +292,6 @@ static void disallowAllLinksUpdate(SvBaseLink* pShellProvider)
 
 void LinkManager::UpdateAllLinks(
     bool bAskUpdate,
-    weld::Window* pParentWin,
     OUString const & referer )
 {
     // when active content is disabled don't bother updating all links
@@ -347,7 +346,7 @@ void LinkManager::UpdateAllLinks(
             aMsg = aMsg.replaceFirst("%{filename}",
                                      aURL.GetLastName(INetURLObject::DecodeMechanism::WithCharset));
 
-            std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(pParentWin,
+            std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(/*pParentWin*/nullptr,
                                                            VclMessageType::Question, VclButtonsType::YesNo, aMsg));
             xQueryBox->set_default_response(RET_YES);
 
@@ -617,7 +616,7 @@ bool SvxInternalLink::Connect( sfx2::SvBaseLink* pLink )
     LinkManager* pLinkMgr = pLink->GetLinkManager();
     if (pLinkMgr && sfx2::LinkManager::GetDisplayNames(pLink, nullptr, &sTopic, &sItem) && !sTopic.isEmpty())
     {
-        // first only loop over the DocumentShells the shells and find those
+        // first only loop over the DocumentShells and find those
         // with the name:
         CharClass aCC( LanguageTag( LANGUAGE_SYSTEM) );
 

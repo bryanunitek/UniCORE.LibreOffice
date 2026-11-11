@@ -170,7 +170,7 @@ bool HasNumberingWhichNeedsLayoutUpdate(const SwTextNode& rTextNode);
 } // namespace sw
 
 /// Represents the visualization of a paragraph. Typical upper is an
-/// SwBodyFrame. The first text portion of the first line is az SwParaPortion.
+/// SwBodyFrame. The first text portion of the first line is an SwParaPortion.
 class SW_DLLPUBLIC SwTextFrame final : public SwContentFrame
 {
     friend class SwTextIter;
@@ -199,15 +199,15 @@ class SW_DLLPUBLIC SwTextFrame final : public SwContentFrame
     // It is NOT used for the determination of printing area.
     SwTwips mnAdditionalFirstLineOffset;
 
-    // Should be a unique_ptr, but code like CalcAdditionalFirstLineOffset wants to play games
-    // where it swaps out and then restores the SwParaPortion.
-    std::shared_ptr<SwParaPortion> m_xParaPortion;
+    std::unique_ptr<SwParaPortion> m_xParaPortion;
 
     /// redline merge data
     std::unique_ptr<sw::MergedPara> m_pMergedPara;
 
     TextFrameIndex mnOffset; // Is the offset in the Content (character count)
     TextFrameIndex mnNoHyphOffset; // Is the offset of the last line with disabled or limited hyphenation
+    TextFrameIndex mnNoHyphLineLen;// Length of the last line with disabled or limited hyphenated
+    sal_Int32 mnNoHyphLineHash;    // Hash code of the text of the last line with hyphenation
     sal_Int16 mnNoHyphEndZone;     // size of end zone (-1 means disabled hyphenation)
 
     // Separates the Master and creates a Follow or adjusts the data in the Follow
@@ -273,7 +273,7 @@ class SW_DLLPUBLIC SwTextFrame final : public SwContentFrame
     void ParagraphComposer( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
                   const SvxAdjustItem& rAdjust );
 
-    // In order to safe stack space, we split this method:
+    // In order to save stack space, we split this method:
     // Format_ calls Format_ with parameters
     void FormatImpl( vcl::RenderContext* pRenderContext, SwParaPortion *pPara,
             ::std::vector<SwAnchoredObject *> & rIntersectingObjs);
@@ -303,7 +303,7 @@ class SW_DLLPUBLIC SwTextFrame final : public SwContentFrame
     bool GetDropRect_( SwRect &rRect ) const;
 
     // returns the old SwParaPortion, if present
-    std::shared_ptr<SwParaPortion> SetPara(std::shared_ptr<SwParaPortion> xNew);
+    std::unique_ptr<SwParaPortion> SetPara(std::unique_ptr<SwParaPortion> xNew);
 
     bool IsFootnoteNumFrame_() const;
 
@@ -463,6 +463,10 @@ public:
     void SetNoHyphOffset(TextFrameIndex const nNewOfst) { mnNoHyphOffset = nNewOfst; }
     sal_Int16 GetNoHyphEndZone() const { return mnNoHyphEndZone; }
     void SetNoHyphEndZone(sal_Int16 nNewType) { mnNoHyphEndZone = nNewType; }
+    TextFrameIndex GetNoHyphLineLen() const { return mnNoHyphLineLen; }
+    void SetNoHyphLineLen(TextFrameIndex const nNewOfst) { mnNoHyphLineLen = nNewOfst; }
+    sal_Int32 GetNoHyphLineHash() const { return mnNoHyphLineHash; }
+    void SetNoHyphLineHash(sal_Int32 const nNewOfst) { mnNoHyphLineHash = nNewOfst; }
     void ManipOfst(TextFrameIndex const nNewOfst) { mnOffset = nNewOfst; }
            SwTextFrame   *GetFrameAtPos ( const SwPosition &rPos);
     inline const SwTextFrame *GetFrameAtPos ( const SwPosition &rPos) const;
@@ -800,11 +804,11 @@ public:
     OUString GetCurWord(SwPosition const&) const;
     sal_uInt16 GetScalingOfSelectedText(TextFrameIndex nStt, TextFrameIndex nEnd);
 
-    /// This text frame may have a split fly frames anchored to it. Is any of them a frame that has
+    /// This text frame may have a split fly frame anchored to it. Is any of them a frame that has
     /// a follow, i.e. not the last in a master -> follow 1 -> ... -> last follow chain?
     SwFlyAtContentFrame* HasNonLastSplitFlyDrawObj() const;
 
-    /// This text frame has a follow and the text frame don't contain text. Additionally one split
+    /// This text frame has a follow and the text frame doesn't contain text. Additionally one split
     /// fly is anchored to the text frame.
     bool IsEmptyMasterWithSplitFly() const;
 

@@ -469,10 +469,6 @@ void WriteOnlyVars::run()
         if (loplugin::isSamePathname(fn, SRCDIR "/i18npool/source/localedata/LocaleNode.cxx"))
             return;
 
-        // yynerrs?
-        if (loplugin::isSamePathname(fn, SRCDIR "/hwpfilter/source/grammar.cxx"))
-            return;
-
         for (MyVarInfo const& v : definitionSet)
         {
             bool read = readFromSet.find(v) != readFromSet.end();
@@ -1125,7 +1121,7 @@ std::optional<CalleeWrapper> WriteOnlyVars::getCallee(CallExpr const* callExpr)
     if (functionDecl)
         return CalleeWrapper(functionDecl);
 
-    // Extract the functionprototype from a type
+    // Extract the function prototype from a type
     clang::Type const* calleeType = callExpr->getCallee()->getType().getTypePtr();
     if (auto pointerType = calleeType->getUnqualifiedDesugaredType()->getAs<clang::PointerType>())
     {

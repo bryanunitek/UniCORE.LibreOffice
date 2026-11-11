@@ -130,6 +130,15 @@ DrawAnnotationContext::DrawAnnotationContext( SvXMLImport& rImport, const Refere
                 aSize.Height = static_cast<double>(h) / 100.0;
             }
             break;
+            case XML_ELEMENT(LO_EXT, XML_DATE_UTC):
+            {
+                // The moment the annotation was written. dc:date below carries the author's wall
+                // clock with no zone, which is all a file without this attribute holds.
+                css::util::DateTime aDateUTC;
+                if (::sax::Converter::parseDateTime(aDateUTC, aIter.toView()))
+                    mxAnnotation->setDateTimeUTC(aDateUTC);
+            }
+            break;
             default:
                 XMLOFF_WARN_UNKNOWN("xmloff", aIter);
         }
@@ -187,7 +196,7 @@ void DrawAnnotationContext::endFastElement(sal_Int32)
 {
     if(mxCursor.is())
     {
-        // delete addition newline
+        // delete additional newline
         mxCursor->gotoEnd( false );
         mxCursor->goLeft( 1, true );
         mxCursor->setString( u""_ustr );

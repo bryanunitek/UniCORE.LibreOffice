@@ -233,7 +233,7 @@ class FORMULA_DLLPUBLIC FormulaTokenArray
 {
 protected:
     std::unique_ptr<FormulaToken*[]> pCode; // Token code array
-    FormulaToken**  pRPN;                   // RPN array
+    std::unique_ptr<FormulaToken*[]> pRPN;                   // RPN array
     sal_uInt16      nLen;                   // Length of token array
     sal_uInt16      nRPN;                   // Length of RPN array
     FormulaError    nError;                 // Error code
@@ -242,14 +242,14 @@ protected:
     bool            mbFromRangeName :1;     // If this array originates from a named expression
     bool            mbShareable     :1;     // Whether or not it can be shared with adjacent cells.
     bool            mbFinalized     :1;     // Whether code arrays have their final used size and no more tokens can be added.
-    bool mbDynamicArrayFunction :1; // If a dynamic-array function occurs in the formula.(i.e. UNIQUE, FILTER, SORT)
+    bool mbDynamicArrayFunction :1; // If a dynamic-array function occurs in the formula (i.e. UNIQUE, FILTER, SORT)
 
 protected:
     void                    Assign( const FormulaTokenArray& );
     void                    Assign( sal_uInt16 nCode, FormulaToken **pTokens );
     void                    Move( FormulaTokenArray&& );
 
-    /// Also used by the compiler. The token MUST had been allocated with new!
+    /// Also used by the compiler. The token MUST have been allocated with new!
     FormulaToken*           Add( FormulaToken* );
 
 public:
@@ -259,7 +259,7 @@ public:
         CODE_AND_RPN    ///< replacement in pCode and pRPN
     };
 
-    /** Also used by the compiler. The token MUST had been allocated with new!
+    /** Also used by the compiler. The token MUST have been allocated with new!
         @param  nOffset
                 Absolute offset in pCode of the token to be replaced.
         @param  eMode
@@ -324,7 +324,7 @@ public:
         return pCode[nIdx];
     }
 
-    /// Peek at nIdx-1 if not out of bounds, decrements nIdx if successful. Returns NULL if not.
+    /// Peek at nIdx-1 if not out of bounds, decrements nIdx if successful. Returns nullptr if not.
     FormulaToken* PeekPrev( sal_uInt16 & nIdx ) const;
 
     /// Return the opcode at pCode[nIdx-1], ocNone if nIdx-1 is out of bounds
@@ -337,7 +337,6 @@ public:
     }
 
     FormulaToken* FirstRPNToken() const;
-    FormulaToken* LastRPNToken() const;
 
     bool HasReferences() const;
 
@@ -360,9 +359,18 @@ public:
     /// Assign pRPN to point to a newly created array filled with the data from pData
     void CreateNewRPNArrayFromData( FormulaToken** pData, sal_uInt16 nSize )
     {
-        pRPN = new FormulaToken*[ nSize ];
+        pRPN = std::make_unique<FormulaToken*[]>(nSize);
         nRPN = nSize;
-        memcpy( pRPN, pData, nSize * sizeof( FormulaToken* ) );
+        memcpy( pRPN.get(), pData, nSize * sizeof( FormulaToken* ) );
+    }
+
+    // Assign pCode to point to a newly created array filled with data; the array is sized exactly
+    // to size, so it is final:
+    void CreateNewCodeArrayFromData(FormulaToken ** data, sal_uInt16 size) {
+        pCode = std::make_unique<FormulaToken*[]>(size);
+        nLen = size;
+        memcpy(pCode.get(), data, size * sizeof (FormulaToken *));
+        mbFinalized = true;
     }
 
     FormulaToken** GetArray() const  { return pCode.get(); }
@@ -372,11 +380,11 @@ public:
         return FormulaTokenArrayStandardRange(pCode.get(), nLen);
     }
 
-    FormulaToken** GetCode()  const  { return pRPN; }
+    FormulaToken** GetCode()  const  { return pRPN.get(); }
 
     FormulaTokenArrayStandardRange RPNTokens() const
     {
-        return FormulaTokenArrayStandardRange(pRPN, nRPN);
+        return FormulaTokenArrayStandardRange(pRPN.get(), nRPN);
     }
 
     FormulaTokenArrayReferencesRange References() const
@@ -483,7 +491,7 @@ public:
     FormulaToken* AddToken( const FormulaToken& );
 
     FormulaToken* AddString( const svl::SharedString& rStr );
-    FormulaToken* AddStringName( const svl::SharedString& rStr );
+    FormulaToken* AddStringName(const svl::SharedString& rString, bool bOptional = false);
     FormulaToken* AddDPFieldName( const svl::SharedString& rStr );
     FormulaToken* AddDouble( double fVal );
     void          AddExternal( const sal_Unicode* pStr );
@@ -547,9 +555,9 @@ class FORMULA_DLLPUBLIC FormulaTokenIterator
         const FormulaTokenArray* pArr;
         short nPC;
         short nStop;
-        bool bLambda;
+        sal_uInt16 nCallableInterpretLevel;
 
-        Item(const FormulaTokenArray* arr, short pc, short stop, bool lambda);
+        Item(const FormulaTokenArray* arr, short pc, short stop, sal_uInt16 callableInterpretLevel);
     };
 
     std::vector<Item> maStack;
@@ -580,8 +588,8 @@ public:
     void Jump( short nStart, short nNext, short nStop = SHRT_MAX );
     void Push( const FormulaTokenArray* );
     void Pop();
-    void FrontPop();
-    void Lambda( bool bOpt );
+    void SetCallableInterpretLevel(sal_uInt16 nLevel);
+    sal_uInt16 GetCallableInterpretLevel() const;
 
     /** Reconstruct the iterator afresh from a token array
     */
@@ -650,7 +658,6 @@ public:
     FormulaToken* Next();
     FormulaToken* NextNoSpaces();
     FormulaToken* GetNextName();
-    FormulaToken* GetNextStringNameRPN();
     FormulaToken* GetNextDPFieldNameRPN();
     FormulaToken* GetNextReference();
     FormulaToken* GetNextReferenceRPN();

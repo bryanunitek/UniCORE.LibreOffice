@@ -511,10 +511,18 @@ ShapeExport& ShapeExport::WriteGroupShape(const uno::Reference<drawing::XShape>&
         if( GetProperty(xShapeProps, u"Visible"_ustr))
             mAny >>= isVisible;
 
+        OUString sDescr, sTitle;
+        if (GetProperty(xShapeProps, u"Description"_ustr))
+            mAny >>= sDescr;
+        if (GetProperty(xShapeProps, u"Title"_ustr))
+            mAny >>= sTitle;
+
         pFS->startElementNS(mnXmlNamespace, XML_nvGrpSpPr);
         pFS->startElementNS(mnXmlNamespace, XML_cNvPr, XML_id,
                             OString::number(GetNewShapeID(xShape)), XML_name, GetShapeName(xShape),
-                            XML_hidden, sax_fastparser::UseIf("1", !isVisible));
+                            XML_hidden, sax_fastparser::UseIf("1", !isVisible), XML_descr,
+                            sax_fastparser::UseIf(sDescr, !sDescr.isEmpty()), XML_title,
+                            sax_fastparser::UseIf(sTitle, !sTitle.isEmpty()));
         AddExtLst(pFS, xShapeProps);
         pFS->endElementNS(mnXmlNamespace, XML_cNvPr);
         pFS->singleElementNS(mnXmlNamespace, XML_cNvGrpSpPr);
@@ -755,7 +763,7 @@ static OUString lcl_GetTarget(const css::uno::Reference<css::frame::XModel>& xMo
             sTarget = "slide" + OUString::number(i + 1) + ".xml";
             break;
         }
-        else // If URL is linked to a shape, assign it's slide as target
+        else // If URL is linked to a shape, assign its slide as target
         {
             Reference<XShapes> xShapes = xDrawPage;
             sal_uInt32 nShapes = xShapes->getCount();
@@ -2024,11 +2032,19 @@ ShapeExport& ShapeExport::WriteConnectorShape( const Reference< XShape >& xShape
     }
     else
     {
+        OUString sDescr, sTitle;
+        if (GetProperty(rXPropSet, u"Description"_ustr))
+            mAny >>= sDescr;
+        if (GetProperty(rXPropSet, u"Title"_ustr))
+            mAny >>= sTitle;
+
         // non visual shape properties
         pFS->startElementNS(mnXmlNamespace, XML_nvCxnSpPr);
         pFS->startElementNS(mnXmlNamespace, XML_cNvPr,
             XML_id, OString::number(GetNewShapeID(xShape)),
-            XML_name, GetShapeName(xShape));
+            XML_name, GetShapeName(xShape),
+            XML_descr, sax_fastparser::UseIf(sDescr, !sDescr.isEmpty()),
+            XML_title, sax_fastparser::UseIf(sTitle, !sTitle.isEmpty()));
         AddExtLst(pFS, rXPropSet);
         pFS->endElementNS(mnXmlNamespace, XML_cNvPr);
         // non visual connector shape drawing properties
@@ -2333,7 +2349,7 @@ static bool lcl_isTextBox(const Reference<XInterface>& xIface)
     return aTextBox.get<bool>();
 }
 
-ShapeExport& ShapeExport::WriteTextBox( const Reference< XInterface >& xIface, sal_Int32 nXmlNamespace, bool bWritePropertiesAsLstStyles )
+ShapeExport& ShapeExport::WriteTextBox( const Reference< XInterface >& xIface, sal_Int32 nXmlNamespace, bool bWritePropertiesAsLstStyles, bool bText )
 {
     // In case this shape has an associated textbox, then export that, and we're done.
     if (GetDocumentType() == DOCUMENT_DOCX && !mbUserShapes && GetTextExport())
@@ -2354,8 +2370,11 @@ ShapeExport& ShapeExport::WriteTextBox( const Reference< XInterface >& xIface, s
 
         pFS->startElementNS(nXmlNamespace,
                             (GetDocumentType() != DOCUMENT_DOCX || mbUserShapes ? XML_txBody : XML_txbx));
-        WriteText(xIface, /*bBodyPr=*/(GetDocumentType() != DOCUMENT_DOCX || mbUserShapes), /*bText=*/true,
+        WriteText(xIface, /*bBodyPr=*/(GetDocumentType() != DOCUMENT_DOCX || mbUserShapes), bText,
                   /*nXmlNamespace=*/0, /*bWritePropertiesAsLstStyles=*/bWritePropertiesAsLstStyles);
+        if (!bText)
+            // A text body holds at least one paragraph, and an empty one says the shape has no text
+            WriteTextlessParagraph(xIface);
         pFS->endElementNS( nXmlNamespace, (GetDocumentType() != DOCUMENT_DOCX || mbUserShapes ? XML_txBody : XML_txbx) );
         if (GetDocumentType() == DOCUMENT_DOCX && !mbUserShapes)
             WriteText( xIface, /*bBodyPr=*/true, /*bText=*/false, /*nXmlNamespace=*/nXmlNamespace );
@@ -2378,7 +2397,17 @@ void ShapeExport::WriteTable( const Reference< XShape >& rXShape  )
     if ( xPropSet.is() && ( xPropSet->getPropertyValue( u"Model"_ustr ) >>= xTable ) )
     {
         mpFS->startElementNS(XML_a, XML_tbl);
-        mpFS->startElementNS(XML_a, XML_tblPr);
+
+        auto flag = [&xPropSet](const OUString& rName) {
+            return sax_fastparser::UseIf("1", xPropSet->getPropertyValue(rName).get<bool>());
+        };
+        mpFS->startElementNS(XML_a, XML_tblPr,
+                             XML_firstRow, flag(u"UseFirstRowStyle"_ustr),
+                             XML_firstCol, flag(u"UseFirstColumnStyle"_ustr),
+                             XML_lastRow, flag(u"UseLastRowStyle"_ustr),
+                             XML_lastCol, flag(u"UseLastColumnStyle"_ustr),
+                             XML_bandRow, flag(u"UseBandingRowStyle"_ustr),
+                             XML_bandCol, flag(u"UseBandingColumnStyle"_ustr));
         WriteShapeEffects(xPropSet);
         mpFS->endElementNS(XML_a, XML_tblPr);
 
@@ -2618,7 +2647,7 @@ void ShapeExport::WriteTableCellProperties(const Reference< XPropertySet>& xCell
 void ShapeExport::WriteBorderLine(const sal_Int32 xml_line_element, const BorderLine2& rBorderLine)
 {
 // While importing the table cell border line width, it converts EMU->Hmm then divided result by 2.
-// To get original value of LineWidth need to multiple by 2.
+// To get original value of LineWidth need to multiply by 2.
     sal_Int32 nBorderWidth = rBorderLine.LineWidth;
     nBorderWidth *= 2;
     nBorderWidth = oox::drawingml::convertHmmToEmu( nBorderWidth );
@@ -3033,9 +3062,15 @@ ShapeExport& ShapeExport::WriteOLE2Shape( const Reference< XShape >& xShape )
         assert(!sRelationType.isEmpty());
         assert(!sSuffix.isEmpty());
 
-        OUString sNumber = OUString::number(mpFB->getNewOLEUniqueId());
-        OUString sFileName = u"embeddings/oleObject"_ustr + sNumber + u"."_ustr + sSuffix;
-        OUString sFilePath = GetComponentDir() + u"/"_ustr + sFileName;
+        // Increment id until path is free, then reserve to avoid clash between embedding names from other sources
+        OUString sFileName;
+        OUString sFilePath;
+        do
+        {
+            OUString sNumber = OUString::number(mpFB->getNewOLEUniqueId());
+            sFileName = u"embeddings/oleObject"_ustr + sNumber + u"."_ustr + sSuffix;
+            sFilePath = GetComponentDir() + u"/"_ustr + sFileName;
+        } while (!mpFB->reservePartPath(sFilePath));
         uno::Reference<io::XOutputStream> const xOutStream(mpFB->openFragmentStream(sFilePath, sMediaType));
         assert(xOutStream.is()); // no reason why that could fail
 

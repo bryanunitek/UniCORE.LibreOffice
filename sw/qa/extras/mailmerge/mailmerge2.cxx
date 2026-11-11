@@ -209,7 +209,7 @@ DECLARE_SHELL_MAILMERGE_TEST(exportDirectToPDF_shell, "linked-with-condition.odt
 
     std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(0);
     CPPUNIT_ASSERT(pPdfPage);
-    CPPUNIT_ASSERT_EQUAL(4, pPdfPage->getObjectCount());
+    CPPUNIT_ASSERT_EQUAL(5, pPdfPage->getObjectCount());
 }
 
 DECLARE_SHELL_MAILMERGE_TEST(testTdf121168, "section_ps.odt", "4_v01.ods", "Tabelle1")
@@ -273,7 +273,7 @@ DECLARE_SHELL_MAILMERGE_TEST(testTdf81750_shell, "tdf81750.odt", "10-testing-add
     // prepare unit test and run
     executeMailMerge();
 
-    // check several pages page
+    // check several pages
     OUString aExpected(u"Text: Foo "_ustr);
     xmlDocUniquePtr pXmlDoc = parseLayoutDump(static_cast<SfxBaseModel*>(mxSwTextDocument.get()));
     assertXPathContent(pXmlDoc, "/root/page[1]/body/txt[2]", aExpected);
@@ -395,7 +395,7 @@ DECLARE_MAILMERGE_TEST(testGrabBag, "grabbagtest.docx", "onecell.xlsx", "Sheet1"
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xTextDocumentPropertySet(xTextDocument, uno::UNO_QUERY);
     xTextDocumentPropertySet->getPropertyValue(u"InteropGrabBag"_ustr) >>= aInteropGrabBag;
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(12), aInteropGrabBag.getLength());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(13), aInteropGrabBag.getLength());
 
     // check table border - comes from table style "Tabellenraster"
     uno::Reference<text::XTextTable> const xTable(getParagraphOrTable(1, xTextDocument->getText()), uno::UNO_QUERY_THROW);
@@ -442,7 +442,7 @@ DECLARE_SHELL_MAILMERGE_TEST(testTdf168252, "mm-single-date.fodt", "single-date.
     // Without the fix, this would fail with
     // - Expected: 2025-08-31
     // - Actual  : 2025-09-02
-    // because the DB filed code assumed obsolete null date.
+    // because the DB field code assumed obsolete null date.
     CPPUNIT_ASSERT_EQUAL(u"2025-08-31"_ustr, mxSwTextDocument->getText()->getString());
 }
 

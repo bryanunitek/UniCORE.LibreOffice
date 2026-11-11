@@ -19,6 +19,7 @@
 #include <vcl/graph.hxx>
 
 #include <fmtfsize.hxx>
+#include <frameformats.hxx>
 
 using namespace ::com::sun::star;
 
@@ -133,6 +134,53 @@ CPPUNIT_TEST_FIXTURE(Test, testImageSizeInShapeText)
     // - Actual  : 8808
     // i.e. the size of the icon was inherited from the containing shape, losing the own size.
     CPPUNIT_ASSERT_EQUAL(nExpected, rImageSize.GetWidth());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testShapeInHeaderTableRow)
+{
+    // Given a header with a shape in a table row, and a paragraph mark inside the shape text:
+    // When loading this document:
+    createSwDoc("shape-in-header-table-row.rtf");
+
+    // Then make sure the document loads and the shape is there:
+    // Without the accompanying fix in place, this test would have failed with an assertion
+    // failure in DomainMapper_Impl::substream(), because the header left the context stack one
+    // level deeper than it found it.
+    SwDoc* pDoc = getSwDoc();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDoc->GetSpzFrameFormats()->size());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testNestedShapeInHeaderTableRowParOuter)
+{
+    // A shape inside the text of another shape, both in a header table row. The paragraph mark
+    // that replays the row buffer sits in the outer text, in the inner text, or in both.
+    createSwDoc("nested-shape-in-header-table-row-par-outer.rtf");
+
+    // Both shapes load, and the header leaves the context stack as deep as it found it.
+    SwDoc* pDoc = getSwDoc();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2), pDoc->GetSpzFrameFormats()->size());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testNestedShapeInHeaderTableRowParInner)
+{
+    // A shape inside the text of another shape, both in a header table row. The paragraph mark
+    // that replays the row buffer sits in the outer text, in the inner text, or in both.
+    createSwDoc("nested-shape-in-header-table-row-par-inner.rtf");
+
+    // Both shapes load, and the header leaves the context stack as deep as it found it.
+    SwDoc* pDoc = getSwDoc();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2), pDoc->GetSpzFrameFormats()->size());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testNestedShapeInHeaderTableRowParBoth)
+{
+    // A shape inside the text of another shape, both in a header table row. The paragraph mark
+    // that replays the row buffer sits in the outer text, in the inner text, or in both.
+    createSwDoc("nested-shape-in-header-table-row-par-both.rtf");
+
+    // Both shapes load, and the header leaves the context stack as deep as it found it.
+    SwDoc* pDoc = getSwDoc();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2), pDoc->GetSpzFrameFormats()->size());
 }
 }
 

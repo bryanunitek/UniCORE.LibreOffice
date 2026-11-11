@@ -28,6 +28,7 @@
 #include <svl/cjkoptions.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/Dialog.hxx>
 #include <numpara.hxx>
 #include <swmodule.hxx>
 #include <wrtsh.hxx>
@@ -98,18 +99,18 @@ SwTemplateDlgController::SwTemplateDlgController(weld::Window* pParent,
         // character styles
         case SfxStyleFamily::Char:
         {
-            AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel), RID_SVXPAGE_CHAR_NAME,
-                       RID_M + RID_TAB_FONT.sIconName);
-            AddTabPage(u"fonteffect"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel),
-                       RID_SVXPAGE_CHAR_EFFECTS, RID_M + RID_TAB_FONTEFFECTS.sIconName);
-            AddTabPage(u"position"_ustr, TabResId(RID_TAB_POSITION.aLabel),
-                       RID_SVXPAGE_CHAR_POSITION, RID_M + RID_TAB_POSITION.sIconName);
-            AddTabPage(u"asianlayout"_ustr, TabResId(RID_TAB_ASIANLAYOUT.aLabel),
-                       RID_SVXPAGE_CHAR_TWOLINES, RID_M + RID_TAB_ASIANLAYOUT.sIconName);
-            AddTabPage(u"background"_ustr, TabResId(RID_TAB_HIGHLIGHTING.aLabel), RID_SVXPAGE_BKG,
-                       RID_M + RID_TAB_HIGHLIGHTING.sIconName);
-            AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel), RID_SVXPAGE_BORDER,
-                       RID_M + RID_TAB_BORDER.sIconName);
+            AddTabPage(u"font"_ustr, TabResId(RID_TAB_SWSTYLE_FONT), RID_SVXPAGE_CHAR_NAME,
+                       RID_M + RID_TAB_FONT_IMG);
+            AddTabPage(u"fonteffect"_ustr, TabResId(RID_TAB_SWSTYLE_FONTEFFECTS),
+                       RID_SVXPAGE_CHAR_EFFECTS, RID_M + RID_TAB_FONTEFFECTS_IMG);
+            AddTabPage(u"position"_ustr, TabResId(RID_TAB_SWSTYLE_POSITION),
+                       RID_SVXPAGE_CHAR_POSITION, RID_M + RID_TAB_POSITION_IMG);
+            AddTabPage(u"asianlayout"_ustr, TabResId(RID_TAB_SWSTYLE_ASIANLAYOUT),
+                       RID_SVXPAGE_CHAR_TWOLINES, RID_M + RID_TAB_ASIANLAYOUT_IMG);
+            AddTabPage(u"background"_ustr, TabResId(RID_TAB_SWSTYLE_HIGHLIGHTING), RID_SVXPAGE_BKG,
+                       RID_M + RID_TAB_HIGHLIGHTING_IMG);
+            AddTabPage(u"borders"_ustr, TabResId(RID_TAB_SWSTYLE_BORDER), RID_SVXPAGE_BORDER,
+                       RID_M + RID_TAB_BORDER_IMG);
 
             if(m_nHtmlMode & HTMLMODE_ON || !SvtCJKOptions::IsDoubleLinesEnabled())
                 RemoveTabPage(u"asianlayout"_ustr);
@@ -118,40 +119,40 @@ SwTemplateDlgController::SwTemplateDlgController(weld::Window* pParent,
         // paragraph styles
         case SfxStyleFamily::Para:
         {
-            AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel), RID_SVXPAGE_CHAR_NAME,
-                       RID_M + RID_TAB_FONT.sIconName);
-            AddTabPage(u"fonteffect"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel),
-                       RID_SVXPAGE_CHAR_EFFECTS, RID_M + RID_TAB_FONTEFFECTS.sIconName);
-            AddTabPage(u"textflow"_ustr, TabResId(RID_TAB_TEXTFLOW.aLabel),
-                       RID_SVXPAGE_EXT_PARAGRAPH, RID_M + RID_TAB_TEXTFLOW.sIconName);
-            AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel),
-                       RID_SVXPAGE_ALIGN_PARAGRAPH, RID_M + RID_TAB_ALIGNMENT.sIconName);
-            AddTabPage(u"indents"_ustr, TabResId(RID_TAB_INDENTS.aLabel), RID_SVXPAGE_STD_PARAGRAPH,
-                       RID_M + RID_TAB_INDENTS.sIconName);
-            AddTabPage(u"position"_ustr, TabResId(RID_TAB_POSITION.aLabel),
-                       RID_SVXPAGE_CHAR_POSITION, RID_M + RID_TAB_POSITION.sIconName);
-            AddTabPage(u"dropcaps"_ustr, TabResId(RID_TAB_DROPCAPS.aLabel), SwDropCapsPage::Create,
-                       SwDropCapsPage::GetRanges, RID_M + RID_TAB_DROPCAPS.sIconName);
-            AddTabPage(u"highlighting"_ustr, TabResId(RID_TAB_HIGHLIGHTING.aLabel), RID_SVXPAGE_BKG,
-                       RID_M + RID_TAB_HIGHLIGHTING.sIconName);
-            AddTabPage(u"area"_ustr, TabResId(RID_TAB_AREA.aLabel), RID_SVXPAGE_AREA,
-                       RID_M + RID_TAB_AREA.sIconName);
-            AddTabPage(u"transparence"_ustr, TabResId(RID_TAB_TRANSPARENCE.aLabel),
-                       RID_SVXPAGE_TRANSPARENCE, RID_M + RID_TAB_TRANSPARENCE.sIconName);
-            AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel), RID_SVXPAGE_BORDER,
-                       RID_M + RID_TAB_BORDER.sIconName);
-            AddTabPage(u"tabs"_ustr, TabResId(RID_TAB_TABS.aLabel), RID_SVXPAGE_TABULATOR,
-                       RID_M + RID_TAB_TABS.sIconName);
-            AddTabPage(u"outline"_ustr, TabResId(RID_TAB_OUTLINELIST.aLabel),
+            AddTabPage(u"font"_ustr, TabResId(RID_TAB_SWSTYLE_FONT), RID_SVXPAGE_CHAR_NAME,
+                       RID_M + RID_TAB_FONT_IMG);
+            AddTabPage(u"fonteffect"_ustr, TabResId(RID_TAB_SWSTYLE_FONTEFFECTS),
+                       RID_SVXPAGE_CHAR_EFFECTS, RID_M + RID_TAB_FONTEFFECTS_IMG);
+            AddTabPage(u"textflow"_ustr, TabResId(RID_TAB_SWSTYLE_TEXTFLOW),
+                       RID_SVXPAGE_EXT_PARAGRAPH, RID_M + RID_TAB_TEXTFLOW_IMG);
+            AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_SWSTYLE_ALIGNMENT),
+                       RID_SVXPAGE_ALIGN_PARAGRAPH, RID_M + RID_TAB_ALIGNMENT_IMG);
+            AddTabPage(u"indents"_ustr, TabResId(RID_TAB_SWSTYLE_INDENTS), RID_SVXPAGE_STD_PARAGRAPH,
+                       RID_M + RID_TAB_INDENTS_IMG);
+            AddTabPage(u"position"_ustr, TabResId(RID_TAB_SWSTYLE_POSITION),
+                       RID_SVXPAGE_CHAR_POSITION, RID_M + RID_TAB_POSITION_IMG);
+            AddTabPage(u"dropcaps"_ustr, TabResId(RID_TAB_SWSTYLE_DROPCAPS), SwDropCapsPage::Create,
+                       SwDropCapsPage::GetRanges, RID_M + RID_TAB_DROPCAPS_IMG);
+            AddTabPage(u"highlighting"_ustr, TabResId(RID_TAB_SWSTYLE_HIGHLIGHTING), RID_SVXPAGE_BKG,
+                       RID_M + RID_TAB_HIGHLIGHTING_IMG);
+            AddTabPage(u"area"_ustr, TabResId(RID_TAB_SWSTYLE_AREA), RID_SVXPAGE_AREA,
+                       RID_M + RID_TAB_AREA_IMG);
+            AddTabPage(u"transparence"_ustr, TabResId(RID_TAB_SWSTYLE_TRANSPARENCE),
+                       RID_SVXPAGE_TRANSPARENCE, RID_M + RID_TAB_TRANSPARENCE_IMG);
+            AddTabPage(u"borders"_ustr, TabResId(RID_TAB_SWSTYLE_BORDER), RID_SVXPAGE_BORDER,
+                       RID_M + RID_TAB_BORDER_IMG);
+            AddTabPage(u"tabs"_ustr, TabResId(RID_TAB_SWSTYLE_TABS), RID_SVXPAGE_TABULATOR,
+                       RID_M + RID_TAB_TABS_IMG);
+            AddTabPage(u"outline"_ustr, TabResId(RID_TAB_SWSTYLE_OUTLINELIST),
                        SwParagraphNumTabPage::Create, SwParagraphNumTabPage::GetRanges,
-                       RID_M + RID_TAB_OUTLINELIST.sIconName);
-            AddTabPage(u"condition"_ustr, TabResId(RID_TAB_CONDITION.aLabel),
+                       RID_M + RID_TAB_OUTLINELIST_IMG);
+            AddTabPage(u"condition"_ustr, TabResId(RID_TAB_SWSTYLE_CONDITION),
                        SwCondCollPage::Create, SwCondCollPage::GetRanges,
-                       RID_M + RID_TAB_CONDITION.sIconName);
-            AddTabPage(u"asiantypo"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel),
-                       RID_SVXPAGE_PARA_ASIAN, RID_M + RID_TAB_ASIANTYPO.sIconName);
-            AddTabPage(u"asianlayout"_ustr, TabResId(RID_TAB_ASIANLAYOUT.aLabel),
-                       RID_SVXPAGE_CHAR_TWOLINES, RID_M + RID_TAB_ASIANLAYOUT.sIconName);
+                       RID_M + RID_TAB_CONDITION_IMG);
+            AddTabPage(u"asiantypo"_ustr, TabResId(RID_TAB_SWSTYLE_ASIANTYPO),
+                       RID_SVXPAGE_PARA_ASIAN, RID_M + RID_TAB_ASIANTYPO_IMG);
+            AddTabPage(u"asianlayout"_ustr, TabResId(RID_TAB_SWSTYLE_ASIANLAYOUT),
+                       RID_SVXPAGE_CHAR_TWOLINES, RID_M + RID_TAB_ASIANLAYOUT_IMG);
 
             if( (!m_bNewStyle && RES_CONDTXTFMTCOLL != static_cast<SwDocStyleSheet&>(rBase).GetCollection()->Which())
             || m_nHtmlMode & HTMLMODE_ON )
@@ -166,10 +167,7 @@ SwTemplateDlgController::SwTemplateDlgController(weld::Window* pParent,
                 RemoveTabPage(u"outline"_ustr);
                 RemoveTabPage(u"asianlayout"_ustr);
                 if(!(m_nHtmlMode & HTMLMODE_FULL_STYLES))
-                {
-                    RemoveTabPage(u"background"_ustr);
                     RemoveTabPage(u"dropcaps"_ustr);
-                }
             }
             else
             {
@@ -184,75 +182,68 @@ SwTemplateDlgController::SwTemplateDlgController(weld::Window* pParent,
         case SfxStyleFamily::Page:
         {
             // add Area and Transparence TabPages
-            AddTabPage(u"page"_ustr, TabResId(RID_TAB_PAGE.aLabel), RID_SVXPAGE_PAGE,
-                       RID_M + RID_TAB_PAGE.sIconName);
-            AddTabPage(u"area"_ustr, TabResId(RID_TAB_AREA.aLabel), RID_SVXPAGE_AREA,
-                       RID_M + RID_TAB_AREA.sIconName);
-            AddTabPage(u"transparence"_ustr, TabResId(RID_TAB_TRANSPARENCE.aLabel),
-                       RID_SVXPAGE_TRANSPARENCE, RID_M + RID_TAB_TRANSPARENCE.sIconName);
-            AddTabPage(u"header"_ustr, TabResId(RID_TAB_HEADER.aLabel), SvxHeaderPage::Create,
-                       SvxHeaderPage::GetRanges, RID_M + RID_TAB_HEADER.sIconName);
-            AddTabPage(u"footer"_ustr, TabResId(RID_TAB_FOOTER.aLabel), SvxFooterPage::Create,
-                       SvxFooterPage::GetRanges, RID_M + RID_TAB_FOOTER.sIconName);
+            AddTabPage(u"page"_ustr, TabResId(RID_TAB_SWSTYLE_PAGE), RID_SVXPAGE_PAGE,
+                       RID_M + RID_TAB_PAGE_IMG);
+            AddTabPage(u"area"_ustr, TabResId(RID_TAB_SWSTYLE_AREA), RID_SVXPAGE_AREA,
+                       RID_M + RID_TAB_AREA_IMG);
+            AddTabPage(u"transparence"_ustr, TabResId(RID_TAB_SWSTYLE_TRANSPARENCE),
+                       RID_SVXPAGE_TRANSPARENCE, RID_M + RID_TAB_TRANSPARENCE_IMG);
+            AddTabPage(u"header"_ustr, TabResId(RID_TAB_SWSTYLE_HEADER), SvxHeaderPage::Create,
+                       SvxHeaderPage::GetRanges, RID_M + RID_TAB_HEADER_IMG);
+            AddTabPage(u"footer"_ustr, TabResId(RID_TAB_SWSTYLE_FOOTER), SvxFooterPage::Create,
+                       SvxFooterPage::GetRanges, RID_M + RID_TAB_FOOTER_IMG);
             if (0 == ::GetHtmlMode(m_pWrtShell->GetView().GetDocShell()))
             {
-                AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel), RID_SVXPAGE_BORDER,
-                           RID_M + RID_TAB_BORDER.sIconName);
-                AddTabPage(u"columns"_ustr, TabResId(RID_TAB_COLUMNS.aLabel), SwColumnPage::Create,
-                           SwColumnPage::GetRanges, RID_M + RID_TAB_COLUMNS.sIconName);
-                AddTabPage(u"footnotes"_ustr, TabResId(RID_TAB_FOOTNOTES.aLabel),
+                AddTabPage(u"borders"_ustr, TabResId(RID_TAB_SWSTYLE_BORDER), RID_SVXPAGE_BORDER,
+                           RID_M + RID_TAB_BORDER_IMG);
+                AddTabPage(u"columns"_ustr, TabResId(RID_TAB_SWSTYLE_COLUMNS), SwColumnPage::Create,
+                           SwColumnPage::GetRanges, RID_M + RID_TAB_COLUMNS_IMG);
+                AddTabPage(u"footnotes"_ustr, TabResId(RID_TAB_SWSTYLE_FOOTNOTES),
                            SwFootNotePage::Create, SwFootNotePage::GetRanges,
-                           RID_M + RID_TAB_FOOTNOTES.sIconName);
+                           RID_M + RID_TAB_FOOTNOTES_IMG);
                 if (SvtCJKOptions::IsAsianTypographyEnabled())
-                    AddTabPage(u"textgrid"_ustr, TabResId(RID_TAB_TEXTGRID.aLabel),
+                    AddTabPage(u"textgrid"_ustr, TabResId(RID_TAB_SWSTYLE_TEXTGRID),
                                SwTextGridPage::Create, SwTextGridPage::GetRanges,
-                               RID_M + RID_TAB_TEXTGRID.sIconName);
-            }
-            else
-            {
-                RemoveTabPage(u"borders"_ustr);
-                RemoveTabPage(u"columns"_ustr);
-                RemoveTabPage(u"footnotes"_ustr);
-                RemoveTabPage(u"textgrid"_ustr);
+                               RID_M + RID_TAB_TEXTGRID_IMG);
             }
         }
         break;
         // numbering styles
         case SfxStyleFamily::Pseudo:
         {
-            AddTabPage(u"bullets"_ustr, TabResId(RID_TAB_UNOORDERED.aLabel),
-                       RID_SVXPAGE_PICK_BULLET, RID_M + RID_TAB_UNOORDERED.sIconName);
-            AddTabPage(u"numbering"_ustr, TabResId(RID_TAB_ORDERED.aLabel),
-                       RID_SVXPAGE_PICK_SINGLE_NUM, RID_M + RID_TAB_ORDERED.sIconName);
-            AddTabPage(u"outline"_ustr, TabResId(RID_TAB_OUTLINE.aLabel), RID_SVXPAGE_PICK_NUM,
-                       RID_M + RID_TAB_OUTLINE.sIconName);
-            AddTabPage(u"graphics"_ustr, TabResId(RID_TAB_IMAGE.aLabel), RID_SVXPAGE_PICK_BMP,
-                       RID_M + RID_TAB_IMAGE.sIconName);
-            AddTabPage(u"position"_ustr, TabResId(RID_TAB_LIST_POSITION.aLabel),
-                       RID_SVXPAGE_NUM_POSITION, RID_M + RID_TAB_LIST_POSITION.sIconName);
-            AddTabPage(u"customize"_ustr, TabResId(RID_TAB_CUSTOMIZE.aLabel),
-                       RID_SVXPAGE_NUM_OPTIONS, RID_M + RID_TAB_CUSTOMIZE.sIconName);
+            AddTabPage(u"bullets"_ustr, TabResId(RID_TAB_SWSTYLE_UNORDERED),
+                       RID_SVXPAGE_PICK_BULLET, RID_M + RID_TAB_UNORDERED_IMG);
+            AddTabPage(u"numbering"_ustr, TabResId(RID_TAB_SWSTYLE_ORDERED),
+                       RID_SVXPAGE_PICK_SINGLE_NUM, RID_M + RID_TAB_ORDERED_IMG);
+            AddTabPage(u"outline"_ustr, TabResId(RID_TAB_SWSTYLE_OUTLINE), RID_SVXPAGE_PICK_NUM,
+                       RID_M + RID_TAB_OUTLINELIST_IMG);
+            AddTabPage(u"graphics"_ustr, TabResId(RID_TAB_SWSTYLE_IMAGE), RID_SVXPAGE_PICK_BMP,
+                       RID_M + RID_TAB_IMAGE_IMG);
+            AddTabPage(u"position"_ustr, TabResId(RID_TAB_SWSTYLE_LIST_POSITION),
+                       RID_SVXPAGE_NUM_POSITION, RID_M + RID_TAB_LIST_POSITION_IMG);
+            AddTabPage(u"customize"_ustr, TabResId(RID_TAB_SWSTYLE_CUSTOMIZE),
+                       RID_SVXPAGE_NUM_OPTIONS, RID_M + RID_TAB_CUSTOMIZE_IMG);
         }
         break;
         case SfxStyleFamily::Frame:
         {
-            AddTabPage(u"type"_ustr, TabResId(RID_TAB_FRAME_TYPE.aLabel), SwFramePage::Create,
-                       SwFramePage::GetRanges, RID_M + RID_TAB_FRAME_TYPE.sIconName);
-            AddTabPage(u"options"_ustr, TabResId(RID_TAB_FRAME_OPTIONS.aLabel),
+            AddTabPage(u"type"_ustr, TabResId(RID_TAB_SWSTYLE_FRAMETYPE), SwFramePage::Create,
+                       SwFramePage::GetRanges, RID_M + RID_TAB_FRAMETYPE_IMG);
+            AddTabPage(u"options"_ustr, TabResId(RID_TAB_SWSTYLE_FRAMEOPTIONS),
                        SwFrameAddPage::Create, SwFrameAddPage::GetRanges,
-                       RID_M + RID_TAB_FRAME_OPTIONS.sIconName);
-            AddTabPage(u"wrap"_ustr, TabResId(RID_TAB_FRAME_WRAP.aLabel), SwWrapTabPage::Create,
-                       SwWrapTabPage::GetRanges, RID_M + RID_TAB_FRAME_WRAP.sIconName);
-            AddTabPage(u"area"_ustr, TabResId(RID_TAB_AREA.aLabel), RID_SVXPAGE_AREA,
-                       RID_M + RID_TAB_AREA.sIconName);
-            AddTabPage(u"transparence"_ustr, TabResId(RID_TAB_TRANSPARENCE.aLabel),
-                       RID_SVXPAGE_TRANSPARENCE, RID_M + RID_TAB_TRANSPARENCE.sIconName);
-            AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel), RID_SVXPAGE_BORDER,
-                       RID_M + RID_TAB_BORDER.sIconName);
-            AddTabPage(u"columns"_ustr, TabResId(RID_TAB_COLUMNS.aLabel), SwColumnPage::Create,
-                       SwColumnPage::GetRanges, RID_M + RID_TAB_COLUMNS.sIconName);
-            AddTabPage(u"macros"_ustr, TabResId(RID_TAB_MACRO.aLabel), RID_SVXPAGE_MACROASSIGN,
-                       RID_M + RID_TAB_MACRO.sIconName);
+                       RID_M + RID_TAB_FRAMEOPTIONS_IMG);
+            AddTabPage(u"wrap"_ustr, TabResId(RID_TAB_SWSTYLE_FRAMEWRAP), SwWrapTabPage::Create,
+                       SwWrapTabPage::GetRanges, RID_M + RID_TAB_FRAMEWRAP_IMG);
+            AddTabPage(u"area"_ustr, TabResId(RID_TAB_SWSTYLE_AREA), RID_SVXPAGE_AREA,
+                       RID_M + RID_TAB_AREA_IMG);
+            AddTabPage(u"transparence"_ustr, TabResId(RID_TAB_SWSTYLE_TRANSPARENCE),
+                       RID_SVXPAGE_TRANSPARENCE, RID_M + RID_TAB_TRANSPARENCE_IMG);
+            AddTabPage(u"borders"_ustr, TabResId(RID_TAB_SWSTYLE_BORDER), RID_SVXPAGE_BORDER,
+                       RID_M + RID_TAB_BORDER_IMG);
+            AddTabPage(u"columns"_ustr, TabResId(RID_TAB_SWSTYLE_COLUMNS), SwColumnPage::Create,
+                       SwColumnPage::GetRanges, RID_M + RID_TAB_COLUMNS_IMG);
+            AddTabPage(u"macros"_ustr, TabResId(RID_TAB_SWSTYLE_MACRO), RID_SVXPAGE_MACROASSIGN,
+                       RID_M + RID_TAB_MACRO_IMG);
         }
         break;
         default:
@@ -302,7 +293,7 @@ void SwTemplateDlgController::RefreshInputSet()
 
 void SwTemplateDlgController::PageCreated(const OUString& rId, SfxTabPage &rPage )
 {
-    // set style's and metric's names
+    // set style and metric names
     UIName sNumCharFormat, sBulletCharFormat;
     SwStyleNameMapper::FillUIName( SwPoolFormatId::CHR_NUM_LEVEL, sNumCharFormat);
     SwStyleNameMapper::FillUIName( SwPoolFormatId::CHR_BULLET_LEVEL, sBulletCharFormat);
@@ -444,7 +435,7 @@ void SwTemplateDlgController::PageCreated(const OUString& rId, SfxTabPage &rPage
         rPage.PageCreated(aSet);
     }
     // inits for Area and Transparency TabPages
-    // The selection attribute lists (XPropertyList derivates, e.g. XColorList for
+    // The selection attribute lists (XPropertyList subclasses, e.g. XColorList for
     // the color table) need to be added as items (e.g. SvxColorTableItem) to make
     // these pages find the needed attributes for fill style suggestions.
     // These are added in SwDocStyleSheet::GetItemSet() for the SfxStyleFamily::Para on
@@ -504,7 +495,7 @@ void SwTemplateDlgController::PageCreated(const OUString& rId, SfxTabPage &rPage
         aSet.Put (SfxStringItem(SID_BULLET_CHAR_FMT,sBulletCharFormat.toString()));
 
         // collect character styles
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, u"modules/swriter/ui/comboboxfragment.ui"_ustr));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(getDialog(), u"modules/swriter/ui/comboboxfragment.ui"_ustr));
         std::unique_ptr<weld::ComboBox> xCharFormatLB(xBuilder->weld_combo_box(u"combobox"_ustr));
         xCharFormatLB->clear();
         xCharFormatLB->append_text(SwViewShell::GetShellRes()->aStrNone);
@@ -530,7 +521,7 @@ void SwTemplateDlgController::PageCreated(const OUString& rId, SfxTabPage &rPage
         {
             constexpr tools::Long constTwips_0_5mm = o3tl::toTwips(5, o3tl::Length::mm10);
             aSet.Put(SfxUInt32Item(SID_SVXSTDPARAGRAPHTABPAGE_ABSLINEDIST, constTwips_0_5mm));
-            aSet.Put(SfxUInt32Item(SID_SVXSTDPARAGRAPHTABPAGE_FLAGSET,0x000F));
+            aSet.Put(SfxUInt32Item(SID_SVXSTDPARAGRAPHTABPAGE_FLAGSET,0x001F));
             rPage.PageCreated(aSet);
         }
     }

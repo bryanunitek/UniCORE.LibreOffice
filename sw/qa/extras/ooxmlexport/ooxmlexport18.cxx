@@ -153,7 +153,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf153042_noTab)
 
     // export does not keep the tabstop when exporting non-numbering. (Probably a good thing...)
     xmlDocUniquePtr pLayout = parseLayoutDump();
-    // Ensure a miniscule tab is used in the pseudo-numbering (numbering::NONE followed by tabstop)
+    // Ensure a minuscule tab is used in the pseudo-numbering (numbering::NONE followed by tabstop)
     assertXPath(pLayout, "//SwFixPortion", "width", u"10");
 }
 
@@ -639,6 +639,18 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf147724)
                 u"{4E8A9591-F074-446B-902F-511FF79C122F}");
     // empty storeItemID's must not be specified: MS Word considers those document corrupt
     assertXPathNoAttribute(pXmlDoc, "//w:p[2]/w:sdt/w:sdtPr/w:dataBinding", "storeItemID");
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testCustomXmlTwoDataStores)
+{
+    createSwDoc("customxml-two-data-stores.docx");
+    saveAndReload(TestFilter::DOCX);
+    xmlDocUniquePtr pLayout = parseLayoutDump();
+
+    // Each data-bound content control keeps the value held by the custom xml item its own data
+    // binding names, so the two controls still show different values after the round trip.
+    assertXPathContent(pLayout, "/root/page[1]/body/txt[1]", u"Placeholder -> *ABC*");
+    assertXPathContent(pLayout, "/root/page[1]/body/txt[2]", u"Placeholder -> *HERUNTERLADEN*");
 }
 
 DECLARE_OOXMLEXPORT_TEST(testTdf130782, "chart.docx")

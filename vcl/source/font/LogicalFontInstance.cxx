@@ -25,9 +25,131 @@
 #include <vcl/font/Feature.hxx>
 #include <font/PhysicalFontFace.hxx>
 #include <font/LogicalFontInstance.hxx>
+#include <font/TrueTypeFont.hxx>
 #include <impfontcache.hxx>
 
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
+
+static constexpr hb_codepoint_t ImplGetReplacementUnicodeForHyphens(const hb_codepoint_t aUnicode)
+{
+    if (aUnicode == 0x2010 || aUnicode == 0x2011)
+        return 0x002D;
+
+    return 0x0;
+}
+
+static hb_bool_t ImplHbNominalGlyphFunction(SAL_UNUSED_PARAMETER hb_font_t*, void* pFontData,
+                                            hb_codepoint_t aUnicode, hb_codepoint_t* pGlyphIndex,
+                                            SAL_UNUSED_PARAMETER void*)
+{
+    assert(pFontData && pGlyphIndex);
+
+    hb_font_t* pHbParentFont = static_cast<hb_font_t*>(pFontData);
+    hb_bool_t bRet = hb_font_get_nominal_glyph(pHbParentFont, aUnicode, pGlyphIndex);
+    if (!bRet)
+    {
+        hb_codepoint_t aReplacementUnicode = ImplGetReplacementUnicodeForHyphens(aUnicode);
+        if (aReplacementUnicode)
+            bRet = hb_font_get_nominal_glyph(pHbParentFont, aReplacementUnicode, pGlyphIndex);
+    }
+
+    return bRet;
+}
+
+static unsigned int
+ImplHbNominalGlyphsFunction(SAL_UNUSED_PARAMETER hb_font_t* pHbFont, void* pFontData,
+                            unsigned int nCount, const hb_codepoint_t* pFirstUnicode,
+                            unsigned int nUnicodeStride, hb_codepoint_t* pFirstGlyph,
+                            unsigned int nGlyphStride, SAL_UNUSED_PARAMETER void*)
+{
+    assert(pFontData && pFirstGlyph);
+
+    hb_font_t* pHbParentFont = static_cast<hb_font_t*>(pFontData);
+    unsigned int nRet = hb_font_get_nominal_glyphs(pHbParentFont, nCount, pFirstUnicode,
+                                                   nUnicodeStride, pFirstGlyph, nGlyphStride);
+    if (nRet < nCount)
+    {
+        const char* pFailedUnicodeByte
+            = reinterpret_cast<const char*>(pFirstUnicode) + (nRet * nUnicodeStride);
+        char* pFailedGlyphByte = reinterpret_cast<char*>(pFirstGlyph) + (nRet * nGlyphStride);
+        const hb_codepoint_t* pFailedUnicode
+            = reinterpret_cast<const hb_codepoint_t*>(pFailedUnicodeByte);
+        hb_codepoint_t* pFailedGlyph = reinterpret_cast<hb_codepoint_t*>(pFailedGlyphByte);
+
+        // Try to replace failed character with replacement character
+        if (ImplHbNominalGlyphFunction(pHbFont, pHbParentFont, *pFailedUnicode, pFailedGlyph,
+                                       nullptr))
+        {
+            nRet++;
+            if (nRet < nCount)
+            {
+                const char* pNextUnicodeByte
+                    = reinterpret_cast<const char*>(pFirstUnicode) + (nRet * nUnicodeStride);
+                const hb_codepoint_t* pNextUnicode
+                    = reinterpret_cast<const hb_codepoint_t*>(pNextUnicodeByte);
+                char* pNextGlyphByte = reinterpret_cast<char*>(pFirstGlyph) + (nRet * nGlyphStride);
+                hb_codepoint_t* pNextGlyph = reinterpret_cast<hb_codepoint_t*>(pNextGlyphByte);
+
+                // Process characters after replaced character
+                nRet += ImplHbNominalGlyphsFunction(pHbFont, pFontData, nCount - nRet, pNextUnicode,
+                                                    nUnicodeStride, pNextGlyph, nGlyphStride,
+                                                    nullptr);
+            }
+        }
+    }
+
+    return nRet;
+}
+
+static hb_bool_t ImplHbVariationGlyphFunction(SAL_UNUSED_PARAMETER hb_font_t*, void* pFontData,
+                                              hb_codepoint_t aUnicode,
+                                              hb_codepoint_t aVariationSelector,
+                                              hb_codepoint_t* pGlyphIndex,
+                                              SAL_UNUSED_PARAMETER void*)
+{
+    assert(pFontData && pGlyphIndex);
+
+    hb_font_t* pHbParentFont = static_cast<hb_font_t*>(pFontData);
+    hb_bool_t bRet
+        = hb_font_get_variation_glyph(pHbParentFont, aUnicode, aVariationSelector, pGlyphIndex);
+    if (!bRet)
+    {
+        hb_codepoint_t aReplacementUnicode = ImplGetReplacementUnicodeForHyphens(aUnicode);
+        if (aReplacementUnicode)
+            bRet = hb_font_get_variation_glyph(pHbParentFont, aReplacementUnicode,
+                                               aVariationSelector, pGlyphIndex);
+    }
+
+    return bRet;
+}
+
+// tdf#171555 if no glyph for hyphen characters use minus character
+// On at least on macOS, HarfBuzz will not return a glyph for the
+// Unicode hyphen characters for some fonts such as Courier New
+// and Apple LiGothic but the native text layout functions will
+// return the minus character's glyph. So replace the hyphens
+// with minus to avoid marking the hyphens as needing fallback.
+static void ImplHbSetGlyphFunctions(hb_font_t* pHbFont)
+{
+    static hb_font_funcs_t* pHbFontFuncs = nullptr;
+
+    if (!pHbFontFuncs)
+    {
+        pHbFontFuncs = hb_font_funcs_create();
+
+        hb_font_funcs_set_nominal_glyph_func(pHbFontFuncs, ImplHbNominalGlyphFunction, nullptr,
+                                             nullptr);
+        hb_font_funcs_set_nominal_glyphs_func(pHbFontFuncs, ImplHbNominalGlyphsFunction, nullptr,
+                                              nullptr);
+        hb_font_funcs_set_variation_glyph_func(pHbFontFuncs, ImplHbVariationGlyphFunction, nullptr,
+                                               nullptr);
+    }
+
+    // The parent font is already retained for the life of the font so pass
+    // the parent font pointer to avoid repeated lookups every time one of
+    // the font functions are called
+    hb_font_set_funcs(pHbFont, pHbFontFuncs, hb_font_get_parent(pHbFont), nullptr);
+}
 
 LogicalFontInstance::LogicalFontInstance(const vcl::font::PhysicalFontFace& rFontFace,
                                          const vcl::font::FontSelectPattern& rFontSelData)
@@ -40,7 +162,6 @@ LogicalFontInstance::LogicalFontInstance(const vcl::font::PhysicalFontFace& rFon
     , mpFontCache(nullptr)
     , m_aFontSelData(rFontSelData)
     , m_pHbFont(nullptr)
-    , m_nAveWidthFactor(1.0f)
     , m_pFontFace(&const_cast<vcl::font::PhysicalFontFace&>(rFontFace))
     , m_aVariations(rFontSelData.maVariations)
     , m_bOpticalSizing(rFontSelData.mbOpticalSizing)
@@ -55,9 +176,6 @@ LogicalFontInstance::~LogicalFontInstance()
 
     if (m_pHbFont)
         hb_font_destroy(m_pHbFont);
-
-    if (m_pHbFontUntransformed)
-        hb_font_destroy(m_pHbFontUntransformed);
 
     if (m_pHbDrawFuncs)
         hb_draw_funcs_destroy(m_pHbDrawFuncs);
@@ -119,24 +237,11 @@ hb_font_t* LogicalFontInstance::InitHbFont()
 
     ImplInitHbFont(pHbFont);
 
-    return pHbFont;
-}
-
-hb_font_t* LogicalFontInstance::GetHbFontUntransformed() const
-{
-    auto* pHbFont = const_cast<LogicalFontInstance*>(this)->GetHbFont();
-
-    if (NeedsArtificialItalic()) // || NeedsArtificialBold()
-    {
-        if (!m_pHbFontUntransformed)
-        {
-            m_pHbFontUntransformed = hb_font_create_sub_font(pHbFont);
-            // Unset slant set on parent font.
-            // Does not actually work: https://github.com/harfbuzz/harfbuzz/issues/3890
-            hb_font_set_synthetic_slant(m_pHbFontUntransformed, 0);
-        }
-        return m_pHbFontUntransformed;
-    }
+    // Related: tdf#171555 create subfont and set nominal glyph function
+    hb_font_t* pHbParentFont = pHbFont;
+    pHbFont = hb_font_create_sub_font(pHbParentFont);
+    ImplHbSetGlyphFunctions(pHbFont);
+    hb_font_destroy(pHbParentFont);
 
     return pHbFont;
 }
@@ -158,13 +263,37 @@ void LogicalFontInstance::GetScale(double* nXScale, double* nYScale) const
 
     if (nXScale)
     {
-        // On Windows, mnWidth is relative to average char width not font height,
-        // and we need to keep it that way for GDI to correctly scale the glyphs.
-        // Here we compensate for this so that HarfBuzz gives us the correct glyph
-        // positions.
-        double nWidth(m_aFontSelData.mnWidth ? m_aFontSelData.mnWidth * GetAverageWidthFactor()
-                                             : m_aFontSelData.mnHeight);
+        double nWidth(m_aFontSelData.mnWidth ? m_aFontSelData.mnWidth : m_aFontSelData.mnHeight);
         *nXScale = nWidth / nUPEM;
+    }
+}
+
+double LogicalFontInstance::GetOpenTypeMathConstant(vcl::OpenTypeMathConstant aConstant) const
+{
+    auto* pHbFont = const_cast<LogicalFontInstance*>(this)->GetHbFont();
+
+    hb_position_t nHBValue
+        = hb_ot_math_get_constant(pHbFont, static_cast<hb_ot_math_constant_t>(aConstant));
+
+    // Scale from font units to device pixels
+    double nXScale = 0, nYScale = 0;
+    GetScale(&nXScale, &nYScale);
+
+    switch (aConstant)
+    {
+        case vcl::OpenTypeMathConstant::ScriptPercentScaleDown:
+        case vcl::OpenTypeMathConstant::ScriptScriptPercentScaleDown:
+        case vcl::OpenTypeMathConstant::RadicalDegreeBottomRaisePercent:
+            return nHBValue / 100.0;
+
+        case vcl::OpenTypeMathConstant::RadicalKernBeforeDegree:
+        case vcl::OpenTypeMathConstant::RadicalKernAfterDegree:
+        case vcl::OpenTypeMathConstant::SkewedFractionHorizontalGap:
+        case vcl::OpenTypeMathConstant::SpaceAfterScript:
+            return nHBValue * nXScale;
+
+        default:
+            return nHBValue * nYScale;
     }
 }
 
@@ -204,6 +333,65 @@ void LogicalFontInstance::IgnoreFallbackForUnicode(sal_UCS4 cChar, FontWeight eW
     const MapEntry& rEntry = (*it).second;
     if (rEntry.sFontName == rFontName)
         maUnicodeFallbackList.erase(it);
+}
+
+void LogicalFontInstance::GetFontMetric(FontMetricDataRef const& rxTo)
+{
+    rxTo->FontAttributes::operator=(*GetFontFace());
+    rxTo->SetSlant(0);
+
+    rxTo->SetMinKashida(GetKashidaWidth());
+    rxTo->ImplCalcLineSpacing(this);
+    rxTo->ImplInitBaselines(this);
+
+    const auto& rFSP = GetFontSelectPattern();
+    rxTo->SetWidth(rFSP.mnWidth ? rFSP.mnWidth : rFSP.mnHeight);
+
+    auto aOS2(GetFontFace()->GetRawFontData(HB_TAG('O', 'S', '/', '2')));
+    if (aOS2.size() >= size_t(vcl::OS2_panose_offset) + 4)
+    {
+        const uint8_t* pPanose = aOS2.data() + vcl::OS2_panose_offset;
+        switch (pPanose[0]) // bFamilyType
+        {
+            case 1:
+                rxTo->SetFamilyType(FAMILY_ROMAN);
+                break;
+            case 2:
+                rxTo->SetFamilyType(FAMILY_SWISS);
+                break;
+            case 3:
+                rxTo->SetFamilyType(FAMILY_MODERN);
+                break;
+            case 4:
+                rxTo->SetFamilyType(FAMILY_SCRIPT);
+                break;
+            case 5:
+                rxTo->SetFamilyType(FAMILY_DECORATIVE);
+                break;
+            default:
+                break; // Any/No Fit: keep the face-derived family type
+        }
+        switch (pPanose[3]) // bProportion
+        {
+            case 2:
+            case 3:
+            case 4:
+            case 5:
+            case 6:
+            case 7:
+            case 8:
+                rxTo->SetPitch(PITCH_VARIABLE);
+                break;
+            case 9:
+                rxTo->SetPitch(PITCH_FIXED);
+                break;
+            default:
+                break; // Any/No Fit: keep the face-derived pitch
+        }
+    }
+
+    if (hb_ot_fetch_bits(GetFontFace()->GetHbFace(), HB_OT_BITS_TAG_IS_FIXED_PITCH))
+        rxTo->SetPitch(PITCH_FIXED);
 }
 
 bool LogicalFontInstance::GetGlyphBoundRect(sal_GlyphId nID, basegfx::B2DRectangle& rRect,
@@ -325,7 +513,8 @@ void close_path_func(hb_draw_funcs_t*, void* pDrawData, hb_draw_state_t*, void* 
 }
 }
 
-basegfx::B2DPolyPolygon LogicalFontInstance::GetGlyphOutlineUntransformed(sal_GlyphId nGlyph) const
+bool LogicalFontInstance::DrawGlyph(hb_font_t* pHbFont, sal_GlyphId nGlyph,
+                                    basegfx::B2DPolyPolygon& rPoly) const
 {
     if (!m_pHbDrawFuncs)
     {
@@ -341,13 +530,29 @@ basegfx::B2DPolyPolygon LogicalFontInstance::GetGlyphOutlineUntransformed(sal_Gl
         hb_draw_funcs_set_close_path_func(m_pHbDrawFuncs, close_path_func, pUserData, nullptr);
     }
 
-    basegfx::B2DPolyPolygon aPolyPoly;
-#if HB_VERSION_ATLEAST(7, 0, 0)
-    hb_font_draw_glyph(GetHbFontUntransformed(), nGlyph, m_pHbDrawFuncs, &aPolyPoly);
-#else
-    hb_font_get_glyph_shape(GetHbFontUntransformed(), nGlyph, m_pHbDrawFuncs, &aPolyPoly);
-#endif
-    return aPolyPoly;
+    return hb_font_draw_glyph_or_fail(pHbFont, nGlyph, m_pHbDrawFuncs, &rPoly);
+}
+
+bool LogicalFontInstance::GetGlyphOutline(sal_GlyphId nID, basegfx::B2DPolyPolygon& rPoly,
+                                          bool /*bVertical*/) const
+{
+    rPoly.clear();
+
+    if (!DrawGlyph(const_cast<LogicalFontInstance*>(this)->GetHbFont(), nID, rPoly))
+    {
+        rPoly.clear();
+        return false;
+    }
+
+    if (!rPoly.count())
+        return true;
+
+    // Scale from font units to device pixels.
+    double nXScale = 0, nYScale = 0;
+    GetScale(&nXScale, &nYScale);
+    rPoly.transform(basegfx::utils::createScaleB2DHomMatrix(nXScale, nYScale));
+
+    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

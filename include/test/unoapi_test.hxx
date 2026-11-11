@@ -45,6 +45,7 @@ enum class TestFilter
     DOTX,
     EPUB,
     FODG,
+    FODP,
     FODS,
     FODT,
     HTML_CALC,
@@ -60,7 +61,7 @@ enum class TestFilter
     ODS,
     ODT,
     OTT,
-    PDF_WRITER,
+    PDF,
     POTX,
     PPT,
     PPTM,
@@ -93,6 +94,7 @@ const std::unordered_map<TestFilter, OUString> TestFilterNames{
     { TestFilter::DOTX, u"MS Word 2007 XML Template"_ustr },
     { TestFilter::EPUB, u"EPUB"_ustr },
     { TestFilter::FODG, u"OpenDocument Drawing Flat XML"_ustr },
+    { TestFilter::FODP, u"OpenDocument Presentation Flat XML"_ustr },
     { TestFilter::FODS, u"OpenDocument Spreadsheet Flat XML"_ustr },
     { TestFilter::FODT, u"OpenDocument Text Flat XML"_ustr },
     { TestFilter::HTML_CALC, u"HTML (StarCalc)"_ustr },
@@ -108,7 +110,7 @@ const std::unordered_map<TestFilter, OUString> TestFilterNames{
     { TestFilter::ODS, u"calc8"_ustr },
     { TestFilter::ODT, u"writer8"_ustr },
     { TestFilter::OTT, u"writer8_template"_ustr },
-    { TestFilter::PDF_WRITER, u"writer_pdf_Export"_ustr },
+    { TestFilter::PDF, u"writer_pdf_Export"_ustr },
     { TestFilter::POTX, u"Impress Office Open XML Template"_ustr },
     { TestFilter::PPT, u"MS PowerPoint 97"_ustr },
     { TestFilter::PPTM, u"Impress MS PowerPoint 2007 XML VBA"_ustr },
@@ -181,7 +183,9 @@ public:
                        const css::uno::Sequence<css::beans::PropertyValue>& rParams = {},
                        const char* pPassword = nullptr);
 
-    std::unique_ptr<vcl::pdf::PDFiumDocument> parsePDFExport(const OString& rPassword = OString());
+    std::unique_ptr<vcl::pdf::PDFiumDocument>
+    parsePDFExport(const std::shared_ptr<vcl::pdf::PDFium>& rPDFium,
+                   const OString& rPassword = OString());
 
     void createTempCopy(std::u16string_view fileName);
 

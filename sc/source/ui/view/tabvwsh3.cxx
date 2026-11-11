@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <sfx2/bindings.hxx>
+#include <drawview.hxx>
+#include <drwlayer.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/passwd.hxx>
 #include <sfx2/request.hxx>
@@ -686,8 +688,13 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                     if ( rDoc.GetTable( aAddress, nNameTab ) )
                     {
                         bFound = true;
-                        if ( nNameTab != nTab )
-                            SetTabNo( nNameTab );
+                        if (nNameTab != nTab)
+                        {
+                            if (!rDoc.IsVisible(nNameTab))
+                                ErrorMessage(STR_ERR_HIDDEN_SHEET);
+                            else
+                                SetTabNo(nNameTab);
+                        }
                     }
                 }
 
@@ -1317,6 +1324,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                     SfxBindings& rBind = rViewData.GetBindings();
                     rBind.Invalidate( FID_FILL_TAB );
                     rBind.Invalidate( FID_TAB_DESELECTALL );
+                    RemoveInfoBarSelectAllSheets();
                 }
 
                 rReq.Done();

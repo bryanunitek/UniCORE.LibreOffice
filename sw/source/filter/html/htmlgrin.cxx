@@ -33,7 +33,6 @@
 #include <editeng/boxitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/langitem.hxx>
-#include <sfx2/docfile.hxx>
 #include <sfx2/event.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <vcl/imap.hxx>
@@ -73,7 +72,6 @@
 #include <tools/UnitConversion.hxx>
 #include <tools/hostfilter.hxx>
 #include <tools/urlobj.hxx>
-#include <unotools/securityoptions.hxx>
 #include <unotxdoc.hxx>
 
 using namespace ::com::sun::star;
@@ -306,22 +304,6 @@ void SwHTMLParser::GetDefaultScriptType( ScriptType& rType,
     rTypeStr = GetScriptTypeString( pHeaderAttrs );
 }
 
-namespace
-{
-    bool allowAccessLink(const SwDoc& rDoc)
-    {
-        OUString sReferer;
-        SfxObjectShell * sh = rDoc.GetPersist();
-        if (sh != nullptr && sh->HasName())
-        {
-            sReferer = sh->GetMedium()->GetName();
-        }
-        return !SvtSecurityOptions::isUntrustedReferer(sReferer);
-    }
-}
-
-/*  */
-
 void SwHTMLParser::InsertImage()
 {
     // and now analyze
@@ -368,6 +350,8 @@ void SwHTMLParser::InsertImage()
                     sGrfNm = INetURLObject::GetAbsURL( m_sBaseURL, sGrfNm );
                 break;
             case HtmlOptionId::DATA:
+                if (!m_bXHTML)
+                    break;
                 aGraphicData = rOption.GetString();
                 if (!InternalImgToPrivateURL(aGraphicData))
                     aGraphicData = INetURLObject::GetAbsURL(
@@ -513,12 +497,11 @@ IMAGE_SETEVENT:
             }
         }
     }
-    else if (m_sBaseURL.isEmpty() || !aGraphicData.isEmpty())
+    else if (m_bFromClipboard || !aGraphicData.isEmpty())
     {
         if (comphelper::LibreOfficeKit::isActive() && HostFilter::isForbidden(aGraphicURL.GetHost()))
             SfxLokHelper::sendNetworkAccessError("paste");
 
-        // sBaseURL is empty if the source is clipboard
         // aGraphicData is non-empty for <object data="..."> -> not a linked graphic.
         if (ERRCODE_NONE == GraphicFilter::GetGraphicFilter().ImportGraphic(aGraphic, aGraphicURL))
             sGrfNm.clear();
@@ -676,32 +659,12 @@ IMAGE_SETEVENT:
     bool bSetScaleImageMap = false;
     sal_uInt8 nPercentWidth = 0, nPercentHeight = 0;
 
-    // bPercentWidth / bPercentHeight means we have a percent size.  If that's not the case and we have no
-    // size from nWidth / nHeight either, then inspect the image header.
+    // bPercentWidth / bPercentHeight means we have a percent size.  If that's not the case and we
+    // have no size from nWidth / nHeight either, the frame gets the HTML default size here.  The
+    // image is registered as a link, so its own size arrives with the link update and the frame is
+    // resized then.
     bool bRelWidthScale = bPercentWidth && nWidth == SwFormatFrameSize::SYNCED;
-    bool bNeedWidth = (!bPercentWidth && !nWidth) || bRelWidthScale;
     bool bRelHeightScale = bPercentHeight && nHeight == SwFormatFrameSize::SYNCED;
-    bool bNeedHeight = (!bPercentHeight && !nHeight) || bRelHeightScale;
-    if ((bNeedWidth || bNeedHeight) && !bFuzzing && allowAccessLink(*m_xDoc) &&
-        !aGraphicURL.IsExoticProtocol())
-    {
-        GraphicDescriptor aDescriptor(aGraphicURL);
-        if (aDescriptor.Detect(/*bExtendedInfo=*/true))
-        {
-            // Try to use size info from the image header before defaulting to
-            // HTML_DFLT_IMG_WIDTH/HEIGHT.
-            aTwipSz
-                = o3tl::convert(aDescriptor.GetSizePixel(), o3tl::Length::px, o3tl::Length::twip);
-            if (!bPercentWidth && !nWidth)
-            {
-                nWidth = aTwipSz.getWidth();
-            }
-            if (!bPercentHeight && !nHeight)
-            {
-                nHeight = aTwipSz.getHeight();
-            }
-        }
-    }
 
     if( !(nWidth && !bRelWidthScale) || !(nHeight && !bRelHeightScale) )
     {

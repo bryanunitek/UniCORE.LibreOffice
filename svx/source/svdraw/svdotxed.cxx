@@ -28,6 +28,8 @@
 #include <svl/itemset.hxx>
 #include <editeng/eeitem.hxx>
 #include <svx/sdtfchim.hxx>
+#include <svx/sdtfsitm.hxx>
+#include <svx/svddef.hxx>
 #include <textchain.hxx>
 #include <svx/annotation/ObjectAnnotationData.hxx>
 
@@ -85,7 +87,7 @@ bool SdrTextObj::BegTextEdit(SdrOutliner& rOutl)
     {
         // Outliner has no text so we must set some
         // empty text so the outliner initialise itself
-        rOutl.SetText( u""_ustr, rOutl.GetParagraph( 0 ) );
+        rOutl.SetText( u""_ustr, 0 );
 
         if(GetStyleSheet())
             rOutl.SetStyleSheet( 0, GetStyleSheet());
@@ -285,6 +287,18 @@ void SdrTextObj::EndTextEdit(SdrOutliner& rOutl)
             }
         } else { // If we are not doing in-chaining switching just set the ParaObject
             SetOutlinerParaObject(std::move(pNewText));
+        }
+
+        // The fit stored with the shape belongs to the text before the edit, so fit afresh.
+        if (IsAutoFit())
+        {
+            SdrTextFitToSizeTypeItem aItem(GetObjectItem(SDRATTR_TEXT_FITTOSIZE));
+            if (aItem.getFontScale() != 0.0 || aItem.getSpacingScale() != 0.0)
+            {
+                aItem.setFontScale(0.0);
+                aItem.setSpacingScale(0.0);
+                SetObjectItem(aItem);
+            }
         }
 
         if (isAnnotationObject())

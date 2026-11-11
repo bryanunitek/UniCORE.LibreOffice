@@ -21,11 +21,13 @@
 
 #include <sal/config.h>
 
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <memory>
 
 #include <string.h>
+#include <string_view>
 
 #include <o3tl/safeint.hxx>
 #include <o3tl/untaint.hxx>
@@ -431,28 +433,24 @@ bool SvStream::ReadLine( OStringBuffer& aBuf, sal_Int32 nMaxBytesToRead )
                 break;
         }
 
-        sal_uInt16 j, n;
-        for( j = n = 0; j < nLen ; ++j )
+        sal_uInt16 j;
+        for( j = 0; j < nLen ; ++j )
         {
+            if (nTotalLen + j >= o3tl::make_unsigned(nMaxBytesToRead))
+            {
+                bEnd = true;
+                break;
+            }
             c = buf[j];
             if ( c == '\n' || c == '\r' )
             {
                 bEnd = true;
                 break;
             }
-            if ( n < j )
-                buf[n] = c;
-            ++n;
         }
         nTotalLen += j;
-        if (nTotalLen > o3tl::make_unsigned(nMaxBytesToRead))
-        {
-            n -= nTotalLen - nMaxBytesToRead;
-            nTotalLen = nMaxBytesToRead;
-            bEnd = true;
-        }
-        if ( n )
-            aBuf.append(buf, n);
+        if ( j )
+            aBuf.append(buf, j);
     }
 
     if ( !bEnd && !GetError() && !aBuf.isEmpty() )
@@ -507,37 +505,26 @@ bool SvStream::ReadUniStringLine( OUString& rStr, sal_Int32 nMaxCodepointsToRead
                 break;
         }
 
-        sal_uInt16 j, n;
-        for( j = n = 0; j < nLen ; ++j )
+        sal_uInt16 j;
+        for( j = 0; j < nLen ; ++j )
         {
+            if (nTotalLen + j >= o3tl::make_unsigned(nMaxCodepointsToRead))
+            {
+                bEnd = true;
+                break;
+            }
             if (m_isSwap)
-                SwapNumber( buf[n] );
+                SwapNumber( buf[j] );
             c = buf[j];
             if ( c == '\n' || c == '\r' )
             {
                 bEnd = true;
                 break;
             }
-            // erAck 26.02.01: Old behavior was no special treatment of '\0'
-            // character here, but a following rStr+=c did ignore it. Is this
-            // really intended? Or should a '\0' better terminate a line?
-            // The nOldFilePos stuff wasn't correct then anyways.
-            if ( c )
-            {
-                if ( n < j )
-                    buf[n] = c;
-                ++n;
-            }
         }
         nTotalLen += j;
-        if (nTotalLen > o3tl::make_unsigned(nMaxCodepointsToRead))
-        {
-            n -= nTotalLen - nMaxCodepointsToRead;
-            nTotalLen = nMaxCodepointsToRead;
-            bEnd = true;
-        }
-        if ( n )
-            aBuf.append( buf, n );
+        if ( j )
+            aBuf.append( buf, j );
     }
 
     if ( !bEnd && !GetError() && !aBuf.isEmpty() )
@@ -780,6 +767,8 @@ void SvStream::DetectEncoding(size_t maxBytes)
             { "ISO-8859-6", RTL_TEXTENCODING_ISO_8859_6 },
             { "ISO-8859-7", RTL_TEXTENCODING_ISO_8859_7 },
             { "ISO-8859-8", RTL_TEXTENCODING_ISO_8859_8 },
+            // for tdf#171097 (see https://en.wikipedia.org/wiki/ISO-8859-8-I)
+            { "ISO-8859-8-I", RTL_TEXTENCODING_ISO_8859_8 },
             { "ISO-8859-9", RTL_TEXTENCODING_ISO_8859_9 },
             { "windows-1250", RTL_TEXTENCODING_MS_1250 },
             { "windows-1251", RTL_TEXTENCODING_MS_1251 },
@@ -818,9 +807,38 @@ void SvStream::DetectEncoding(size_t maxBytes)
     if (!U_SUCCESS(uerr))
         return;
 
-    const UCharsetMatch* match = ucsdet_detect(ucd, &uerr);
+    int32_t matchCount = 0;
+    const UCharsetMatch **matches = ucsdet_detectAll(ucd, &matchCount, &uerr);
     if (!U_SUCCESS(uerr))
         return;
+
+    static constexpr std::array<std::string_view, 5> aSkipCharsets = {
+    "UTF-16BE",
+    "UTF-16LE",
+    "Shift_JIS",
+    "GB18030",
+    "Big5"
+    };
+    SAL_INFO("tools.stream", "The first character set of the following list will be used or the function will return");
+
+    // by default, let's use the first character set detected
+    const UCharsetMatch* match = matches[0];
+    constexpr int CONFIDENCE_MIN_SKIP_CHARSETS = 10;
+    for (int i=0; i < matchCount; i++)
+    {
+        const char* pName = ucsdet_getName(matches[i], &uerr);
+        int confidence = ucsdet_getConfidence(matches[i], &uerr);
+        SAL_INFO("tools.stream",
+                "\tcharacter set name=" << pName
+                << " has a confidence of " << confidence);
+        if (confidence == CONFIDENCE_MIN_SKIP_CHARSETS &&
+             std::find(aSkipCharsets.begin(), aSkipCharsets.end(), pName) != aSkipCharsets.end())
+        {
+            continue;
+        }
+        match = matches[i];
+        break;
+    }
 
     const char* pEncodingName = ucsdet_getName(match, &uerr);
     if (!U_SUCCESS(uerr) || !pEncodingName)

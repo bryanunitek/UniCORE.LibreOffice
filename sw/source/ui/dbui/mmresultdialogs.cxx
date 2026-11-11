@@ -155,7 +155,8 @@ namespace {
 
 class SwSaveWarningBox_Impl : public SwMessageAndEditDialog
 {
-    DECL_LINK( ModifyHdl, weld::Entry&, void);
+    DECL_LINK(ModifyHdl, weld::TextWidget&, void);
+
 public:
     SwSaveWarningBox_Impl(weld::Window* pParent, const OUString& rFileName);
 
@@ -168,7 +169,8 @@ public:
 class SwSendQueryBox_Impl : public SwMessageAndEditDialog
 {
     bool            m_bIsEmptyAllowed;
-    DECL_LINK( ModifyHdl, weld::Entry&, void);
+    DECL_LINK(ModifyHdl, weld::TextWidget&, void);
+
 public:
     SwSendQueryBox_Impl(weld::Window* pParent, const OUString& rID,
         const OUString& rUIXMLDescription);
@@ -207,7 +209,7 @@ SwSaveWarningBox_Impl::SwSaveWarningBox_Impl(weld::Window* pParent, const OUStri
     ModifyHdl(*m_xEdit);
 }
 
-IMPL_LINK( SwSaveWarningBox_Impl, ModifyHdl, weld::Entry&, rEdit, void)
+IMPL_LINK(SwSaveWarningBox_Impl, ModifyHdl, weld::TextWidget&, rEdit, void)
 {
     m_xOKPB->set_sensitive(!rEdit.get_text().isEmpty());
 }
@@ -221,7 +223,7 @@ SwSendQueryBox_Impl::SwSendQueryBox_Impl(weld::Window* pParent, const OUString& 
     ModifyHdl(*m_xEdit);
 }
 
-IMPL_LINK( SwSendQueryBox_Impl, ModifyHdl, weld::Entry&, rEdit, void)
+IMPL_LINK(SwSendQueryBox_Impl, ModifyHdl, weld::TextWidget&, rEdit, void)
 {
     m_xOKPB->set_sensitive(m_bIsEmptyAllowed  || !rEdit.get_text().isEmpty());
 }
@@ -593,11 +595,11 @@ IMPL_LINK_NOARG(SwMMResultSaveDialog, SaveOutputHdl_Impl, weld::Button&, void)
     {
         uno::Sequence< beans::PropertyValue > aValues { comphelper::makePropertyValue(u"FilterName"_ustr, sFilter) };
 
-        uno::Reference< frame::XStorable > xStore( pTargetView->GetDocShell()->GetModel(), uno::UNO_QUERY);
+        rtl::Reference<SwXTextDocument> pModel = pTargetView->GetDocShell()->GetBaseModel();
         ErrCode nErrorCode = ERRCODE_NONE;
         try
         {
-            xStore->storeToURL( sPath, aValues );
+            pModel->storeToURL(sPath, aValues);
         }
         catch (const task::ErrorCodeIOException& rErrorEx)
         {
@@ -627,11 +629,11 @@ IMPL_LINK_NOARG(SwMMResultSaveDialog, SaveOutputHdl_Impl, weld::Button&, void)
         pValues[0].Name = "FilterName";
         pValues[0].Value <<= pSfxFlt->GetFilterName();
 
-        uno::Reference< frame::XStorable > xStore( pTargetView->GetDocShell()->GetModel(), uno::UNO_QUERY);
+        rtl::Reference<SwXTextDocument> pModel = pTargetView->GetDocShell()->GetBaseModel();
         ErrCode nErrorCode = ERRCODE_NONE;
         try
         {
-            xStore->storeToURL( sTargetTempURL, aValues );
+            pModel->storeToURL(sTargetTempURL, aValues);
         }
         catch (const task::ErrorCodeIOException& rErrorEx)
         {
@@ -673,7 +675,7 @@ IMPL_LINK_NOARG(SwMMResultSaveDialog, SaveOutputHdl_Impl, weld::Button&, void)
             //now extract a document from the target document
             // the shell will be closed at the end, but it is more safe to use SfxObjectShellLock here
             SfxObjectShellLock xTempDocShell( new SwDocShell( SfxObjectCreateMode::STANDARD ) );
-            xTempDocShell->DoInitNew();
+            xTempDocShell->DoInitNew(SfxNewDocumentMacros::Disallow);
             SfxViewFrame* pTempFrame = SfxViewFrame::LoadHiddenDocument( *xTempDocShell, SFX_INTERFACE_NONE );
             SwView* pTempView = static_cast<SwView*>( pTempFrame->GetViewShell() );
             pTargetView->GetWrtShell().StartAction();
@@ -715,8 +717,8 @@ IMPL_LINK_NOARG(SwMMResultSaveDialog, SaveOutputHdl_Impl, weld::Button&, void)
                 try
                 {
                     pValues[0].Value <<= sFilter;
-                    uno::Reference< frame::XStorable > xTempStore( xTempDocShell->GetModel(), uno::UNO_QUERY);
-                    xTempStore->storeToURL( sOutPath, aValues   );
+                    rtl::Reference<SfxBaseModel> pTempModel = xTempDocShell->GetBaseModel();
+                    pTempModel->storeToURL(sOutPath, aValues);
                 }
                 catch (const uno::Exception&)
                 {
@@ -1109,8 +1111,8 @@ IMPL_LINK_NOARG(SwMMResultEmailDialog, SendDocumentsHdl_Impl, weld::Button&, voi
 
     uno::Sequence< beans::PropertyValue > aValues { comphelper::makePropertyValue(u"FilterName"_ustr, pTargetSfxFlt->GetFilterName()) };
 
-    uno::Reference< frame::XStorable > xStore( pTargetView->GetDocShell()->GetModel(), uno::UNO_QUERY);
-    xStore->storeToURL( sTargetTempURL, aValues   );
+    rtl::Reference<SwXTextDocument> pModel = pTargetView->GetDocShell()->GetBaseModel();
+    pModel->storeToURL(sTargetTempURL, aValues);
 
     //create the send dialog
     std::shared_ptr<SwSendMailDialog> xDlg = std::make_shared<SwSendMailDialog>(Application::GetDefDialogParent(), *xConfigItem);
@@ -1130,7 +1132,7 @@ IMPL_LINK_NOARG(SwMMResultEmailDialog, SendDocumentsHdl_Impl, weld::Button&, voi
         //now extract a document from the target document
         // the shell will be closed at the end, but it is more safe to use SfxObjectShellLock here
         SfxObjectShellLock xTempDocShell( new SwDocShell( SfxObjectCreateMode::STANDARD ) );
-        xTempDocShell->DoInitNew();
+        xTempDocShell->DoInitNew(SfxNewDocumentMacros::Disallow);
         SfxViewFrame* pTempFrame = SfxViewFrame::LoadHiddenDocument( *xTempDocShell, SFX_INTERFACE_NONE );
         SwView* pTempView = static_cast<SwView*>( pTempFrame->GetViewShell() );
         pTargetView->GetWrtShell().StartAction();
@@ -1189,8 +1191,8 @@ IMPL_LINK_NOARG(SwMMResultEmailDialog, SendDocumentsHdl_Impl, weld::Button&, voi
                 pFilterValues[nOpt].Value <<= sPassword;
             }
 
-            uno::Reference< frame::XStorable > xTempStore( pTempView->GetDocShell()->GetModel(), uno::UNO_QUERY);
-            xTempStore->storeToURL( aName.GetValue(), aFilterValues );
+            rtl::Reference<SwXTextDocument> pTempModel = pTempView->GetDocShell()->GetBaseModel();
+            pTempModel->storeToURL(aName.GetValue(), aFilterValues);
         }
         xTempDocShell->DoClose();
 

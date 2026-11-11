@@ -43,6 +43,7 @@
 #include <window.h>
 #include <svdata.hxx>
 #include <strings.hrc>
+#include <bitmaps.hlst>
 
 #include <com/sun/star/datatransfer/dnd/XDragGestureRecognizer.hpp>
 #include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
@@ -253,6 +254,7 @@ void Edit::ImplInitEditData()
     mpDDInfo                = nullptr;
     mpIMEInfos              = nullptr;
     mcEchoChar              = 0;
+    maEntryMessageType      = 0;
 
     // no default mirroring for Edit controls
     // note: controls that use a subedit will revert this (SpinField, ComboBox)
@@ -462,7 +464,7 @@ void Edit::ImplRepaint(vcl::RenderContext& rRenderContext, const tools::Rectangl
     const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
 
     if (!IsEnabled() || bPaintPlaceholderText)
-        rRenderContext.SetTextColor(rStyleSettings.GetDisableColor());
+        rRenderContext.SetTextColor(rStyleSettings.GetDisableTextColor());
 
     // Set background color of the normal text
     if (mbForceControlBackground && IsControlBackground())
@@ -483,7 +485,16 @@ void Edit::ImplRepaint(vcl::RenderContext& rRenderContext, const tools::Rectangl
 
     ImplPaintBorder(rRenderContext);
 
-    bool bDrawSelection = maSelection.Len() && (HasFocus() || (GetStyle() & WB_NOHIDESELECTION) || mbActivePopup);
+    if (maEntryMessageType > 0)
+    {
+        const OUString sType(  maEntryMessageType == 1 ? RID_MSGTYPE_INFO
+                             : maEntryMessageType == 2 ? RID_MSGTYPE_WARN
+                                                       : RID_MSGTYPE_ERR);
+        const Point aPoint(rRectangle.Right() - 18, rRectangle.Bottom() / 2 - 8);
+        rRenderContext.DrawImage(aPoint, Image(StockImage::Yes, sType));
+    }
+    bool bDrawSelection
+        = maSelection.Len() && (HasFocus() || (GetStyle() & WB_NOHIDESELECTION) || mbActivePopup);
 
     aPos.setX( mnXOffset + ImplGetExtraXOffset() );
     if (bPaintPlaceholderText)
@@ -1249,6 +1260,11 @@ void Edit::ImplPaste(css::uno::Reference<css::datatransfer::clipboard::XClipboar
         OUString aText;
         aData >>= aText;
 
+        // tdf#163161 - filter pasted text before checking it against maximum length,
+        // otherwise characters removed by the filter count towards the limit
+        if (mpFilterText)
+            aText = mpFilterText->filter(aText);
+
         // tdf#127588 - extend selection to the entire field or paste the text
         // from the clipboard to the current position if there is no selection
         if (mnMaxTextLen < EDIT_NOLIMIT && maSelection.Len() == 0)
@@ -1742,7 +1758,7 @@ void Edit::Draw(OutputDevice& rDev, const Point& rPos, SystemTextColorFlags nFla
         if ( !IsEnabled() )
         {
             const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
-            rDev.SetTextColor(rStyleSettings.GetDisableColor());
+            rDev.SetTextColor(rStyleSettings.GetDisableTextColor());
         }
         else
         {
@@ -2797,6 +2813,10 @@ void Edit::drop( const css::datatransfer::dnd::DropTargetDropEvent& rDTDE )
                 css::uno::Any aData = xDataObj->getTransferData(aFlavor);
                 OUString aText;
                 aData >>= aText;
+                // tdf#163161 - filter dropped text before checking it against maximum length,
+                // otherwise characters removed by the filter count towards the limit
+                if (mpFilterText)
+                    aText = mpFilterText->filter(aText);
                 ImplInsertText( aText );
                 bChanges = true;
                 Modify();

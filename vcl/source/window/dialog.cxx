@@ -121,13 +121,6 @@ static bool ImplIsMnemonicCtrl( vcl::Window* pWindow )
     return false;
 }
 
-void ImplHideSplash()
-{
-    ImplSVData* pSVData = ImplGetSVData();
-    if( pSVData->mpIntroWindow )
-            pSVData->mpIntroWindow->Hide();
-}
-
 vcl::Window * nextLogicalChildOfParent(const vcl::Window *pTopLevel, const vcl::Window *pChild)
 {
     const vcl::Window *pLastChild = pChild;
@@ -354,9 +347,12 @@ struct DialogImpl
     bool    mbStartedModal;
     VclAbstractDialog::AsyncContext maEndCtx;
     Link<void*, vcl::ILibreOfficeKitNotifier*> m_aInstallLOKNotifierHdl;
-    bool    m_bLOKTunneling;
 
-    DialogImpl() : mnResult( -1 ), mbStartedModal( false ), m_bLOKTunneling( true ) {}
+    DialogImpl()
+        : mnResult(-1)
+        , mbStartedModal(false)
+    {
+    }
 
 #ifndef NDEBUG
     short get_response(vcl::Window *pWindow) const
@@ -397,14 +393,6 @@ void Dialog::ImplInitDialogData()
     mpActionArea.reset();
     mnMousePositioned       = 0;
     mpDialogImpl.reset(new DialogImpl);
-}
-
-void Dialog::PixelInvalidate(const tools::Rectangle* pRectangle)
-{
-    if (!mpDialogImpl || !mpDialogImpl->m_bLOKTunneling)
-        return;
-
-    Window::PixelInvalidate(pRectangle);
 }
 
 vcl::Window* Dialog::GetDefaultParent(WinBits nStyle)
@@ -602,8 +590,6 @@ Dialog::~Dialog()
 
 void Dialog::dispose()
 {
-    bool bTunnelingEnabled = mpDialogImpl->m_bLOKTunneling;
-
     mpDialogImpl->disposeAndClear();
     RemoveFromDlgList();
     mpActionArea.reset();
@@ -622,8 +608,7 @@ void Dialog::dispose()
     {
         if(const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
         {
-            if (bTunnelingEnabled)
-                pNotifier->notifyWindow(GetLOKWindowId(), u"close"_ustr);
+            pNotifier->notifyWindow(GetLOKWindowId(), u"close"_ustr);
             ReleaseLOKNotifier();
         }
     }
@@ -727,14 +712,11 @@ void Dialog::SetInstallLOKNotifierHdl(const Link<void*, vcl::ILibreOfficeKitNoti
 
 void Dialog::StateChanged( StateChangedType nType )
 {
-    bool bTunnelingEnabled = mpDialogImpl->m_bLOKTunneling;
-
     if (nType == StateChangedType::InitShow)
     {
         DoInitialLayout();
 
-        const bool bKitActive = comphelper::LibreOfficeKit::isActive();
-        if (bKitActive && bTunnelingEnabled)
+        if (comphelper::LibreOfficeKit::isActive())
         {
             std::vector<vcl::LOKPayloadItem> aItems;
             aItems.emplace_back("type", "dialog");
@@ -774,8 +756,7 @@ void Dialog::StateChanged( StateChangedType nType )
     }
     else if (nType == StateChangedType::Text)
     {
-        const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier();
-        if (pNotifier && bTunnelingEnabled)
+        if (const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
         {
             std::vector<vcl::LOKPayloadItem> aPayload;
             aPayload.emplace_back("title", GetText().toUtf8());
@@ -793,8 +774,7 @@ void Dialog::StateChanged( StateChangedType nType )
 
     if (!mbModalMode && nType == StateChangedType::Visible)
     {
-        const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier();
-        if (pNotifier && bTunnelingEnabled)
+        if (const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
         {
             std::vector<vcl::LOKPayloadItem> aPayload;
             aPayload.emplace_back("title", GetText().toUtf8());
@@ -1025,8 +1005,7 @@ bool Dialog::ImplStartExecute(bool async)
     else
         UITestLogger::getInstance().log(Concat2View("Open Modeless " + get_id()));
 
-    bool bTunnelingEnabled = mpDialogImpl->m_bLOKTunneling;
-    if (comphelper::LibreOfficeKit::isActive() && bTunnelingEnabled)
+    if (comphelper::LibreOfficeKit::isActive())
     {
         if (const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
         {
@@ -1128,8 +1107,7 @@ void Dialog::EndDialog( tools::Long nResult )
     {
         if(const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
         {
-            if (mpDialogImpl->m_bLOKTunneling)
-                pNotifier->notifyWindow(GetLOKWindowId(), u"close"_ustr);
+            pNotifier->notifyWindow(GetLOKWindowId(), u"close"_ustr);
             ReleaseLOKNotifier();
         }
     }
@@ -1408,9 +1386,10 @@ void Dialog::Resize()
     if (comphelper::LibreOfficeKit::isDialogPainting())
         return;
 
-    bool bTunnelingEnabled = mpDialogImpl->m_bLOKTunneling;
-    const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier();
-    if (pNotifier && bTunnelingEnabled)
+    if (!mpDialogImpl)
+        return;
+
+    if (const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
     {
         std::vector<vcl::LOKPayloadItem> aItems;
         aItems.emplace_back("size", GetSizePixel().toString());

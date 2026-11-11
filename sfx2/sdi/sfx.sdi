@@ -5153,22 +5153,6 @@ SfxImageItem ImageOrientation SID_IMAGE_ORIENTATION
     GroupId = SfxGroupId::View;
 ]
 
-SfxVoidItem SendFeedback SID_SEND_FEEDBACK
-()
-[
-    AutoUpdate = FALSE,
-    FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
-    Toggle = FALSE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerSet;
-
-    AccelConfig = TRUE,
-    MenuConfig = TRUE,
-    ToolBoxConfig = TRUE,
-    GroupId = SfxGroupId::Application;
-]
 SfxVoidItem QuestionAnswers SID_Q_AND_A
 ()
 [
@@ -6011,9 +5995,9 @@ SfxVoidItem WidgetTestDialog SID_WIDGET_TEST_DIALOG
     RecordAbsolute = FALSE,
     RecordPerSet;
 
-    AccelConfig = TRUE,
-    MenuConfig = TRUE,
-    ToolBoxConfig = TRUE,
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
     GroupId = SfxGroupId::Application;
 ]
 
@@ -6034,16 +6018,18 @@ SfxVoidItem ChangeTheme FN_CHANGE_THEME
     GroupId = SfxGroupId::Application;
 ]
 
-SfxVoidItem InvertBackground FN_INVERT_BACKGROUND
-(SfxStringItem NewTheme FN_PARAM_NEW_THEME)
+SfxBoolItem InvertBackground FN_INVERT_BACKGROUND
 [
-    AutoUpdate = FALSE,
+    AutoUpdate = TRUE,
     FastCall = FALSE,
-    ReadOnlyDoc = FALSE,
-    Toggle = FALSE,
+    ReadOnlyDoc = TRUE,
+    Toggle = TRUE,
     Container = FALSE,
     RecordAbsolute = FALSE,
     RecordPerSet;
 
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
     GroupId = SfxGroupId::Application;
 ]

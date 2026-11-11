@@ -52,6 +52,8 @@
 #include <com/sun/star/presentation/TextAnimationType.hpp>
 #include <com/sun/star/presentation/ShapeAnimationSubType.hpp>
 #include <com/sun/star/presentation/EffectCommands.hpp>
+#include <com/sun/star/presentation/XSoundReference.hpp>
+#include <xmloff/SoundReference.hxx>
 #include <o3tl/any.hxx>
 #include <sax/tools/converter.hxx>
 #include <sal/log.hxx>
@@ -331,6 +333,42 @@ const SvXMLEnumMapEntry<sal_Int16> aAnimations_EnumMap_TransitionSubType[] =
 
     { XML_TOKEN_INVALID, 0 }
 };
+// Subtypes that have no SMIL name: these are written as loext:subtype, with a fallback in smil:subtype.
+const SvXMLEnumMapEntry<sal_Int16> aAnimations_EnumMap_TransitionSubTypeExt[] =
+{
+    { XML_AIRPLANE,             TransitionSubType::AIRPLANE },
+
+    { XML_TOKEN_INVALID, 0 }
+};
+
+sal_Int16 getTransitionSubTypeFallback(sal_Int16 nSubtype)
+{
+    switch (nSubtype)
+    {
+        case TransitionSubType::AIRPLANE:
+            // Fall: the sheet falls over instead of flying away.
+            return TransitionSubType::LEFTTORIGHT;
+    }
+    return nSubtype;
+}
+
+namespace
+{
+void exportTransitionSubType(SvXMLExport& rExport, sal_Int16 nSubtype)
+{
+    OUStringBuffer sTmp;
+    OUString aExtSubtype;
+    if (SvXMLUnitConverter::convertEnum(sTmp, nSubtype, aAnimations_EnumMap_TransitionSubTypeExt))
+        aExtSubtype = sTmp.makeStringAndClear();
+
+    SvXMLUnitConverter::convertEnum(sTmp, getTransitionSubTypeFallback(nSubtype),
+                                    aAnimations_EnumMap_TransitionSubType);
+    rExport.AddAttribute(XML_NAMESPACE_SMIL, XML_SUBTYPE, sTmp.makeStringAndClear());
+
+    if (!aExtSubtype.isEmpty() && (rExport.getSaneDefaultVersion() & SvtSaveOptions::ODFSVER_EXTENDED))
+        rExport.AddAttribute(XML_NAMESPACE_LO_EXT, XML_SUBTYPE, aExtSubtype);
+}
+}
 const SvXMLEnumMapEntry<sal_Int16> aAnimations_EnumMap_EventTrigger[] =
 {
     { XML_ONBEGIN,          EventTrigger::ON_BEGIN },
@@ -555,7 +593,9 @@ void AnimationsExporterImpl::exportTransitionNode()
 
     Any aSound( mxPageProps->getPropertyValue(u"Sound"_ustr) );
     OUString sSoundURL;
-    aSound >>= sSoundURL;
+    uno::Reference<XSoundReference> xSound;
+    if( (aSound >>= xSound) && xSound.is() )
+        sSoundURL = xSound->getURL();
     bool bStopSound = false;
     if( !(aSound >>= bStopSound) )
         bStopSound = false;
@@ -595,10 +635,7 @@ void AnimationsExporterImpl::exportTransitionNode()
         mxExport->AddAttribute( XML_NAMESPACE_SMIL, XML_TYPE, sTmp.makeStringAndClear() );
 
         if( nSubtype != TransitionSubType::DEFAULT )
-        {
-            SvXMLUnitConverter::convertEnum( sTmp, nSubtype, aAnimations_EnumMap_TransitionSubType );
-            mxExport->AddAttribute( XML_NAMESPACE_SMIL, XML_SUBTYPE, sTmp.makeStringAndClear() );
-        }
+            exportTransitionSubType( *mxExport, nSubtype );
 
         if( !bDirection )
             mxExport->AddAttribute( XML_NAMESPACE_SMIL, XML_DIRECTION, XML_REVERSE );
@@ -648,7 +685,9 @@ void AnimationsExporterImpl::prepareTransitionNode()
         if( nTransition == 0 )
         {
             Any aSound( mxPageProps->getPropertyValue(u"Sound"_ustr) );
-            aSound >>= sSoundURL;
+            uno::Reference<XSoundReference> xSound;
+            if( (aSound >>= xSound) && xSound.is() )
+                sSoundURL = xSound->getURL();
 
             if( !(aSound >>= bStopSound) )
                 bStopSound = false;
@@ -1324,10 +1363,7 @@ void AnimationsExporterImpl::exportAnimate( const Reference< XAnimate >& xAnimat
 
             sal_Int16 nSubtype = xTransitionFilter->getSubtype();
             if( nSubtype != TransitionSubType::DEFAULT )
-            {
-                SvXMLUnitConverter::convertEnum( sTmp, nSubtype, aAnimations_EnumMap_TransitionSubType );
-                mxExport->AddAttribute( XML_NAMESPACE_SMIL, XML_SUBTYPE, sTmp.makeStringAndClear() );
-            }
+                exportTransitionSubType( *mxExport, nSubtype );
 
             bTemp = xTransitionFilter->getMode();
             if( !bTemp )
@@ -1370,8 +1406,7 @@ void AnimationsExporterImpl::exportAudio( const Reference< XAudio >& xAudio )
 
     try
     {
-        OUString aSourceURL;
-        xAudio->getSource() >>= aSourceURL;
+        OUString aSourceURL = xmloff::getSoundURL( xAudio->getSource() );
         if( !aSourceURL.isEmpty() )
             mxExport->AddAttribute( XML_NAMESPACE_XLINK, XML_HREF, mxExport->GetRelativeReference( aSourceURL ) );
 

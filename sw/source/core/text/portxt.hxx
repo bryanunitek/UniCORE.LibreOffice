@@ -19,6 +19,7 @@
 #pragma once
 
 #include "porlin.hxx"
+#include <basegfx/units/Length.hxx>
 
 class SwTextGuess;
 
@@ -30,6 +31,12 @@ class SwTextPortion : public SwLinePortion
     void SetSpacing( SwTextFormatInfo &rInf, SwTextGuess const &rGuess,
             const sal_Int32 nSpaces, const sal_Int16 nWidthOf10Spaces );
     bool Format_( SwTextFormatInfo &rInf );
+
+protected:
+    /// Paints what surrounds the text; reads the index, so never under a SwTextSlot
+    void PaintDecorations(const SwTextPaintInfo& rInf) const;
+    /// Paints the text; pass false under a SwTextSlot, which does not remap the wrong list
+    void PaintText(const SwTextPaintInfo& rInf, bool bWrong) const;
 
 public:
     SwTextPortion(){ SetWhichPor( PortionType::Text ); }
@@ -46,6 +53,20 @@ public:
     TextFrameIndex GetSpaceCnt(const SwTextSizeInfo &rInf, TextFrameIndex& rCnt) const;
 
     bool CreateHyphen( SwTextFormatInfo &rInf, SwTextGuess const &rGuess );
+
+    // Get the position of a compound splitting break, which <= nHyphenationPos.
+    // If there is no such position, it returns with -1.
+    // If bSplitOnly=false, it returns with true also if nHyphenationPos is there
+    // in the suffix of the compound word, i.e. it's a readable hyphenation of
+    // a compound word.
+    static sal_Int16 GetCompoundSplit( SwTextFormatInfo &rInf, const OUString &rWord,
+                          const sal_Int16 nHyphenationPos,
+                          bool bSplitOnly);
+    // is this a good word break for a compound word during compound-based justification, i.e.
+    // it splits a compound word between compound constituents or
+    // it hyphenates the compound word just before or inside its suffix
+    static bool IsCompoundSplit( SwTextFormatInfo &rInf, const SwTextGuess &rGuess,
+                          bool* pbHasSplitBefore = nullptr );
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
@@ -66,19 +87,20 @@ public:
 
 class SwHolePortion : public SwLinePortion
 {
-    SwTwips m_nBlankWidth;
+    gfx::Length m_nBlankWidth;
     bool m_bShowUnderline;
 
 public:
     explicit SwHolePortion(const SwTextPortion& rPor, bool bShowUnderline = false);
-    SwTwips GetBlankWidth() const { return m_nBlankWidth; }
-    void SetBlankWidth(const SwTwips nNew) { m_nBlankWidth = nNew; }
+    gfx::Length GetBlankWidth() const { return m_nBlankWidth; }
+    void SetBlankWidth(const gfx::Length nNew) { m_nBlankWidth = nNew; }
     virtual SwLinePortion *Compress() override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
     virtual SwPositiveSize GetTextSize(const SwTextSizeInfo& rInfo) const override;
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
 
     bool ShowUnderline() const { return m_bShowUnderline; }
+    void SetShowUnderline(bool bNew) { m_bShowUnderline = bNew; }
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;

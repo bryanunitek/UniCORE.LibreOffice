@@ -23,7 +23,7 @@ $(eval $(call gb_CustomTarget_register_targets,postprocess/images,\
 $(packimages_DIR)/images.zip : DEFAULT_THEME := $(true)
 $(packimages_DIR)/images_%.zip : DEFAULT_THEME :=
 
-# tdf#124023 make links.txt depend on phony sorted.lst depend
+# tdf#124023 make links.txt depend on phony sorted.lst
 # so this is evaluated every time
 $(packimages_DIR)/%_links.txt : $(packimages_DIR)/sorted.lst
 	@if test -f "$(SRCDIR)/icon-themes/$*/links.txt"; then \
@@ -62,7 +62,8 @@ $(packimages_DIR)/images_%.zip : \
 			-L $(packimages_DIR)/$*_links.txt \
 			-s $< -o $@ \
 			$(if $(findstring s,$(MAKEFLAGS)),> /dev/null) && \
-		rm -rf $${ILSTFILE})
+		rm -rf $${ILSTFILE} \
+		$(call gb_Helper_make_zip_deterministic,$@))
 	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),PRL)
 
 # turn the #defines foo "resource.png" of hlst into the final ilst format
@@ -99,7 +100,7 @@ packimages_icon_themes := $(filter %/,$(wildcard $(SRCDIR)/icon-themes/*/))
 # on the full list, and similarly the recursive filtering call from the initial
 # version of the patch also fails on windows for some reason
 # so don't try to be clever and do it in this awkward/tedious way.
-# all this does is filtering everything for png/svg files that have /cmd/ as
+# all this does is filter everything for png/svg files that have /cmd/ as
 # part of their path and then replacing the path to the theme-directory with
 # %MODULE% - the surrounding sort not only sorts the lists, but gets rid of
 # duplicate filenames that are left after the %MODULE% replacement

@@ -34,8 +34,12 @@
 #include <editeng/editstat.hxx>
 #include <editeng/outlobj.hxx>
 #include <sdr/properties/textproperties.hxx>
+#include <svx/svdetc.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svdotable.hxx>
+#include <svx/svdpage.hxx>
+#include <svx/svdpagv.hxx>
+#include <svx/xfillit0.hxx>
 #include <svx/svdhdl.hxx>
 #include "viewcontactoftableobj.hxx"
 #include <svx/svdoutl.hxx>
@@ -95,7 +99,7 @@ public:
     TableProperties(const TableProperties& rProps, SdrObject& rObj );
 
     // Clone() operator, normally just calls the local copy constructor
-    std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
+    std::unique_ptr<BaseProperties> implCloneProperties(SdrObject& rObj) const override;
 
     virtual void ItemChange(const sal_uInt16 nWhich, const SfxPoolItem* pNewItem = nullptr) override;
 };
@@ -112,7 +116,7 @@ TableProperties::TableProperties(const TableProperties& rProps, SdrObject& rObj)
 {
 }
 
-std::unique_ptr<BaseProperties> TableProperties::Clone(SdrObject& rObj) const
+std::unique_ptr<BaseProperties> TableProperties::implCloneProperties(SdrObject& rObj) const
 {
     return std::unique_ptr<BaseProperties>(new TableProperties(*this, rObj));
 }
@@ -1282,6 +1286,31 @@ const SfxItemSet& SdrTableObj::GetActiveCellItemSet() const
     return getActiveCell()->GetItemSet();
 }
 
+std::optional<Color> SdrTableObj::GetActiveTextBackgroundColor(const SdrText* pSdrText) const
+{
+    // Prefer the cell's own fill color if set.
+    const SfxItemSet& rCellItemSet = pSdrText ? pSdrText->GetItemSet() : GetActiveCellItemSet();
+    if (auto oColor = GetDraftFillColor(rCellItemSet))
+        return oColor;
+
+    // Cell has no fill, so use the page/slide background directly instead
+    // of the table object's fill, which does not represent the actual
+    // background behind the cell text.
+    if (const SdrPage* pPage = getSdrPageFromSdrObject())
+    {
+        const SfxItemSet* pPageFillSet = &pPage->getSdrPageProperties().GetItemSet();
+        if (drawing::FillStyle_NONE == pPageFillSet->Get(XATTR_FILLSTYLE).GetValue()
+            && !pPage->IsMasterPage() && pPage->TRG_HasMasterPage())
+        {
+            pPageFillSet = &pPage->TRG_GetMasterPage().getSdrPageProperties().GetItemSet();
+        }
+        if (auto oColor = GetDraftFillColor(*pPageFillSet))
+            return oColor;
+        return pPage->GetPageBackgroundColor();
+    }
+    return std::nullopt;
+}
+
 void SdrTableObj::setTableStyle( const Reference< XIndexAccess >& xTableStyle )
 {
     if( mpImpl.is() && (mpImpl->mxTableStyle != xTableStyle) )
@@ -1753,7 +1782,7 @@ OUString SdrTableObj::TakeObjNamePlural() const
 }
 
 
-rtl::Reference<SdrObject> SdrTableObj::CloneSdrObject(SdrModel& rTargetModel) const
+rtl::Reference<SdrObject> SdrTableObj::implCloneSdrObject(SdrModel& rTargetModel) const
 {
     return new SdrTableObj(rTargetModel, *this);
 }
@@ -1838,10 +1867,9 @@ void SdrTableObj::EndTextEdit(SdrOutliner& rOutl)
     if(rOutl.IsModified())
     {
         std::optional<OutlinerParaObject> pNewText;
-        Paragraph* p1stPara = rOutl.GetParagraph( 0 );
         sal_Int32 nParaCnt = rOutl.GetParagraphCount();
 
-        if(p1stPara)
+        if(nParaCnt > 0)
         {
             // to remove the grey field background
             rOutl.UpdateFields();

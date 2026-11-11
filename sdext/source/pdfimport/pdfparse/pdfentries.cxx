@@ -162,7 +162,7 @@ OUString PDFName::getFilteredName() const
     unsigned int nLen = m_aName.getLength();
     for( unsigned int i = 0; i < nLen; i++ )
     {
-        if( (i < nLen - 3) && pStr[i] == '#' )
+        if( (i + 2 < nLen) && pStr[i] == '#' )
         {
             aFilter.append(o3tl::convertToHex<char, 0>(pStr[i + 1], pStr[i + 2]));
             i += 2;
@@ -683,11 +683,19 @@ bool PDFObject::getDeflatedStream( std::unique_ptr<char[]>& rpStream, unsigned i
         char* pStream = rpStream.get();
         if( pStream[0] == 's' )
             pStream += 6; // skip "stream"
-        // skip line end after "stream"
-        while( *pStream == '\r' || *pStream == '\n' )
+        // "stream" is followed by CR LF or by LF alone, and the data starts after that
+        if( *pStream == '\r' )
+            pStream++;
+        if( *pStream == '\n' )
             pStream++;
         // get the compressed length
         *pBytes = m_pStream->getDictLength( pObjectContainer );
+        unsigned int nAvailable = nOuterStreamLen - static_cast<unsigned int>(pStream - rpStream.get());
+        if (*pBytes > nAvailable)
+        {
+            SAL_WARN("sdext.pdfimport.pdfparse", "stream /Length " << *pBytes << " exceeds " << nAvailable << " available bytes");
+            *pBytes = nAvailable;
+        }
         if( pStream != rpStream.get() )
             memmove( rpStream.get(), pStream, *pBytes );
         if( rContext.m_bDecrypt )
@@ -1333,7 +1341,15 @@ PDFFileImplData* PDFFile::impl_getData() const
                         {
                             PDFNumber* pNum = dynamic_cast<PDFNumber*>(len->second);
                             if( pNum )
-                                m_pData->m_nKeyLength = static_cast<sal_uInt32>(pNum->m_fValue) / 8;
+                            {
+                                sal_uInt32 nKeyLength = static_cast<sal_uInt32>(pNum->m_fValue) / 8;
+                                if (nKeyLength > ENCRYPTION_KEY_LEN)
+                                {
+                                    SAL_WARN("sdext.pdfimport.pdfparse", "entry has length " << nKeyLength << " which is greater than " << ENCRYPTION_KEY_LEN);
+                                    nKeyLength = ENCRYPTION_KEY_LEN;
+                                }
+                                m_pData->m_nKeyLength = nKeyLength;
+                            }
                         }
                         PDFName* pFilter = dynamic_cast<PDFName*>(filter->second);
                         if( pFilter && pFilter->getFilteredName() == "Standard" )

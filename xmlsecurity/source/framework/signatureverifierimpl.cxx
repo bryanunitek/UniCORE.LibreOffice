@@ -38,7 +38,7 @@ void SignatureVerifierImpl::notifyResultListener() const
 /****** SignatureVerifierImpl/notifyResultListener ***************************
  *
  *   NAME
- *  notifyResultListener -- notifies the listener about the verify result.
+ *  notifyResultListener -- notifies the listener about the verification result.
  ******************************************************************************/
 {
     css::uno::Reference< css::xml::crypto::sax::XSignatureVerifyResultListener >
@@ -61,8 +61,10 @@ void SignatureVerifierImpl::startEngine( const rtl::Reference<XMLSignatureTempla
     css::uno::Reference< css::xml::crypto::XXMLSignatureTemplate > xResultTemplate;
     try
     {
+        xSignatureTemplate->SetSigningCertificate(m_xSigningCertificate);
         xResultTemplate = m_xXMLSignature->validate(css::uno::Reference<css::xml::crypto::XXMLSignatureTemplate>(xSignatureTemplate), m_xXMLSecurityContext);
         m_nStatus = xResultTemplate->getStatus();
+        m_xVerifiedCertificate = xSignatureTemplate->GetVerifiedCertificate();
     }
     catch( css::uno::Exception& )
     {
